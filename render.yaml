@@ -4,7 +4,7 @@ services:
     env: node
     region: oregon
     plan: free
-    buildCommand: npm install pnpm@10 && node_modules/.bin/pnpm install --frozen-lockfile && node_modules/.bin/pnpm --filter @workspace/api-server run build
+    buildCommand: npm install --no-save pnpm@10 && node_modules/.bin/pnpm install --frozen-lockfile && node_modules/.bin/pnpm --filter @workspace/api-server run build
     startCommand: node_modules/.bin/pnpm --filter @workspace/api-server run start
     healthCheckPath: /api/healthz
     envVars:
