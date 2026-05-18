@@ -1,13 +1,13 @@
 # Nova AI Bot 🤖💖
 
-A production-ready Telegram AI assistant with human-like personality, group moderation, image generation, premium system, owner dashboard, and optional web admin panel.
+A production-ready Telegram AI assistant with human-like personality, group moderation, image generation, premium system, owner dashboard, and an optional web admin panel.
 
 ---
 
 ## Features
 
 - **AI Chat** — Human-like conversations powered by OpenRouter (Llama 3.3 70B)
-- **Image Generation** — Stable Diffusion 3 via HuggingFace (8 style presets)
+- **Image Generation** — Stable Diffusion 3 via HuggingFace with 8 style presets
 - **Personality Modes** — friendly, funny, serious, balanced
 - **Conversation Memory** — Remembers context (last 20 messages per user)
 - **Group Moderation** — ban, mute, warn, kick, pin, purge, promote, demote, anti-spam
@@ -20,194 +20,230 @@ A production-ready Telegram AI assistant with human-like personality, group mode
 
 ---
 
-## Deploy to Render (One-Click)
+## Full Deployment Guide
 
-### Step 1 — Push to GitHub
+### Part 1 — Get Your API Keys First
 
-1. Go to [github.com](https://github.com) and create a new **private** repository
-2. In Replit, open the Shell tab and run:
-   ```bash
-   git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
-   git push -u origin main
+Before deploying, collect all the keys you'll need. Open each link below in a new tab.
+
+#### 1. Telegram Bot Token
+1. Open Telegram and search for **@BotFather**
+2. Send `/newbot`
+3. Choose a name (e.g. `Nova AI`) and a username (e.g. `mynova_bot`)
+4. BotFather will send you a token — copy it. It looks like: `7123456789:AAF...`
+
+#### 2. Your Telegram User ID (Owner ID)
+1. Open Telegram and search for **@userinfobot**
+2. Send `/start`
+3. It will reply with your user ID — copy the number (e.g. `987654321`)
+
+#### 3. MongoDB URI (Free Database)
+1. Go to [cloud.mongodb.com](https://cloud.mongodb.com) and sign up free
+2. Click **Create** → choose **M0 Free** tier → pick any region → click **Create**
+3. Under **Security → Database Access**, create a user with a password — save the password
+4. Under **Security → Network Access**, click **Add IP Address** → choose **Allow Access from Anywhere** → Confirm
+5. Click **Connect** → **Drivers** → copy the connection string
+6. Replace `<password>` with your password and add `/nova` before the `?`:
+   ```
+   mongodb+srv://youruser:yourpassword@cluster.mongodb.net/nova?retryWrites=true&w=majority
    ```
 
-### Step 2 — Connect to Render
+#### 4. OpenRouter API Key (AI Chat)
+1. Go to [openrouter.ai](https://openrouter.ai) and sign up
+2. Go to **Keys** → **Create Key** → copy it
+3. The Llama 3.3 70B model used by Nova is free with a rate limit
 
-1. Go to [render.com](https://render.com) and sign up (free)
-2. Click **New** → **Blueprint**
-3. Connect your GitHub account and select your repository
-4. Render will automatically detect `render.yaml` and configure everything
-5. Click **Apply**
-
-### Step 3 — Set Environment Variables
-
-After the service is created, go to your service → **Environment** tab and add:
-
-| Variable | Value | Where to get it |
-|----------|-------|-----------------|
-| `TELEGRAM_BOT_TOKEN` | Your bot token | [@BotFather](https://t.me/BotFather) on Telegram |
-| `MONGODB_URI` | `mongodb+srv://...` | [MongoDB Atlas](https://cloud.mongodb.com) — free tier |
-| `OPENROUTER_API_KEY` | Your API key | [openrouter.ai](https://openrouter.ai) |
-| `HUGGINGFACE_API_TOKEN` | Your token | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
-| `OWNER_ID` | Your Telegram user ID | Message [@userinfobot](https://t.me/userinfobot) |
-| `SESSION_SECRET` | Any random string | Generate at [randomkeygen.com](https://randomkeygen.com) |
-| `SERVER_URL` | `https://your-service.onrender.com` | Your Render service URL (enables built-in keep-alive) |
-| `ADMIN_API_KEY` | Any secret string | Your choice — used to authenticate the web dashboard |
-
-### Step 4 — Built-in Keep-Alive
-
-Nova includes a **self-ping system** that automatically pings `/api/healthz` every 5 minutes to prevent Render's free tier from sleeping. Set `SERVER_URL` to your Render URL to enable it.
-
-For extra reliability, you can also use [UptimeRobot](https://uptimerobot.com):
-1. New Monitor → HTTP(s)
-2. URL: `https://your-service.onrender.com/api/healthz`
-3. Interval: 5 minutes
+#### 5. HuggingFace Token (Image Generation)
+1. Go to [huggingface.co](https://huggingface.co) and sign up
+2. Go to **Settings → Access Tokens** → **New token** → Role: **Read** → copy it
 
 ---
 
-## Web Admin Dashboard (Optional)
+### Part 2 — Push to GitHub
 
-The admin dashboard is a separate React app you can deploy to Vercel. It connects to your bot's API.
+> **Note:** If you're pushing from Replit, always use this format to avoid Git LFS errors:
 
-### Step 1 — Deploy to Vercel
-
-1. In your GitHub repo, the dashboard is at `artifacts/admin-dashboard/`
-2. Go to [vercel.com](https://vercel.com) and import your repo
-3. Set the **Root Directory** to `artifacts/admin-dashboard`
-4. Set these environment variables in Vercel:
-   - `BASE_PATH` = `/` (or your preferred path)
-5. Deploy
-
-### Step 2 — Connect the Dashboard
-
-1. Open the deployed dashboard URL
-2. Enter your **Backend URL** (e.g. `https://your-bot.onrender.com`)
-3. Enter your **ADMIN_API_KEY** (must match the env var on Render)
-4. Click Connect
-
-### Dashboard Features
-
-- **Overview** — Bot status, user counts, usage stats
-- **Users** — Browse, search, ban/unban, grant/revoke premium, clear memory
-- **Broadcast** — Send messages to all users (or premium only)
-- **Codes** — Create and manage premium redeem codes
-- **Analytics** — Daily event charts, top commands
-- **Logs** — Live activity event stream
-
----
-
-## MongoDB Atlas Setup (Free)
-
-1. Go to [cloud.mongodb.com](https://cloud.mongodb.com) and sign up
-2. Create a **free** M0 cluster (512MB — enough for thousands of users)
-3. Click **Connect** → **Drivers** → copy the connection string
-4. Replace `<password>` with your database user password
-5. Add `/nova` at the end: `mongodb+srv://user:pass@cluster.mongodb.net/nova`
-6. In **Network Access**, click **Add IP Address** → **Allow Access from Anywhere** (0.0.0.0/0)
-
----
-
-## Local Development
+Open the **Shell** tab in Replit and run (replace placeholders):
 
 ```bash
-# Install dependencies
-pnpm install
-
-# Set environment variables (copy and fill in values)
-cp .env.example .env
-
-# Start the bot
-pnpm --filter @workspace/api-server run dev
-
-# Start the admin dashboard (separate terminal)
-pnpm --filter @workspace/admin-dashboard run dev
+GIT_LFS_SKIP_PUSH=1 git push https://YOUR_GITHUB_USERNAME:YOUR_GITHUB_TOKEN@github.com/YOUR_USERNAME/YOUR_REPO.git main --force
 ```
+
+**Don't have a GitHub token?**
+1. Go to [github.com/settings/tokens](https://github.com/settings/tokens)
+2. Click **Generate new token (classic)**
+3. Check the **`repo`** scope
+4. Click **Generate token** → copy it immediately
+
+> Keep your GitHub token private — never share it. If you accidentally expose it, go revoke it immediately at the link above.
+
+---
+
+### Part 3 — Deploy to Render (Free Hosting)
+
+1. Go to [render.com](https://render.com) and sign up (free account)
+2. Click **New** → **Blueprint**
+3. Connect your GitHub account and select your Nova repository
+4. Render will detect `render.yaml` automatically — click **Apply**
+5. Wait for the build to finish (takes 2–3 minutes the first time)
+
+**Once deployed, set your environment variables:**
+
+Go to your Render service → **Environment** tab → add each variable:
+
+| Variable | Example Value | Where to get it |
+|----------|--------------|-----------------|
+| `TELEGRAM_BOT_TOKEN` | `7123456789:AAF...` | Step 1 above |
+| `MONGODB_URI` | `mongodb+srv://user:pass@cluster.mongodb.net/nova` | Step 3 above |
+| `OPENROUTER_API_KEY` | `sk-or-v1-...` | Step 4 above |
+| `HUGGINGFACE_API_TOKEN` | `hf_...` | Step 5 above |
+| `OWNER_ID` | `987654321` | Step 2 above |
+| `SESSION_SECRET` | any random string | Make one up or use [randomkeygen.com](https://randomkeygen.com) |
+| `SERVER_URL` | `https://your-service.onrender.com` | Your Render service URL — found at the top of the service page |
+| `ADMIN_API_KEY` | any secret string | Make one up — used to log into the web dashboard |
+
+After adding variables, click **Save Changes** — Render will automatically restart your bot.
+
+> **Finding your Render URL:** On your service page, the URL is shown at the top in blue. Copy the full URL (e.g. `https://nova-bot-xyz.onrender.com`) and paste it as `SERVER_URL`.
+
+---
+
+### Part 4 — Keep the Bot Always Online (Free)
+
+Render's free tier sleeps after 15 minutes of inactivity. Nova has a **built-in self-ping** system — just set `SERVER_URL` (done above) and it pings itself every 5 minutes automatically.
+
+For extra reliability, add a second pinger with UptimeRobot (free):
+1. Go to [uptimerobot.com](https://uptimerobot.com) and sign up
+2. Click **Add New Monitor**
+3. Type: **HTTP(s)** | Friendly name: `Nova Bot`
+4. URL: `https://your-service.onrender.com/api/healthz`
+5. Monitoring interval: **5 minutes**
+6. Click **Create Monitor**
+
+That's it — your bot will now stay online 24/7 on the free tier.
+
+---
+
+### Part 5 — Web Admin Dashboard (Optional)
+
+The admin dashboard is a separate website you can deploy to Vercel for free.
+
+#### Deploy to Vercel
+
+1. Go to [vercel.com](https://vercel.com) and sign up with your GitHub account
+2. Click **Add New** → **Project**
+3. Import your Nova GitHub repository
+4. Under **Root Directory**, click **Edit** and type: `artifacts/admin-dashboard`
+5. Leave everything else as default → click **Deploy**
+6. Wait ~1 minute for deployment to finish
+
+#### Connect to Your Bot
+
+1. Open your Vercel dashboard URL (e.g. `https://nova-admin-xyz.vercel.app`)
+2. In the **Backend URL** field, enter your Render service URL (e.g. `https://nova-bot-xyz.onrender.com`)
+3. In the **Admin API Key** field, enter your `ADMIN_API_KEY` (the one you set on Render)
+4. Click **Connect**
+
+#### Dashboard Pages
+
+| Page | What it does |
+|------|-------------|
+| **Dashboard** | Bot online status, user counts, usage at a glance |
+| **Users** | Browse all users, search, ban/unban, grant/remove premium, clear memory |
+| **Broadcast** | Send a message to all users or premium-only users |
+| **Codes** | Create and manage premium redeem codes |
+| **Analytics** | Daily event bar charts + top commands list |
+| **Logs** | Live activity event stream with event type filters |
 
 ---
 
 ## Bot Commands
 
-### Private Chat
+### Private Chat (Any User)
 
 | Command | Description |
 |---------|-------------|
 | `/start` | Welcome message |
 | `/help` | Show all commands |
 | `/image <prompt>` | Generate an image |
-| `/image <prompt> --style <preset>` | Generate with style preset |
-| `/profile` | View your profile & stats |
-| `/settings` | View current settings |
-| `/premium` | Check premium status |
+| `/image <prompt> --style <preset>` | Generate with a style preset |
+| `/profile` | View your profile and usage stats |
+| `/settings` | View your current settings |
+| `/premium` | Check your premium status |
 | `/redeem <code>` | Redeem a premium code |
-| `/forget` | Clear conversation memory |
-| `/style friendly\|funny\|serious\|balanced` | Change personality |
+| `/forget` | Clear your conversation memory |
+| `/style friendly\|funny\|serious\|balanced` | Change AI personality |
 | `/length long\|short` | Change reply length |
-| `/emoji on\|off` | Toggle emojis |
+| `/emoji on\|off` | Toggle emojis in replies |
 
 ### Image Style Presets
 
-Use `--style <preset>` with `/image` (or select from the style menu):
+Use `--style <name>` with `/image`:
 
 | Preset | Description |
 |--------|-------------|
 | `anime` | Anime / Studio Ghibli style |
-| `realistic` | Photorealistic, 8K |
+| `realistic` | Photorealistic, 8K detail |
 | `oil` | Oil painting, impressionist |
 | `watercolor` | Soft watercolor art |
-| `cyberpunk` | Neon lights, futuristic |
+| `cyberpunk` | Neon lights, futuristic city |
 | `fantasy` | Magical fantasy art |
 | `sketch` | Pencil sketch, line art |
-| `pixel` | Pixel art, retro game |
+| `pixel` | Pixel art, retro game style |
 
-### Group Chat (Admin Only)
+**Example:** `/image a cat sitting on a rooftop --style cyberpunk`
 
-Add Nova as a **group admin** with these permissions:
-- Delete messages
-- Ban users
-- Restrict members
-- Pin messages
-- Invite users
+### Group Commands (Group Admins Only)
+
+First, **add Nova to your group** and make it an admin with these permissions:
+- Delete messages, Ban users, Restrict members, Pin messages, Invite users
 
 | Command | Description |
 |---------|-------------|
 | `/help` | Show group commands |
 | `/rules` | Show group rules |
-| `/ai on\|off` | Toggle AI replies |
-| `/style <mode>` | Set group AI style |
-| `/welcome <text>` | Set welcome message (use `{name}` and `{group}`) |
+| `/ai on\|off` | Toggle AI replies in the group |
+| `/style <mode>` | Set group AI personality |
+| `/welcome <text>` | Set welcome message — use `{name}` and `{group}` |
 | `/setrules <text>` | Set group rules |
-| `/ban [@user\|id]` | Ban a user |
-| `/unban [@user\|id]` | Unban a user |
-| `/mute [@user\|id] [1m\|1h\|1d]` | Mute a user |
-| `/unmute [@user\|id]` | Unmute a user |
-| `/warn [@user\|id]` | Warn (auto-ban at 3) |
-| `/warnings [@user\|id]` | Check warning count |
-| `/clearwarn [@user\|id]` | Clear warnings |
-| `/kick [@user\|id]` | Kick (ban + unban) |
-| `/purge <n>` | Delete last N messages (max 100) |
-| `/pin` | Pin replied message |
-| `/unpin` | Unpin latest pin |
-| `/delete` | Delete replied message |
-| `/promote [@user\|id]` | Promote to admin |
-| `/demote [@user\|id]` | Demote from admin |
-| `/antilink on\|off` | Toggle anti-link protection |
-| `/antiflood on\|off` | Toggle anti-flood protection |
+| `/ban [@user or reply]` | Ban a user from the group |
+| `/unban [@user or reply]` | Unban a user |
+| `/mute [@user or reply] [1m\|1h\|1d]` | Mute a user temporarily |
+| `/unmute [@user or reply]` | Unmute a user |
+| `/warn [@user or reply]` | Warn a user (auto-ban at 3 warnings) |
+| `/warnings [@user or reply]` | Check warning count |
+| `/clearwarn [@user or reply]` | Clear all warnings for a user |
+| `/kick [@user or reply]` | Remove user from group (can rejoin) |
+| `/purge <number>` | Delete last N messages (max 100) |
+| `/pin` | Pin the message you replied to |
+| `/unpin` | Unpin the latest pinned message |
+| `/delete` | Delete the message you replied to |
+| `/promote [@user or reply]` | Make a user admin |
+| `/demote [@user or reply]` | Remove admin from a user |
+| `/antilink on\|off` | Delete messages containing links |
+| `/antiflood on\|off` | Auto-mute users who spam messages |
 
-### Owner Commands (Private Chat Only)
+> **Tip:** For moderation commands, reply to the user's message instead of typing their username — it's more reliable.
+
+### Owner Commands (Your Private Chat Only)
 
 | Command | Description |
 |---------|-------------|
-| `/owner` or `/dashboard` | Show stats & command list |
-| `/stats` | Detailed bot statistics |
-| `/redeemcd <CODE> <duration>` | Create premium code (1d, 7d, 30d, 90d, lifetime) |
-| `/listcodes` | List all redeem codes |
-| `/lookup <user_id>` | Look up a user |
-| `/broadcast <message>` | Send message to all users |
-| `/grantpremium <user_id> <duration>` | Grant premium to user |
-| `/revokepremium <user_id>` | Remove premium from user |
-| `/banuser <user_id>` | Ban user from bot |
-| `/unbanuser <user_id>` | Unban user from bot |
-| `/clearuserdata <user_id>` | Clear user memory |
+| `/owner` or `/dashboard` | Show bot stats and command list |
+| `/stats` | Detailed statistics |
+| `/redeemcd <CODE> <duration>` | Create a premium code |
+| `/listcodes` | List all premium codes |
+| `/lookup <user_id>` | Look up a user's profile |
+| `/broadcast <message>` | Send a message to all users |
+| `/grantpremium <user_id> <duration>` | Give premium to a user |
+| `/revokepremium <user_id>` | Remove premium from a user |
+| `/banuser <user_id>` | Ban a user from the bot |
+| `/unbanuser <user_id>` | Unban a user |
+| `/clearuserdata <user_id>` | Clear a user's conversation memory |
+
+**Duration formats:** `1d` `7d` `30d` `90d` `1y` `lifetime`
+
+**Example:** `/redeemcd NOVA-VIP-2025 30d`
 
 ---
 
@@ -215,82 +251,85 @@ Add Nova as a **group admin** with these permissions:
 
 | Feature | Free | Premium |
 |---------|------|---------|
-| AI Chat | ✅ | ✅ |
-| Images/day | 3 | 20 |
-| Memory | Last 20 msgs | Last 20 msgs |
-| Response quality | Standard | Enhanced |
+| AI Chat | ✅ Unlimited | ✅ Unlimited |
+| Image generation | 3 per day | 20 per day |
 | Style presets | ✅ | ✅ |
+| Conversation memory | Last 20 messages | Last 20 messages |
 
-### Create a premium code (as owner):
+**As owner, create a code:**
 ```
-/redeemcd NOVA-VIP-01 30d
+/redeemcd NOVA-GIFT-01 30d
 ```
-Durations: `1d`, `7d`, `10d`, `30d`, `90d`, `1m`, `1y`, `lifetime`
 
-### User redeems it:
+**Share the code with a user — they redeem it with:**
 ```
-/redeem NOVA-VIP-01
+/redeem NOVA-GIFT-01
 ```
 
 ---
 
-## API Endpoints
+## Admin API Reference
 
-| Endpoint | Auth | Description |
-|----------|------|-------------|
-| `GET /api/healthz` | — | Health check |
-| `GET /api/bot/status` | — | Bot status + stats |
-| `GET /api/admin/stats` | ADMIN_API_KEY | Full dashboard stats |
-| `GET /api/admin/users` | ADMIN_API_KEY | List users (paginated) |
-| `GET /api/admin/users/:id` | ADMIN_API_KEY | User detail |
-| `POST /api/admin/users/:id/ban` | ADMIN_API_KEY | Ban user |
-| `POST /api/admin/users/:id/unban` | ADMIN_API_KEY | Unban user |
-| `POST /api/admin/users/:id/premium` | ADMIN_API_KEY | Set premium |
-| `DELETE /api/admin/users/:id/memory` | ADMIN_API_KEY | Clear user memory |
-| `POST /api/admin/broadcast` | ADMIN_API_KEY | Send broadcast |
-| `GET /api/admin/codes` | ADMIN_API_KEY | List redeem codes |
-| `POST /api/admin/codes` | ADMIN_API_KEY | Create redeem code |
-| `GET /api/admin/analytics` | ADMIN_API_KEY | Analytics data |
-| `GET /api/admin/logs` | ADMIN_API_KEY | Activity logs |
+All admin endpoints require the header: `x-admin-key: YOUR_ADMIN_API_KEY`
 
-Admin endpoints require the `x-admin-key: <ADMIN_API_KEY>` header (or `Authorization: Bearer <key>`).
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/healthz` | Health check (no auth) |
+| GET | `/api/bot/status` | Bot status and basic stats (no auth) |
+| GET | `/api/admin/stats` | Full dashboard stats |
+| GET | `/api/admin/users` | List users — supports `?page=1&limit=20&search=&premium=true&banned=true` |
+| GET | `/api/admin/users/:id` | Single user details |
+| POST | `/api/admin/users/:id/ban` | Ban a user |
+| POST | `/api/admin/users/:id/unban` | Unban a user |
+| POST | `/api/admin/users/:id/premium` | Set premium — body: `{ "active": true, "days": 30 }` |
+| DELETE | `/api/admin/users/:id/memory` | Clear user's conversation memory |
+| POST | `/api/admin/broadcast` | Send broadcast — body: `{ "message": "...", "premiumOnly": false }` |
+| GET | `/api/admin/codes` | List all redeem codes |
+| POST | `/api/admin/codes` | Create code — body: `{ "code": "NOVA-XYZ", "duration": "30d" }` |
+| GET | `/api/admin/analytics` | Analytics data — supports `?days=7` |
+| GET | `/api/admin/logs` | Activity logs — supports `?limit=50&event=error` |
 
 ---
 
 ## Troubleshooting
 
-### Bot not responding
-- Check Render logs: Dashboard → your service → **Logs**
-- Verify `TELEGRAM_BOT_TOKEN` is correct (no spaces)
-- Make sure only ONE instance is running (polling conflicts if two run simultaneously)
+### Bot not responding after deployment
+- Check Render logs: your service → **Logs** tab
+- Make sure all environment variables are set correctly (no extra spaces)
+- Verify `TELEGRAM_BOT_TOKEN` works by visiting: `https://api.telegram.org/bot<YOUR_TOKEN>/getMe`
 
-### "Failed to ban/mute user"
-- Nova must be a **group admin** with ban/restrict permissions
-- Nova cannot act on users with higher admin rank
+### Push to GitHub failing with "index-pack failed"
+This is a Replit LFS issue. Always push with this command from the Shell tab:
+```bash
+GIT_LFS_SKIP_PUSH=1 git push https://USERNAME:TOKEN@github.com/USERNAME/REPO.git main --force
+```
+
+### "Failed to ban/mute user" in groups
+- Nova must be a group admin with ban/restrict permissions
+- Nova cannot act on users with equal or higher admin rank than itself
 
 ### "@username not found" in moderation commands
-- Use the **reply method**: reply to the user's message, then type the command
+- Reply to the user's message first, then type the command — this is the most reliable method
 - Or use their numeric user ID: `/ban 123456789`
-- `@username` only works for users with public profiles or who've previously messaged Nova
 
 ### Image generation slow or failing
-- HuggingFace models have a cold start (30-60s on first request)
-- The bot tries SD3 first, falls back to SDXL automatically
-- If consistently failing, check your `HUGGINGFACE_API_TOKEN`
+- HuggingFace cold-starts take 30–60 seconds on first request — just wait and retry
+- Nova automatically falls back from SD3 to SDXL if SD3 fails
+- If consistently failing, double-check your `HUGGINGFACE_API_TOKEN`
 
-### MongoDB connection failed
-- Ensure **Network Access** in Atlas allows `0.0.0.0/0`
-- Check your connection string includes the database name: `.../nova`
-- Atlas free tier has a 500 connection limit — should be fine for a bot
+### MongoDB connection error
+- Confirm Network Access in Atlas shows `0.0.0.0/0` (allow from anywhere)
+- Check your connection string includes the database name: `.../nova?retryWrites=...`
+- Make sure the password in the URI doesn't contain special characters (URL-encode them if it does)
 
-### Admin dashboard can't connect
-- Verify `ADMIN_API_KEY` is set on Render (Environment tab)
-- Make sure the Backend URL has no trailing slash
-- CORS is enabled on the backend for all origins
+### Admin dashboard "connection failed"
+- Make sure `ADMIN_API_KEY` is set on Render (Environment tab) and you saved the changes
+- The backend URL should have no trailing slash: `https://nova-bot.onrender.com`
+- If the bot is sleeping (Render free tier), the first request may take 30–60 seconds to wake it
 
 ---
 
-## Architecture
+## Project Structure
 
 ```
 artifacts/api-server/src/
@@ -299,58 +338,61 @@ artifacts/api-server/src/
 │   │   ├── privateHandler.ts    — Private chat commands + AI chat
 │   │   ├── groupHandler.ts      — Group moderation + AI replies
 │   │   ├── callbackHandler.ts   — Inline button interactions
-│   │   └── ownerHandler.ts      — Owner-only admin commands
+│   │   └── ownerHandler.ts      — Owner-only commands
 │   ├── models/
 │   │   ├── User.ts              — User profiles, settings, premium
-│   │   ├── Memory.ts            — Conversation history per user/chat
+│   │   ├── Memory.ts            — Conversation history
 │   │   ├── RedeemCode.ts        — Premium redeem codes
-│   │   ├── GroupSettings.ts     — Per-group config
-│   │   └── Analytics.ts         — Event analytics (capped collection)
+│   │   ├── GroupSettings.ts     — Per-group configuration
+│   │   └── Analytics.ts         — Event log (capped collection)
 │   ├── services/
-│   │   ├── ai.ts                — OpenRouter chat + memory management
-│   │   ├── image.ts             — HuggingFace image gen + style presets
+│   │   ├── ai.ts                — OpenRouter chat completion
+│   │   ├── image.ts             — HuggingFace image gen + 8 style presets
 │   │   ├── db.ts                — MongoDB connection
 │   │   ├── analytics.ts         — Analytics tracking helpers
-│   │   └── keepAlive.ts         — Self-ping keep-alive system
+│   │   └── keepAlive.ts         — Self-ping to prevent Render sleep
 │   ├── middlewares/
 │   │   └── userMiddleware.ts    — User upsert, premium expiry, daily reset
 │   ├── utils/
-│   │   ├── helpers.ts           — Shared utilities + safeSend
-│   │   └── rateLimiter.ts       — In-memory rate limiting + flood detection
+│   │   ├── helpers.ts           — Shared utilities
+│   │   └── rateLimiter.ts       — Rate limiting + flood detection
 │   └── index.ts                 — Bot startup, event routing, polling recovery
 ├── routes/
 │   ├── health.ts                — GET /api/healthz
 │   ├── bot.ts                   — GET /api/bot/status
-│   ├── admin.ts                 — Admin API (protected by ADMIN_API_KEY)
+│   ├── admin.ts                 — Admin API (14 protected endpoints)
 │   └── index.ts                 — Route aggregator
 └── index.ts                     — Express server + bot start + keep-alive
 
 artifacts/admin-dashboard/src/
 ├── pages/
-│   ├── Login.tsx                — API key login screen
-│   ├── Dashboard.tsx            — Bot stats overview
-│   ├── Users.tsx                — User management table
-│   ├── Broadcast.tsx            — Broadcast message sender
+│   ├── Login.tsx                — Connection screen
+│   ├── Dashboard.tsx            — Stats overview
+│   ├── Users.tsx                — User management
+│   ├── Broadcast.tsx            — Mass messaging
 │   ├── Codes.tsx                — Redeem code manager
-│   ├── Analytics.tsx            — Event charts + top commands
-│   └── Logs.tsx                 — Activity event stream
+│   ├── Analytics.tsx            — Charts + top commands
+│   └── Logs.tsx                 — Event stream
 ├── components/
-│   └── Layout.tsx               — Sidebar navigation layout
+│   └── Layout.tsx               — Sidebar navigation
 └── lib/
     ├── api.ts                   — Typed API client
-    └── utils.ts                 — Formatting utilities
+    └── utils.ts                 — Date/time formatting helpers
 ```
 
 ---
 
-## Stack
+## Tech Stack
 
-- **Runtime**: Node.js 24, TypeScript 5.9
-- **Bot**: node-telegram-bot-api (polling mode)
-- **AI**: OpenRouter — meta-llama/llama-3.3-70b-instruct
-- **Images**: HuggingFace — stabilityai/stable-diffusion-3-medium-diffusers
-- **Database**: MongoDB + Mongoose
-- **Server**: Express 5
-- **Build**: esbuild (ESM bundle)
-- **Hosting**: Render Web Service (bot) + Vercel (optional dashboard)
-- **Frontend**: React 18 + Vite + Tailwind CSS
+| Layer | Technology |
+|-------|-----------|
+| Runtime | Node.js 24, TypeScript 5.9 |
+| Bot | node-telegram-bot-api (polling) |
+| AI | OpenRouter — Llama 3.3 70B |
+| Images | HuggingFace — Stable Diffusion 3 |
+| Database | MongoDB + Mongoose |
+| Server | Express 5 |
+| Build | esbuild (ESM bundle) |
+| Bot hosting | Render Web Service (free tier) |
+| Dashboard hosting | Vercel (free tier) |
+| Frontend | React 18, Vite, Tailwind CSS |
