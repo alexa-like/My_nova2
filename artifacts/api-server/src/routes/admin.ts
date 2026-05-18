@@ -1,0 +1,290 @@
+import { Router } from "express";
+import { User } from "../bot/models/User.js";
+import { RedeemCode } from "../bot/models/RedeemCode.js";
+import { Memory } from "../bot/models/Memory.js";
+import { GroupSettings } from "../bot/models/GroupSettings.js";
+import { Analytics } from "../bot/models/Analytics.js";
+import { getDailySummary, getTopCommands, getActiveUsers } from "../bot/services/analytics.js";
+import { getBot } from "../bot/index.js";
+import { logger } from "../lib/logger.js";
+
+const router = Router();
+
+// ── Auth middleware ─────────────────────────────────────────────────────────
+function adminAuth(
+  req: import("express").Request,
+  res: import("express").Response,
+  next: import("express").NextFunction
+): void {
+  const adminKey = process.env.ADMIN_API_KEY;
+  if (!adminKey) {
+    res.status(503).json({ error: "Admin dashboard not configured (ADMIN_API_KEY not set)" });
+    return;
+  }
+  const provided =
+    req.headers["x-admin-key"] ||
+    req.headers.authorization?.replace(/^Bearer\s+/i, "");
+  if (provided !== adminKey) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  next();
+}
+
+router.use(adminAuth);
+
+// ── GET /api/admin/stats ────────────────────────────────────────────────────
+router.get("/admin/stats", async (_req, res) => {
+  try {
+    const bot = getBot();
+    const [
+      totalUsers,
+      premiumUsers,
+      bannedUsers,
+      activeToday,
+      totalGroups,
+      totalMemories,
+      totalCodes,
+      usedCodes,
+      imageGens,
+      messagesTotal,
+      errorsTotal,
+      activeUsersHour,
+    ] = await Promise.all([
+      User.countDocuments(),
+      User.countDocuments({ "premium.active": true }),
+      User.countDocuments({ banned: true }),
+      User.countDocuments({ lastSeen: { $gte: new Date(Date.now() - 86400000) } }),
+      GroupSettings.countDocuments(),
+      Memory.countDocuments(),
+      RedeemCode.countDocuments(),
+      RedeemCode.countDocuments({ used: true }),
+      Analytics.countDocuments({ event: "image_gen" }),
+      Analytics.countDocuments({ event: "message" }),
+      Analytics.countDocuments({ event: "error" }),
+      getActiveUsers(3600000),
+    ]);
+
+    let botInfo = null;
+    if (bot) {
+      try { botInfo = await bot.getMe(); } catch {}
+    }
+
+    res.json({
+      bot: bot ? { status: "online", ...botInfo } : { status: "offline" },
+      users: { total: totalUsers, premium: premiumUsers, banned: bannedUsers, activeToday },
+      groups: totalGroups,
+      memory: totalMemories,
+      codes: { total: totalCodes, used: usedCodes },
+      analytics: { imageGens, messagesTotal, errorsTotal, activeUsersHour },
+    });
+  } catch (err) {
+    logger.error({ err }, "Admin stats error");
+    res.status(500).json({ error: "Failed to load stats" });
+  }
+});
+
+// ── GET /api/admin/analytics ────────────────────────────────────────────────
+router.get("/admin/analytics", async (req, res) => {
+  try {
+    const days = Number(req.query.days) || 7;
+    const [summary, topCommands] = await Promise.all([
+      getDailySummary(days),
+      getTopCommands(10),
+    ]);
+    res.json({ summary, topCommands });
+  } catch (err) {
+    logger.error({ err }, "Admin analytics error");
+    res.status(500).json({ error: "Failed to load analytics" });
+  }
+});
+
+// ── GET /api/admin/users ────────────────────────────────────────────────────
+router.get("/admin/users", async (req, res) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Number(req.query.limit) || 20);
+    const search = req.query.search as string | undefined;
+    const filter: Record<string, unknown> = {};
+    if (req.query.premium === "true") filter["premium.active"] = true;
+    if (req.query.banned === "true") filter.banned = true;
+    if (search) {
+      const n = Number(search);
+      filter.$or = Number.isInteger(n) && n > 0
+        ? [{ userId: n }, { username: new RegExp(search, "i") }]
+        : [{ username: new RegExp(search, "i") }, { firstName: new RegExp(search, "i") }];
+    }
+    const [users, total] = await Promise.all([
+      User.find(filter)
+        .sort({ lastSeen: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .select("-__v"),
+      User.countDocuments(filter),
+    ]);
+    res.json({ users, total, page, pages: Math.ceil(total / limit) });
+  } catch (err) {
+    logger.error({ err }, "Admin users error");
+    res.status(500).json({ error: "Failed to load users" });
+  }
+});
+
+// ── GET /api/admin/users/:userId ────────────────────────────────────────────
+router.get("/admin/users/:userId", async (req, res) => {
+  try {
+    const user = await User.findOne({ userId: Number(req.params.userId) }).select("-__v");
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    const memory = await Memory.findOne({ userId: user.userId });
+    res.json({ user, memoryCount: memory?.messages?.length ?? 0 });
+  } catch (err) {
+    logger.error({ err }, "Admin user lookup error");
+    res.status(500).json({ error: "Failed to load user" });
+  }
+});
+
+// ── POST /api/admin/users/:userId/ban ───────────────────────────────────────
+router.post("/admin/users/:userId/ban", async (req, res) => {
+  try {
+    const user = await User.findOneAndUpdate(
+      { userId: Number(req.params.userId) },
+      { banned: true },
+      { new: true }
+    );
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    res.json({ success: true, userId: user.userId, banned: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to ban user" });
+  }
+});
+
+// ── POST /api/admin/users/:userId/unban ─────────────────────────────────────
+router.post("/admin/users/:userId/unban", async (req, res) => {
+  try {
+    const user = await User.findOneAndUpdate(
+      { userId: Number(req.params.userId) },
+      { banned: false },
+      { new: true }
+    );
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    res.json({ success: true, userId: user.userId, banned: false });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to unban user" });
+  }
+});
+
+// ── POST /api/admin/users/:userId/premium ───────────────────────────────────
+router.post("/admin/users/:userId/premium", async (req, res) => {
+  try {
+    const { active, days } = req.body as { active: boolean; days?: number };
+    const update: Record<string, unknown> = { "premium.active": active };
+    if (active && days && days > 0) {
+      update["premium.expiresAt"] = new Date(Date.now() + days * 86400000);
+      update["premium.plan"] = `${days}d`;
+    } else if (!active) {
+      update["premium.expiresAt"] = null;
+      update["premium.plan"] = null;
+    }
+    const user = await User.findOneAndUpdate(
+      { userId: Number(req.params.userId) },
+      { $set: update },
+      { new: true }
+    );
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    res.json({ success: true, userId: user.userId, premium: user.premium });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update premium" });
+  }
+});
+
+// ── DELETE /api/admin/users/:userId/memory ──────────────────────────────────
+router.delete("/admin/users/:userId/memory", async (req, res) => {
+  try {
+    await Memory.deleteMany({ userId: Number(req.params.userId) });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to clear memory" });
+  }
+});
+
+// ── POST /api/admin/broadcast ───────────────────────────────────────────────
+router.post("/admin/broadcast", async (req, res) => {
+  const { message, premiumOnly } = req.body as {
+    message: string;
+    premiumOnly?: boolean;
+  };
+  if (!message?.trim()) {
+    res.status(400).json({ error: "message is required" });
+    return;
+  }
+  const bot = getBot();
+  if (!bot) {
+    res.status(503).json({ error: "Bot is offline" });
+    return;
+  }
+  try {
+    const filter = premiumOnly ? { banned: false, "premium.active": true } : { banned: false };
+    const users = await User.find(filter).select("userId");
+    let sent = 0;
+    let failed = 0;
+    for (const u of users) {
+      try {
+        await bot.sendMessage(u.userId, message);
+        sent++;
+        await new Promise((r) => setTimeout(r, 40));
+      } catch {
+        failed++;
+      }
+    }
+    res.json({ success: true, sent, failed, total: users.length });
+  } catch (err) {
+    logger.error({ err }, "Broadcast error");
+    res.status(500).json({ error: "Broadcast failed" });
+  }
+});
+
+// ── GET /api/admin/codes ────────────────────────────────────────────────────
+router.get("/admin/codes", async (_req, res) => {
+  try {
+    const codes = await RedeemCode.find().sort({ createdAt: -1 }).limit(100).select("-__v");
+    res.json({ codes });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to load codes" });
+  }
+});
+
+// ── POST /api/admin/codes ───────────────────────────────────────────────────
+router.post("/admin/codes", async (req, res) => {
+  const { code, duration } = req.body as { code: string; duration: string };
+  if (!code?.trim() || !duration?.trim()) {
+    res.status(400).json({ error: "code and duration are required" });
+    return;
+  }
+  try {
+    const existing = await RedeemCode.findOne({ code: code.toUpperCase() });
+    if (existing) { res.status(409).json({ error: "Code already exists" }); return; }
+    const newCode = new RedeemCode({ code: code.toUpperCase(), duration, used: false });
+    await newCode.save();
+    res.json({ success: true, code: newCode });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to create code" });
+  }
+});
+
+// ── GET /api/admin/logs ─────────────────────────────────────────────────────
+router.get("/admin/logs", async (req, res) => {
+  try {
+    const limit = Math.min(200, Number(req.query.limit) || 50);
+    const event = req.query.event as string | undefined;
+    const filter: Record<string, unknown> = {};
+    if (event) filter.event = event;
+    const logs = await Analytics.find(filter)
+      .sort({ ts: -1 })
+      .limit(limit)
+      .select("-__v");
+    res.json({ logs });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to load logs" });
+  }
+});
+
+export default router;
