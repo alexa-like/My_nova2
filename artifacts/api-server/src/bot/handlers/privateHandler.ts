@@ -77,6 +77,101 @@ function detectImageIntent(text: string): string | null {
   return null;
 }
 
+// ── Video intent detection ─────────────────────────────────────────────────────
+
+function detectVideoIntent(text: string): string | null {
+  const t = text.trim();
+  if (t.length < 5 || t.startsWith("/")) return null;
+  const patterns = [
+    /^(?:generate|create|make|produce)\s+(?:a\s+|me\s+a\s+|me\s+)?(?:short\s+)?(?:video|clip|animation|reel|movie)\s+(?:of|about|showing|depicting|with|for)?\s*(.+)/i,
+    /^(?:can you|could you|please)\s+(?:generate|create|make)\s+(?:a\s+)?(?:short\s+)?(?:video|clip|animation)\s+(?:of|about|showing|with|for)?\s*(.+)/i,
+    /^(?:video|clip|animation)\s+(?:of\s+|showing\s+|about\s+)(.+)/i,
+    /^(?:animate|film)\s+(?:me\s+)?(.+)/i,
+    /^i\s+(?:want|need)\s+(?:a\s+)?(?:short\s+)?(?:video|clip)\s+(?:of|about|showing)?\s*(.+)/i,
+  ];
+  const skip = ["me", "that", "this", "one", "it", "something", "anything", "a video", "a clip"];
+  for (const pattern of patterns) {
+    const match = t.match(pattern);
+    const captured = match?.[1]?.trim();
+    if (match && captured && captured.length > 3 && !skip.includes(captured.toLowerCase())) {
+      return captured.replace(/[?.!]+$/, "");
+    }
+  }
+  return null;
+}
+
+// ── Music intent detection ─────────────────────────────────────────────────────
+
+function detectMusicIntent(text: string): string | null {
+  const t = text.trim();
+  if (t.length < 5 || t.startsWith("/")) return null;
+  const patterns = [
+    /^(?:generate|create|make|produce|compose|write)\s+(?:some\s+|me\s+|me\s+some\s+)?(?:music|audio|a song|a beat|a track|a melody|a tune)\s*(?:that|with|about|like|for|of)?\s*(.*)?/i,
+    /^(?:play|make)\s+(?:me\s+)?(?:some\s+)?(?:music|a song|a beat|a track)\s*(?:that|with|about|like|for|of)?\s*(.*)?/i,
+    /^(?:generate|make|create)\s+(?:a\s+)?(?:lo-?fi|hip-?hop|jazz|classical|ambient|chill|upbeat|epic|sad|happy|calm|relaxing|energetic|electronic|pop|rock|reggae|country)\s+(?:music|beat|track|song|melody|vibe)?\s*(.*)?/i,
+    /^(?:can you|could you)\s+(?:generate|create|make|compose|write|play)\s+(?:some\s+)?(?:music|a song|a beat|a track|a melody)\s*(?:that|with|about|like|for|of)?\s*(.*)?/i,
+    /^(?:generate|make|create)\s+(?:a\s+)?(?:music|song|beat|track)\s+(?:for|about|with)\s+(.+)/i,
+    /^i\s+(?:want|need)\s+(?:some\s+)?(?:music|a beat|a song)\s*(?:that|like|about|with|for)?\s*(.*)?/i,
+  ];
+  for (const pattern of patterns) {
+    const match = t.match(pattern);
+    if (match) {
+      const captured = (match[1] || "").trim();
+      const fullPrompt = captured.length > 3
+        ? captured
+        : t.replace(/^(?:generate|create|make|play|compose|produce|write|i want|i need)\s+(?:me\s+)?(?:some\s+)?/i, "").trim();
+      if (fullPrompt.length > 3) return fullPrompt.replace(/[?.!]+$/, "");
+    }
+  }
+  return null;
+}
+
+// ── Sticker intent detection ───────────────────────────────────────────────────
+
+function detectStickerIntent(text: string): string | null {
+  const t = text.trim();
+  if (t.length < 5 || t.startsWith("/")) return null;
+  const patterns = [
+    /^(?:make|create|generate|design)\s+(?:me\s+)?(?:a\s+)?sticker\s+(?:of|showing|with|depicting|about)?\s*(.+)/i,
+    /^(?:can you|could you)\s+(?:make|create|design|generate)\s+(?:a\s+)?sticker\s+(?:of|showing|with|for)?\s*(.+)/i,
+    /^sticker\s+(?:of\s+|showing\s+|with\s+)?(.+)/i,
+    /^i\s+(?:want|need)\s+(?:a\s+)?sticker\s+(?:of|showing|with)?\s*(.+)/i,
+  ];
+  const skip = ["me", "that", "this", "one", "it", "a sticker"];
+  for (const pattern of patterns) {
+    const match = t.match(pattern);
+    const captured = match?.[1]?.trim();
+    if (match && captured && captured.length > 3 && !skip.includes(captured.toLowerCase())) {
+      return captured.replace(/[?.!]+$/, "");
+    }
+  }
+  return null;
+}
+
+// ── Search intent detection ────────────────────────────────────────────────────
+
+function detectSearchIntent(text: string): string | null {
+  const t = text.trim();
+  if (t.length < 5 || t.startsWith("/")) return null;
+  const patterns = [
+    /^(?:search for|look up|lookup|google|bing|find information about|research)\s+(.+)/i,
+    /^search\s+(.+)/i,
+    /^(?:find|get)\s+(?:information|info|details|news|facts|data)\s+(?:about|on|regarding)\s+(.+)/i,
+    /^(?:what(?:'s| is) the (?:latest|current|recent)\s+(?:news|update|information)\s+(?:about|on|regarding))\s+(.+)/i,
+    /^(?:what happened (?:to|with|in))\s+(.+)/i,
+    /^(?:tell me (?:the latest|current|recent)\s+(?:news|updates?)\s+(?:about|on))\s+(.+)/i,
+    /^(?:latest|current|recent) (?:news|updates?) (?:about|on|regarding) (.+)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = t.match(pattern);
+    const captured = match?.[1]?.trim();
+    if (match && captured && captured.length > 2) {
+      return captured.replace(/[?.!]+$/, "");
+    }
+  }
+  return null;
+}
+
 export async function handleVoiceMessage(
   bot: TelegramBot,
   msg: TelegramBot.Message,
@@ -129,6 +224,27 @@ export async function handleVoiceMessage(
     const imagePrompt = detectImageIntent(transcription);
     if (imagePrompt) {
       await handleImageGeneration(bot, chatId, user, imagePrompt, e);
+      stopTyping();
+      return;
+    }
+
+    const videoPromptV = detectVideoIntent(transcription);
+    if (videoPromptV) {
+      await handleVideoGeneration(bot, chatId, user, videoPromptV, e);
+      stopTyping();
+      return;
+    }
+
+    const musicPromptV = detectMusicIntent(transcription);
+    if (musicPromptV) {
+      await handleMusicGeneration(bot, chatId, user, musicPromptV, e);
+      stopTyping();
+      return;
+    }
+
+    const stickerPromptV = detectStickerIntent(transcription);
+    if (stickerPromptV) {
+      await handleStickerGeneration(bot, chatId, user, stickerPromptV, e);
       stopTyping();
       return;
     }
@@ -507,32 +623,7 @@ export async function handlePrivateMessage(
       );
       return;
     }
-    if (!process.env.HUGGINGFACE_API_TOKEN) {
-      await bot.sendMessage(chatId, "Video generation is not configured yet.");
-      return;
-    }
-    const sentMsg = await bot.sendMessage(chatId,
-      e ? "🎬 Generating your video... This can take 1-3 minutes, hang tight!" : "Generating your video..."
-    );
-    const stopVidTyping = startTypingLoop(bot, chatId, "upload_video");
-    try {
-      const videoBuffer = await generateVideo(prompt);
-      stopVidTyping();
-      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-      if (!videoBuffer) {
-        await bot.sendMessage(chatId,
-          "Video generation failed. The model may be warming up — try again in a minute.",
-          { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] } }
-        );
-        return;
-      }
-      await bot.sendVideo(chatId, videoBuffer, { caption: prompt });
-    } catch (err) {
-      stopVidTyping();
-      logger.error({ err }, "Video generation error");
-      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-      await bot.sendMessage(chatId, "Video generation failed. Please try again later.");
-    }
+    await handleVideoGeneration(bot, chatId, user, prompt, e);
     return;
   }
 
@@ -759,30 +850,7 @@ export async function handlePrivateMessage(
       );
       return;
     }
-    if (!process.env.HUGGINGFACE_API_TOKEN) {
-      await bot.sendMessage(chatId, "Music generation is not configured yet.");
-      return;
-    }
-    const sentMsg = await bot.sendMessage(chatId, "🎵 Generating your music... This takes 30-60 seconds. Hang tight!");
-    const stopTyping = startTypingLoop(bot, chatId);
-    try {
-      const audioBuffer = await generateMusic(prompt);
-      stopTyping();
-      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-      if (!audioBuffer) {
-        await bot.sendMessage(chatId,
-          "Music generation failed. The model may be warming up — try again in a minute.",
-          { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-        );
-        return;
-      }
-      await bot.sendAudio(chatId, audioBuffer, { title: prompt.substring(0, 60), performer: "Nova AI" });
-    } catch (err) {
-      stopTyping();
-      logger.error({ err }, "Music generation error");
-      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-      await bot.sendMessage(chatId, "Music generation failed. Please try again later.");
-    }
+    await handleMusicGeneration(bot, chatId, user, prompt, e);
     return;
   }
 
@@ -863,10 +931,54 @@ export async function handlePrivateMessage(
   // Ignore unknown slash commands
   if (text.startsWith("/")) return;
 
-  // ── Auto-detect image generation intent ────────────────────────────────────
+  // ── Auto-detect generation intents from natural language ────────────────────
   const imagePrompt = detectImageIntent(text);
   if (imagePrompt) {
     await handleImageGeneration(bot, chatId, user, imagePrompt, e);
+    return;
+  }
+
+  const videoPrompt = detectVideoIntent(text);
+  if (videoPrompt) {
+    await handleVideoGeneration(bot, chatId, user, videoPrompt, e);
+    return;
+  }
+
+  const musicPrompt = detectMusicIntent(text);
+  if (musicPrompt) {
+    await handleMusicGeneration(bot, chatId, user, musicPrompt, e);
+    return;
+  }
+
+  const stickerPrompt = detectStickerIntent(text);
+  if (stickerPrompt) {
+    await handleStickerGeneration(bot, chatId, user, stickerPrompt, e);
+    return;
+  }
+
+  const searchQuery = detectSearchIntent(text);
+  if (searchQuery) {
+    const statusMsg = await bot.sendMessage(chatId, e ? "🔍 Searching the web..." : "Searching...");
+    const stopSearchTyping = startTypingLoop(bot, chatId);
+    try {
+      const results = await webSearch(searchQuery);
+      const raw = formatSearchResults(searchQuery, results);
+      if (results.length === 0) {
+        stopSearchTyping();
+        try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+        await bot.sendMessage(chatId, `No results found for: "${searchQuery}"\n\nTry rephrasing.`);
+        return;
+      }
+      const aiPrompt = `Based on these web search results for "${searchQuery}":\n\n${raw}\n\nSummarize the key findings in a helpful, natural response. Be concise and direct. Mention relevant sources.`;
+      const aiReply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
+      stopSearchTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await safeSend(bot, chatId, `🔍 ${searchQuery}\n\n${aiReply}\n\n──────\n${results.slice(0, 2).map(r => r.url).filter(Boolean).join("\n")}`);
+    } catch {
+      stopSearchTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Search failed. Please try again.");
+    }
     return;
   }
 
@@ -1263,6 +1375,80 @@ export async function handlePhotoMessage(
     await bot.sendMessage(chatId, "Something went wrong. Try again later.", {
       reply_markup: imageMenuKeyboard(),
     });
+  }
+}
+
+// ── Video generation helper ───────────────────────────────────────────────────
+
+async function handleVideoGeneration(
+  bot: TelegramBot,
+  chatId: number,
+  user: IUser,
+  prompt: string,
+  e: boolean
+): Promise<void> {
+  if (!process.env.HUGGINGFACE_API_TOKEN) {
+    await bot.sendMessage(chatId, e ? "🎬 Video generation isn't configured yet. Ask the owner to set it up!" : "Video generation is not configured yet.");
+    return;
+  }
+  const sentMsg = await bot.sendMessage(chatId,
+    e ? "🎬 Generating your video... This can take 1-3 minutes, hang tight!" : "Generating your video..."
+  );
+  const stopTyping = startTypingLoop(bot, chatId, "upload_video");
+  try {
+    const videoBuffer = await generateVideo(prompt);
+    stopTyping();
+    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+    if (!videoBuffer) {
+      await bot.sendMessage(chatId,
+        e ? "🎬 Video generation failed. The model may be warming up — try again in a minute!" : "Video generation failed. Try again in a minute.",
+        { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] } }
+      );
+      return;
+    }
+    await bot.sendVideo(chatId, videoBuffer, { caption: prompt.substring(0, 800) });
+  } catch (err) {
+    stopTyping();
+    logger.error({ err }, "Video generation error");
+    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+    await bot.sendMessage(chatId, "Video generation failed. Please try again later.");
+  }
+}
+
+// ── Music generation helper ───────────────────────────────────────────────────
+
+async function handleMusicGeneration(
+  bot: TelegramBot,
+  chatId: number,
+  user: IUser,
+  prompt: string,
+  e: boolean
+): Promise<void> {
+  if (!process.env.HUGGINGFACE_API_TOKEN) {
+    await bot.sendMessage(chatId, e ? "🎵 Music generation isn't configured yet. Ask the owner to set it up!" : "Music generation is not configured yet.");
+    return;
+  }
+  const sentMsg = await bot.sendMessage(chatId,
+    e ? "🎵 Generating your music... This takes 30-60 seconds. Hang tight!" : "Generating your music..."
+  );
+  const stopTyping = startTypingLoop(bot, chatId);
+  try {
+    const audioBuffer = await generateMusic(prompt);
+    stopTyping();
+    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+    if (!audioBuffer) {
+      await bot.sendMessage(chatId,
+        e ? "🎵 Music generation failed. The model may be warming up — try again in a minute!" : "Music generation failed. Try again in a minute.",
+        { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] } }
+      );
+      return;
+    }
+    await bot.sendAudio(chatId, audioBuffer, { title: prompt.substring(0, 60), performer: "Nova AI" });
+  } catch (err) {
+    stopTyping();
+    logger.error({ err }, "Music generation error");
+    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+    await bot.sendMessage(chatId, "Music generation failed. Please try again later.");
   }
 }
 
