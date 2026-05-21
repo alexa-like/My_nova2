@@ -39,11 +39,10 @@ const RedeemCodeSchema = new Schema<IRedeemCode>(
   { timestamps: true }
 );
 
-RedeemCodeSchema.pre("save", function (next) {
+RedeemCodeSchema.pre("save", function () {
   if (this.isNew) {
     this.durationDays = parseDuration(this.duration);
   }
-  next();
 });
 
 export const RedeemCode = mongoose.model<IRedeemCode>(

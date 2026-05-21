@@ -55,7 +55,8 @@ export async function generateImage(prompt: string): Promise<Buffer | null> {
 
 /**
  * Edit an existing image using a text instruction (img2img).
- * Uses InstructPix2Pix — falls back to text-to-image if img2img fails.
+ * Uses InstructPix2Pix — handles both raw binary and JSON base64 responses.
+ * Falls back to text-to-image if img2img fails.
  */
 export async function editImage(imageBuffer: Buffer, prompt: string): Promise<Buffer | null> {
   const token = process.env.HUGGINGFACE_API_TOKEN;
@@ -65,14 +66,22 @@ export async function editImage(imageBuffer: Buffer, prompt: string): Promise<Bu
 
   try {
     logger.info({ endpoint: IMG2IMG_ENDPOINT }, "Attempting img2img");
+
     const response = await axios.post(
       IMG2IMG_ENDPOINT,
-      { inputs: base64Image, parameters: { prompt } },
+      {
+        inputs: base64Image,
+        parameters: {
+          prompt,
+          num_inference_steps: 20,
+          image_guidance_scale: 1.5,
+          guidance_scale: 7,
+        },
+      },
       {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
-          Accept: "image/png",
         },
         responseType: "arraybuffer",
         timeout: 90000,
@@ -80,15 +89,41 @@ export async function editImage(imageBuffer: Buffer, prompt: string): Promise<Bu
     );
 
     const contentType = (response.headers["content-type"] as string) || "";
-    if (contentType.includes("image") || response.data?.byteLength > 1000) {
-      logger.info("img2img succeeded");
-      return Buffer.from(response.data);
+    const rawData = response.data as Buffer;
+
+    // Case 1: Raw image bytes returned directly
+    if (contentType.includes("image") && rawData?.byteLength > 1000) {
+      logger.info("img2img succeeded (raw binary)");
+      return Buffer.from(rawData);
     }
+
+    // Case 2: JSON response — HuggingFace wraps image in JSON
+    // Shape: [{ "generated_image": "base64..." }] or { "image": "base64..." }
+    try {
+      const json = JSON.parse(rawData.toString("utf-8"));
+      const b64 =
+        (Array.isArray(json) ? json[0]?.generated_image : json?.generated_image) ||
+        json?.image ||
+        (Array.isArray(json) ? json[0]?.image : null);
+
+      if (b64 && typeof b64 === "string") {
+        logger.info("img2img succeeded (JSON base64)");
+        return Buffer.from(b64, "base64");
+      }
+    } catch {
+      // Not valid JSON — if bytes are large enough, treat as raw image
+      if (rawData?.byteLength > 1000) {
+        logger.info("img2img succeeded (raw, non-image content-type)");
+        return Buffer.from(rawData);
+      }
+    }
+
+    logger.warn({ contentType, byteLength: rawData?.byteLength }, "img2img response unrecognised — falling back");
   } catch (err: any) {
-    logger.warn({ err: err?.message }, "img2img failed — falling back to text generation");
+    logger.warn({ err: err?.message, status: err?.response?.status }, "img2img failed — falling back to text generation");
   }
 
-  // Fallback: generate a new image with the prompt
+  // Fallback: generate a new image from the prompt
   return generateImage(prompt);
 }
 
@@ -96,7 +131,7 @@ export async function editImage(imageBuffer: Buffer, prompt: string): Promise<Bu
  * Download an image from Telegram's CDN using a file_id.
  */
 export async function downloadTelegramPhoto(
-  bot: import("node-telegram-bot-api").default,
+  bot: import("node-telegram-bot-api"),
   fileId: string
 ): Promise<Buffer | null> {
   try {

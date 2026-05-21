@@ -369,18 +369,7 @@ export async function handlePrivateMessage(
   await user.save();
   await bot.sendChatAction(chatId, "typing");
 
-  // Inject mood into the context if set
-  const messageWithMood = user.mood
-    ? `[User mood: ${user.mood}] ${text}`
-    : text;
-
-  // Add language preference
-  const langInstruction = user.settings.language && user.settings.language !== "en"
-    ? `Please respond in ${user.settings.language} language. `
-    : "";
-  const fullMessage = langInstruction ? langInstruction + messageWithMood : messageWithMood;
-
-  const reply = await chat(user.userId, chatId, fullMessage, user.settings, user.premium.active);
+  const reply = await chat(user.userId, chatId, text, user.settings, user.premium.active, user.mood ?? undefined);
   await safeSend(bot, chatId, reply);
 }
 

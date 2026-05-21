@@ -454,7 +454,6 @@ export async function handleGroupMessage(
       try {
         await bot.setChatPermissions(chatId, {
           can_send_messages: true,
-          can_send_media_messages: true,
           can_send_other_messages: true,
           can_add_web_page_previews: true,
         });
@@ -752,7 +751,6 @@ export async function handleGroupMessage(
           permissions: {
             can_send_messages: false,
             can_send_other_messages: false,
-            can_send_media_messages: false,
             can_add_web_page_previews: false,
           },
           until_date: untilDate,
@@ -775,7 +773,6 @@ export async function handleGroupMessage(
         await bot.restrictChatMember(chatId, target.userId, {
           permissions: {
             can_send_messages: true,
-            can_send_media_messages: true,
             can_send_other_messages: true,
             can_add_web_page_previews: true,
             can_send_polls: true,
@@ -900,7 +897,7 @@ export async function handleGroupMessage(
     style: groupSettings.style,
     emoji: groupSettings.emoji,
     length: "short",
-  }, user.premium.active);
+  }, user.premium.active, user.mood ?? undefined);
 
   await safeSend(bot, chatId, reply);
 }

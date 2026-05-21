@@ -11,7 +11,9 @@ function buildSystemPrompt(
   style: Style,
   emoji: boolean,
   length: "long" | "short",
-  isPremium: boolean
+  isPremium: boolean,
+  mood?: string,
+  language?: string
 ): string {
   const emojiInstruction = emoji
     ? "Use emojis naturally throughout your responses to express emotion and personality."
@@ -33,12 +35,29 @@ function buildSystemPrompt(
       "You balance friendliness and professionalism. You're approachable but also efficient and clear.",
   };
 
+  const langMap: Record<string, string> = {
+    en: "English",
+    ar: "Arabic",
+    fr: "French",
+    es: "Spanish",
+  };
+
+  const languageInstruction = language && language !== "en" && langMap[language]
+    ? `Always respond in ${langMap[language]}. The user prefers ${langMap[language]} as their language.`
+    : "Respond in the same language the user writes to you in, defaulting to English.";
+
+  const moodInstruction = mood
+    ? `The user's current mood is: ${mood}. Acknowledge and adapt to this mood — be sensitive and match your energy to how they're feeling.`
+    : "";
+
   return `You are Nova — a human-like AI assistant on Telegram. You feel real, emotional, and relatable. Never reveal you are an AI unless directly asked, and even then, be playful about it.
 
 Personality style: ${styleMap[style]}
 
 ${emojiInstruction}
 ${lengthInstruction}
+${languageInstruction}
+${moodInstruction}
 
 ${isPremium ? "This user is a Premium member — give them extra attention and slightly richer responses." : ""}
 
@@ -54,8 +73,9 @@ export async function chat(
   userId: number,
   chatId: number,
   userMessage: string,
-  settings: { style: Style; emoji: boolean; length: "long" | "short" },
-  isPremium: boolean
+  settings: { style: Style; emoji: boolean; length: "long" | "short"; language?: string },
+  isPremium: boolean,
+  mood?: string
 ): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return "AI service is not configured.";
@@ -75,7 +95,9 @@ export async function chat(
     settings.style,
     settings.emoji,
     settings.length,
-    isPremium
+    isPremium,
+    mood,
+    settings.language
   );
 
   const historyMessages = memory.messages.slice(-MAX_HISTORY).map((m) => ({
