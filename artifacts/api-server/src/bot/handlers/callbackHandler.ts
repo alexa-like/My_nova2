@@ -19,6 +19,9 @@ import {
   setTaskRoute,
   resetTaskRouting,
 } from "../services/providerRouter.js";
+import { getCachedBuild } from "../utils/buildCache.js";
+import { deployToVercel } from "../services/deploy.js";
+import { typeLabel } from "../services/projectGenerator.js";
 import {
   mainMenuKeyboard,
   funMenuKeyboard,
@@ -623,6 +626,61 @@ export async function handleCallbackQuery(
         `🖼️ Create Sticker\n\nDescribe what you want as a sticker:\n\n• happy cat waving\n• cute anime girl with stars\n• fire dragon emoji style\n• robot dancing`,
         backToImgKeyboard()
       );
+      return;
+    }
+
+    if (data === "deploy_live") {
+      const vercelToken = process.env.VERCEL_TOKEN;
+      if (!vercelToken) {
+        await editMsg(bot, query,
+          "🚀 Vercel deployment not configured.\n\nSet VERCEL_TOKEN in Replit Secrets to enable auto-deployment.",
+          backToMainKeyboard()
+        );
+        return;
+      }
+      const cached = getCachedBuild(userId);
+      if (!cached) {
+        await editMsg(bot, query,
+          "⏳ Build session expired (45 min limit).\n\nRun /deploy <description> to generate and deploy a fresh project.",
+          backToMainKeyboard()
+        );
+        return;
+      }
+      await bot.answerCallbackQuery(query.id, { text: "Starting deployment..." });
+      const statusMsg = await bot.sendMessage(chatId,
+        `✅ Project loaded (${cached.project.files.length} files)\n🚀 Deploying to Vercel...`
+      );
+      let statusMsgId = statusMsg.message_id;
+      const updateStatus = async (text: string) => {
+        try { await bot.editMessageText(text, { chat_id: chatId, message_id: statusMsgId }); } catch {}
+      };
+      try {
+        const result = await deployToVercel(
+          vercelToken,
+          cached.project.name,
+          cached.project.files,
+          async (msg) => updateStatus(msg)
+        );
+        try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
+        await bot.sendMessage(chatId,
+          `🚀 Live!\n\n📦 ${cached.project.name}\n${cached.project.description}\n\n🌐 ${result.url}\n\n${cached.project.files.length} files · ${typeLabel(cached.project.type)}`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: "🌐 Open Live Site", url: result.url }],
+                [{ text: "🔍 Vercel Dashboard", url: result.inspectorUrl }],
+                [{ text: "🌐 Build Another", callback_data: "build_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+              ],
+            },
+          }
+        );
+      } catch (err: any) {
+        try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
+        await bot.sendMessage(chatId,
+          `❌ Deployment failed: ${err.message}\n\nRun /deploy to retry.`,
+          { reply_markup: backToMainKeyboard() }
+        );
+      }
       return;
     }
 

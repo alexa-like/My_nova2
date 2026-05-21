@@ -30,10 +30,13 @@ export function mainMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
   };
 }
 
-export function buildResultKeyboard(repoUrl?: string): TelegramBot.InlineKeyboardMarkup {
+export function buildResultKeyboard(repoUrl?: string, canDeploy = false): TelegramBot.InlineKeyboardMarkup {
   const buttons: TelegramBot.InlineKeyboardButton[][] = [];
   if (repoUrl) {
     buttons.push([{ text: "🔗 Open on GitHub", url: repoUrl }]);
+  }
+  if (canDeploy) {
+    buttons.push([{ text: "🚀 Deploy to Vercel", callback_data: "deploy_live" }]);
   }
   buttons.push([
     { text: "🌐 Build Another", callback_data: "build_menu" },

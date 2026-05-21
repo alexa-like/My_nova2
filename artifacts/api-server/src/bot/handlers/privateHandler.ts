@@ -35,6 +35,8 @@ import {
   sanitizeRepoName,
   uniqueRepoName,
 } from "../services/github.js";
+import { cacheUserBuild, getCachedBuild } from "../utils/buildCache.js";
+import { deployToVercel } from "../services/deploy.js";
 import { downloadTelegramDocument, extractTextFromDocument } from "../services/document.js";
 import { createReminder, listUserReminders, cancelReminder } from "../services/reminder.js";
 import { parseDurationToMs } from "../models/Reminder.js";
@@ -850,6 +852,39 @@ export async function handlePrivateMessage(
     return;
   }
 
+  // /deploy [description] — generate + deploy to Vercel, or deploy last build
+  if (text.startsWith("/deploy")) {
+    const prompt = text.replace(/^\/deploy\s*/i, "").trim();
+    const vercelToken = process.env.VERCEL_TOKEN;
+    if (!vercelToken) {
+      await bot.sendMessage(chatId,
+        `🚀 Vercel deployment not configured.\n\n` +
+        `Set the VERCEL_TOKEN secret to enable one-click deployment.\n` +
+        `Get your token at vercel.com/account/tokens (takes 30 seconds).`,
+        { reply_markup: backToMainKeyboard() }
+      );
+      return;
+    }
+    if (!prompt) {
+      const cached = getCachedBuild(user.userId);
+      if (cached) {
+        await handleDeployToVercel(bot, chatId, user, cached.project, vercelToken, e);
+      } else {
+        await bot.sendMessage(chatId,
+          `🚀 Deploy to Vercel\n\n` +
+          `Usage: /deploy <describe what you want>\n\n` +
+          `This generates a complete project AND deploys it live in one step!\n\n` +
+          `Examples:\n• /deploy portfolio website for a photographer\n• /deploy React calculator app\n• /deploy todo app with dark mode\n\n` +
+          `💡 You can also run /build first, then /deploy to deploy that last build.`,
+          { reply_markup: backToMainKeyboard() }
+        );
+      }
+      return;
+    }
+    await handleDeployRequest(bot, chatId, user, prompt, vercelToken, e);
+    return;
+  }
+
   // /build <description> — AI project generator + GitHub deployment
   if (text.startsWith("/build")) {
     const prompt = text.replace(/^\/build\s*/i, "").trim();
@@ -1454,6 +1489,8 @@ async function handleBuildRequest(
 
   const label = typeLabel(project.type);
   const fileCount = project.files.length;
+  const canDeploy = !!process.env.VERCEL_TOKEN;
+  cacheUserBuild(user.userId, project, prompt);
 
   // ── Step 2a: GitHub push ────────────────────────────────────────────────────
   if (hasGitHub) {
@@ -1524,7 +1561,7 @@ async function handleBuildRequest(
         try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
         await bot.sendMessage(chatId,
           `⚠️ Uploaded ${lastDone}/${fileCount} files. Repo: ${repoInfo.htmlUrl}\n\nSending remaining files directly...`,
-          { reply_markup: buildResultKeyboard(repoInfo.htmlUrl) }
+          { reply_markup: buildResultKeyboard(repoInfo.htmlUrl, canDeploy) }
         );
         await sendProjectFiles(bot, chatId, project, e, lastDone);
         return;
@@ -1541,7 +1578,7 @@ async function handleBuildRequest(
       `🔗 ${repoInfo.htmlUrl}\n\n` +
       `${fileCount} files · ${label}\n\n` +
       `💡 ${project.deploymentTip}`,
-      { reply_markup: buildResultKeyboard(repoInfo.htmlUrl) }
+      { reply_markup: buildResultKeyboard(repoInfo.htmlUrl, canDeploy) }
     );
     return;
   }
@@ -1558,9 +1595,119 @@ async function handleBuildRequest(
     `Sending files now 👇\n\n` +
     `💡 ${project.deploymentTip}\n\n` +
     `💡 Tip: Set GITHUB_TOKEN + GITHUB_USERNAME secrets to auto-push to GitHub next time.`,
-    { reply_markup: buildResultKeyboard() }
+    { reply_markup: buildResultKeyboard(undefined, canDeploy) }
   );
   await sendProjectFiles(bot, chatId, project, e);
+}
+
+// ── Deploy request: generate + deploy in one shot ────────────────────────────
+
+async function handleDeployRequest(
+  bot: TelegramBot,
+  chatId: number,
+  user: IUser,
+  prompt: string,
+  vercelToken: string,
+  e: boolean
+): Promise<void> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    await bot.sendMessage(chatId, "AI service not configured. OPENROUTER_API_KEY is missing.");
+    return;
+  }
+
+  const statusMsg = await bot.sendMessage(chatId,
+    `🔨 Generating your project...\n\n"${prompt.substring(0, 100)}"\n\nThis takes 1-3 minutes — generation + deployment.`
+  );
+  const stopTyping = startTypingLoop(bot, chatId);
+
+  let project;
+  try {
+    project = await generateProject(prompt, apiKey);
+  } catch (err: any) {
+    stopTyping();
+    logger.error({ err }, "Deploy-generate failed");
+    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+    await bot.sendMessage(chatId, `❌ Generation failed: ${err.message}`);
+    return;
+  }
+
+  cacheUserBuild(user.userId, project, prompt);
+
+  stopTyping();
+  await handleDeployToVercel(bot, chatId, user, project, vercelToken, e, statusMsg.message_id);
+}
+
+// ── Deploy existing project to Vercel ────────────────────────────────────────
+
+async function handleDeployToVercel(
+  bot: TelegramBot,
+  chatId: number,
+  _user: IUser,
+  project: Awaited<ReturnType<typeof generateProject>>,
+  vercelToken: string,
+  e: boolean,
+  existingMsgId?: number
+): Promise<void> {
+  let statusMsgId = existingMsgId;
+
+  const updateStatus = async (text: string) => {
+    try {
+      if (statusMsgId) {
+        await bot.editMessageText(text, { chat_id: chatId, message_id: statusMsgId });
+      } else {
+        const m = await bot.sendMessage(chatId, text);
+        statusMsgId = m.message_id;
+      }
+    } catch {}
+  };
+
+  await updateStatus(
+    `✅ Code ready (${project.files.length} files)\n🚀 Deploying to Vercel...`
+  );
+
+  try {
+    const result = await deployToVercel(
+      vercelToken,
+      project.name,
+      project.files,
+      async (msg) => updateStatus(msg)
+    );
+
+    try {
+      if (statusMsgId) await bot.deleteMessage(chatId, statusMsgId);
+    } catch {}
+
+    await bot.sendMessage(chatId,
+      `🚀 Live!\n\n` +
+      `📦 ${project.name}\n` +
+      `${project.description}\n\n` +
+      `🌐 ${result.url}\n\n` +
+      `${project.files.length} files deployed · ${typeLabel(project.type)}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🌐 Open Live Site", url: result.url }],
+            [{ text: "🔍 Vercel Dashboard", url: result.inspectorUrl }],
+            [
+              { text: "🌐 Build Another", callback_data: "build_menu" },
+              { text: "⬅️ Menu", callback_data: "main_menu" },
+            ],
+          ],
+        },
+      }
+    );
+  } catch (err: any) {
+    logger.error({ err }, "Vercel deployment failed");
+    try {
+      if (statusMsgId) await bot.deleteMessage(chatId, statusMsgId);
+    } catch {}
+    await bot.sendMessage(chatId,
+      `❌ Deployment failed: ${err.message}\n\n` +
+      `Files are still cached — run /deploy to retry.`,
+      { reply_markup: backToMainKeyboard() }
+    );
+  }
 }
 
 async function sendProjectFiles(

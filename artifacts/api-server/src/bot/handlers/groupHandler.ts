@@ -1102,6 +1102,161 @@ export async function handleGroupMessage(
     return;
   }
 
+  // /build command when bot is mentioned
+  if (cleanText.toLowerCase().startsWith("/build")) {
+    const prompt = cleanText.replace(/^\/build\s*/i, "").trim();
+    if (!prompt) {
+      await bot.sendMessage(chatId,
+        `Tell me what to build!\nExample: @${botUsername} /build portfolio website for a photographer`,
+        { reply_to_message_id: msg.message_id }
+      );
+      return;
+    }
+    if (!process.env.OPENROUTER_API_KEY) {
+      await bot.sendMessage(chatId, "AI service not configured.", { reply_to_message_id: msg.message_id });
+      return;
+    }
+    const statusMsg = await bot.sendMessage(chatId,
+      `🔨 Generating: "${prompt.slice(0, 60)}"...\nThis takes 1-2 minutes. Files will be sent directly.`
+    );
+    const stopBuildTyping = startTypingLoop(bot, chatId);
+    try {
+      const { generateProject, typeLabel: tl } = await import("../services/projectGenerator.js");
+      const project = await generateProject(prompt, process.env.OPENROUTER_API_KEY);
+      stopBuildTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await bot.sendMessage(chatId,
+        `✅ ${project.name}\n${project.description}\n\n${project.files.length} files · ${tl(project.type)}\n\nSending files...`
+      );
+      for (const file of project.files) {
+        try {
+          const buf = Buffer.from(file.content, "utf-8");
+          await bot.sendDocument(chatId, buf,
+            { caption: `📄 ${file.path}` },
+            { filename: file.path.split("/").pop() || file.path, contentType: "text/plain; charset=utf-8" }
+          );
+          await new Promise((r) => setTimeout(r, 350));
+        } catch {}
+      }
+    } catch (err: any) {
+      stopBuildTyping();
+      logger.error({ err }, "Group build error");
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, `Build failed: ${err.message || "Try a more specific description."}`);
+    }
+    return;
+  }
+
+  // /search command when bot is mentioned
+  if (cleanText.toLowerCase().startsWith("/search") || cleanText.toLowerCase().startsWith("/s ")) {
+    const query = cleanText.replace(/^\/(search|s)\s*/i, "").trim();
+    if (!query) {
+      await bot.sendMessage(chatId,
+        `What should I search?\nExample: @${botUsername} /search latest AI news`,
+        { reply_to_message_id: msg.message_id }
+      );
+      return;
+    }
+    const statusMsg = await bot.sendMessage(chatId, `🔍 Searching: "${query.slice(0, 60)}"...`);
+    const stopSearchTyping = startTypingLoop(bot, chatId);
+    try {
+      const { webSearch, formatSearchResults } = await import("../services/webSearch.js");
+      const results = await webSearch(query);
+      const raw = formatSearchResults(query, results);
+      if (results.length === 0) {
+        stopSearchTyping();
+        try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+        await bot.sendMessage(chatId, `No results found for: "${query}"`);
+        return;
+      }
+      const aiPrompt = `Based on these web search results for "${query}":\n\n${raw}\n\nSummarize the key findings briefly and helpfully. Be concise.`;
+      const aiReply = await chat(fromId, chatId + 7777, aiPrompt,
+        { style: groupSettings.style, emoji: groupSettings.emoji, length: "short" },
+        user.premium.active
+      );
+      stopSearchTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      const urls = results.slice(0, 2).map((r: any) => r.url).filter(Boolean).join("\n");
+      await safeSend(bot, chatId, `🔍 ${query}\n\n${aiReply}${urls ? `\n\n${urls}` : ""}`);
+    } catch (err) {
+      stopSearchTyping();
+      logger.error({ err }, "Group search error");
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Search failed. Please try again.");
+    }
+    return;
+  }
+
+  // /music command when bot is mentioned
+  if (cleanText.toLowerCase().startsWith("/music")) {
+    const prompt = cleanText.replace(/^\/music\s*/i, "").trim();
+    if (!prompt) {
+      await bot.sendMessage(chatId,
+        `Give me a description!\nExample: @${botUsername} /music calm lo-fi beats for studying`,
+        { reply_to_message_id: msg.message_id }
+      );
+      return;
+    }
+    if (!process.env.HUGGINGFACE_API_TOKEN) {
+      await bot.sendMessage(chatId, "Music generation is not configured.", { reply_to_message_id: msg.message_id });
+      return;
+    }
+    const sentMsg = await bot.sendMessage(chatId, `🎵 Generating: "${prompt.slice(0, 50)}"... (30-60s)`);
+    const stopMusicTyping = startTypingLoop(bot, chatId);
+    try {
+      const { generateMusic } = await import("../services/music.js");
+      const audioBuffer = await generateMusic(prompt);
+      stopMusicTyping();
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      if (!audioBuffer) {
+        await bot.sendMessage(chatId, "Music generation failed. Try again in a minute.");
+        return;
+      }
+      await bot.sendAudio(chatId, audioBuffer, { title: prompt.substring(0, 60), performer: "Nova AI" });
+    } catch (err) {
+      stopMusicTyping();
+      logger.error({ err }, "Group music error");
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Music generation failed. Please try again.");
+    }
+    return;
+  }
+
+  // /sticker command when bot is mentioned
+  if (cleanText.toLowerCase().startsWith("/sticker")) {
+    const prompt = cleanText.replace(/^\/sticker\s*/i, "").trim();
+    if (!prompt) {
+      await bot.sendMessage(chatId,
+        `Give me a description!\nExample: @${botUsername} /sticker cartoon rocket ship`,
+        { reply_to_message_id: msg.message_id }
+      );
+      return;
+    }
+    if (!process.env.HUGGINGFACE_API_TOKEN) {
+      await bot.sendMessage(chatId, "Sticker generation is not configured.", { reply_to_message_id: msg.message_id });
+      return;
+    }
+    const sentMsg = await bot.sendMessage(chatId, `🎨 Creating sticker: "${prompt.slice(0, 50)}"...`);
+    const stopStickerTyping = startTypingLoop(bot, chatId, "upload_photo");
+    try {
+      const { generateImage } = await import("../services/image.js");
+      const imgBuffer = await generateImage(prompt + ", sticker style, white background, clean simple illustration");
+      stopStickerTyping();
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      if (!imgBuffer) {
+        await bot.sendMessage(chatId, "Sticker generation failed. Try again.");
+        return;
+      }
+      await bot.sendPhoto(chatId, imgBuffer, { caption: `🎨 ${prompt}` });
+    } catch (err) {
+      stopStickerTyping();
+      logger.error({ err }, "Group sticker error");
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Sticker generation failed. Please try again.");
+    }
+    return;
+  }
+
   const stopTyping = startTypingLoop(bot, chatId);
   const reply = await chat(fromId, chatId, cleanText, {
     style: groupSettings.style,

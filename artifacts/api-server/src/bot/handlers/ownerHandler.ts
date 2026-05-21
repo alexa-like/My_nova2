@@ -401,6 +401,57 @@ export async function handleOwnerMessage(
     await bot.sendMessage(chatId, `✅ Memory cleared for user ${targetId}.`);
     return;
   }
+
+  if (cmd === "/dm" || cmd === "/messageuser") {
+    const targetId = parseInt(args[0]);
+    const message = args.slice(1).join(" ").trim();
+    if (isNaN(targetId) || !message) {
+      await bot.sendMessage(chatId,
+        "Usage: /dm <user_id> <message>\n\nExample: /dm 123456789 Hey, thanks for using Nova!"
+      );
+      return;
+    }
+    try {
+      await bot.sendMessage(targetId, `📨 Message from Nova's owner:\n\n${message}`);
+      await bot.sendMessage(chatId, `✅ Message delivered to user ${targetId}.`, { reply_markup: backToOwnerKeyboard() });
+    } catch (err: any) {
+      const reason = err?.response?.body?.description || err?.message || "Unknown error";
+      await bot.sendMessage(chatId,
+        `❌ Could not reach user ${targetId}.\n\nReason: ${reason}\n\nThey may have blocked the bot.`,
+        { reply_markup: backToOwnerKeyboard() }
+      );
+    }
+    return;
+  }
+
+  if (cmd === "/botinfo") {
+    const config = await getOrCreateBotConfig();
+    const ok = (v: boolean) => (v ? "✅" : "❌");
+    const hasOR = !!process.env.OPENROUTER_API_KEY;
+    const hasHF = !!process.env.HUGGINGFACE_API_TOKEN;
+    const hasMongo = !!process.env.MONGODB_URI;
+    const hasGH = !!(process.env.GITHUB_TOKEN && process.env.GITHUB_USERNAME);
+    const hasVercel = !!process.env.VERCEL_TOKEN;
+    const hasTG = !!process.env.TELEGRAM_BOT_TOKEN;
+    await bot.sendMessage(chatId,
+      `🤖 Nova Bot — Configuration Status\n\n` +
+      `Core APIs:\n` +
+      `${ok(hasTG)} Telegram Bot Token\n` +
+      `${ok(hasOR)} OpenRouter (AI chat)\n` +
+      `${ok(hasHF)} HuggingFace (images/video/music)\n` +
+      `${ok(hasMongo)} MongoDB (database)\n\n` +
+      `Build & Deploy:\n` +
+      `${ok(hasGH)} GitHub (repo push — /build)\n` +
+      `${ok(hasVercel)} Vercel (auto-deploy — /deploy)\n\n` +
+      `Active Models:\n` +
+      `🧠 ${config.activeChatModel}\n` +
+      `🖼 ${config.activeImageModel}\n` +
+      `🎬 ${config.activeVideoModel}\n\n` +
+      `Missing secrets can be added in Replit → Secrets panel.`,
+      { reply_markup: backToOwnerKeyboard() }
+    );
+    return;
+  }
 }
 
 // ── Handle owner pending text inputs (from inline button flows) ───────────────
