@@ -368,7 +368,12 @@ export async function startBot(): Promise<void> {
       const goodbye = groupSettings.goodbyeMessage
         .replace(/\{name\}/g, name)
         .replace(/\{group\}/g, msg.chat.title || "this group");
-      await bot!.sendMessage(msg.chat.id, goodbye);
+      // Send goodbye privately so the group chat stays clean
+      try {
+        await bot!.sendMessage(member.id, goodbye);
+      } catch {
+        // User may have blocked the bot or never started it — silently skip
+      }
     } catch (err) {
       logger.error({ err }, "Error in left_chat_member handler");
     }

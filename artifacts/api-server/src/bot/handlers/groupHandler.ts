@@ -177,6 +177,12 @@ async function resolveTarget(
   return null;
 }
 
+// ── Best-effort DM helper ─────────────────────────────────────────────────────
+// Never throws — silently drops if user blocked the bot or DMs are closed.
+async function tryDM(bot: TelegramBot, userId: number, text: string): Promise<void> {
+  try { await bot.sendMessage(userId, text); } catch { /* privacy settings or not started */ }
+}
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export async function handleGroupMessage(
@@ -802,6 +808,9 @@ export async function handleGroupMessage(
 
     if (cmd === "/ban") {
       try {
+        const groupName = msg.chat.title || "a group";
+        // DM the user before banning (can't send DM after ban takes effect)
+        await tryDM(bot, target.userId, `You have been banned from ${groupName}.`);
         await bot.banChatMember(chatId, target.userId);
         const dbUser = await User.findOne({ userId: target.userId });
         if (dbUser) { dbUser.banned = true; await dbUser.save(); }
@@ -818,6 +827,7 @@ export async function handleGroupMessage(
         await bot.unbanChatMember(chatId, target.userId);
         const dbUser = await User.findOne({ userId: target.userId });
         if (dbUser) { dbUser.banned = false; await dbUser.save(); }
+        await tryDM(bot, target.userId, `You have been unbanned from ${msg.chat.title || "a group"}. You may rejoin.`);
         await bot.sendMessage(chatId, `${name} has been unbanned.`);
       } catch (err: any) {
         logger.error({ err: err?.message }, "Unban failed");
@@ -828,6 +838,9 @@ export async function handleGroupMessage(
 
     if (cmd === "/kick") {
       try {
+        const groupName = msg.chat.title || "a group";
+        // DM before kicking (can't reach after removal)
+        await tryDM(bot, target.userId, `You have been kicked from ${groupName}. You may rejoin using an invite link.`);
         await bot.banChatMember(chatId, target.userId);
         await bot.unbanChatMember(chatId, target.userId);
         await bot.sendMessage(chatId, `${name} has been kicked.`);
@@ -861,6 +874,11 @@ export async function handleGroupMessage(
           },
           until_date: untilDate,
         });
+        const groupName = msg.chat.title || "a group";
+        const dmMuteText = durationLabel
+          ? `You have been muted in ${groupName} for ${durationArg}.`
+          : `You have been muted in ${groupName}.`;
+        await tryDM(bot, target.userId, dmMuteText);
         await bot.sendMessage(chatId, `${name} has been muted${durationLabel}.`);
       } catch (err: any) {
         const msg400 = err?.message || "";
@@ -884,6 +902,7 @@ export async function handleGroupMessage(
             can_send_polls: true,
           },
         });
+        await tryDM(bot, target.userId, `You have been unmuted in ${msg.chat.title || "a group"}. You can send messages again.`);
         await bot.sendMessage(chatId, `${name} has been unmuted.`);
       } catch (err: any) {
         const msg400 = err?.message || "";
@@ -903,8 +922,19 @@ export async function handleGroupMessage(
       dbUser.warnings += 1;
       await dbUser.save();
       const reason = args.filter(a => !a.startsWith("@") && !/^\d+$/.test(a)).join(" ");
+      // DM the warned user with full details
+      const dmWarnLines = [
+        `You have received a warning in ${msg.chat.title || "a group"}.`,
+        reason ? `Reason: ${reason}` : "",
+        `Warnings: ${dbUser.warnings}/${groupSettings.warnLimit}`,
+        dbUser.warnings >= groupSettings.warnLimit
+          ? "You have reached the warning limit and will be removed."
+          : `${groupSettings.warnLimit - dbUser.warnings} more warning(s) before automatic removal.`,
+      ].filter(Boolean).join("\n");
+      await tryDM(bot, target.userId, dmWarnLines);
+      // Brief group notice (no reason exposed publicly)
       await bot.sendMessage(chatId,
-        `${name} has been warned.\n${reason ? `Reason: ${reason}\n` : ""}Warnings: ${dbUser.warnings}/${groupSettings.warnLimit}`
+        `${name} has been warned. (${dbUser.warnings}/${groupSettings.warnLimit})`
       );
       if (dbUser.warnings >= groupSettings.warnLimit) {
         try {
@@ -940,8 +970,11 @@ export async function handleGroupMessage(
       }
       dbUser.warnings = Math.max(0, dbUser.warnings - 1);
       await dbUser.save();
+      await tryDM(bot, target.userId,
+        `One warning has been removed in ${msg.chat.title || "a group"}. You now have ${dbUser.warnings}/${groupSettings.warnLimit} warnings.`
+      );
       await bot.sendMessage(chatId,
-        `One warning removed for ${name}.\nWarnings: ${dbUser.warnings}/${groupSettings.warnLimit}`
+        `One warning removed for ${name}. (${dbUser.warnings}/${groupSettings.warnLimit})`
       );
       return;
     }
