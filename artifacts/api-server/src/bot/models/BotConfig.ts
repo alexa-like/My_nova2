@@ -6,6 +6,17 @@ export interface IModelEntry {
   active: boolean;
 }
 
+export type ProviderName = "openrouter" | "huggingface" | "auto";
+export type TaskType = "text" | "code" | "image" | "video";
+
+export interface IProviderSettings {
+  globalProvider: ProviderName;
+  enabledProviders: { openrouter: boolean; huggingface: boolean };
+  taskRouting: { text: ProviderName; code: ProviderName; image: ProviderName; video: ProviderName };
+  lastUsedProvider: string;
+  lastError: string;
+}
+
 export interface IBotConfig extends Document {
   activeChatModel: string;
   activeImageModel: string;
@@ -17,6 +28,7 @@ export interface IBotConfig extends Document {
   videoModels: IModelEntry[];
   voiceModels: IModelEntry[];
   asrModels: IModelEntry[];
+  providerSettings: IProviderSettings;
 }
 
 const ModelEntrySchema = new Schema<IModelEntry>(
@@ -24,6 +36,25 @@ const ModelEntrySchema = new Schema<IModelEntry>(
     id: { type: String, required: true },
     name: { type: String, required: true },
     active: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
+const ProviderSettingsSchema = new Schema(
+  {
+    globalProvider:   { type: String, default: "auto" },
+    enabledProviders: {
+      openrouter:  { type: Boolean, default: true },
+      huggingface: { type: Boolean, default: true },
+    },
+    taskRouting: {
+      text:  { type: String, default: "openrouter" },
+      code:  { type: String, default: "openrouter" },
+      image: { type: String, default: "huggingface" },
+      video: { type: String, default: "huggingface" },
+    },
+    lastUsedProvider: { type: String, default: "" },
+    lastError:        { type: String, default: "" },
   },
   { _id: false }
 );
@@ -40,6 +71,7 @@ const BotConfigSchema = new Schema<IBotConfig>(
     videoModels: { type: [ModelEntrySchema], default: [] },
     voiceModels: { type: [ModelEntrySchema], default: [] },
     asrModels:   { type: [ModelEntrySchema], default: [] },
+    providerSettings: { type: ProviderSettingsSchema, default: () => ({}) },
   },
   { timestamps: true }
 );

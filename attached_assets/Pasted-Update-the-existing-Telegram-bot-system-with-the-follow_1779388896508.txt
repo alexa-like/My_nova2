@@ -1,0 +1,137 @@
+Update the existing Telegram bot system with the following features:
+
+---
+
+# 1. MULTI-PROVIDER AI SYSTEM
+
+Add support for:
+- OpenRouter (primary text/chat/coding provider)
+- Hugging Face (image/video/ML tasks)
+
+---
+
+# 2. GLOBAL + TASK-BASED ROUTING
+
+System must route AI requests based on:
+- chat/text → OpenRouter (default)
+- coding → OpenRouter (default)
+- image generation → Hugging Face (default)
+- video tasks → Hugging Face (default)
+- fallback → OpenRouter/free
+
+Owner settings override defaults.
+
+---
+
+# 3. INLINE KEYBOARD CONTROL SYSTEM (IMPORTANT)
+
+Replace all command-based provider controls with INLINE KEYBOARD UI.
+
+Create an admin panel message with buttons:
+
+## MAIN MENU BUTTONS:
+
+[ 🔄 Switch Provider ]
+[ 📊 Status ]
+[ ⚙️ Task Routing ]
+[ 🚀 Enable Provider ]
+[ ⛔ Disable Provider ]
+
+---
+
+## SWITCH PROVIDER MENU:
+
+When clicked, show buttons:
+
+[ OpenRouter ]
+[ Hugging Face ]
+[ Auto (Smart Mode) ]
+[ Back ]
+
+---
+
+## TASK ROUTING MENU:
+
+[ Text → OpenRouter ]
+[ Code → OpenRouter ]
+[ Image → Hugging Face ]
+[ Video → Hugging Face ]
+[ Reset Defaults ]
+[ Back ]
+
+Each button toggles ON/OFF or switches provider instantly.
+
+---
+
+## STATUS MENU:
+
+Show:
+- active global provider
+- enabled providers
+- disabled providers
+- task routing map
+- last error (if any)
+
+With a [ Refresh ] button.
+
+---
+
+## ENABLE / DISABLE MENU:
+
+Buttons:
+[ Enable OpenRouter ]
+[ Disable OpenRouter ]
+[ Enable Hugging Face ]
+[ Disable Hugging Face ]
+[ Back ]
+
+---
+
+# 4. OWNER CONTROL SYSTEM
+
+Only OWNER can access inline keyboard admin panel.
+
+Detect OWNER by ID and restrict all controls.
+
+---
+
+# 5. RELIABILITY REQUIREMENT (VERY IMPORTANT)
+
+The system MUST:
+- not break existing bot features
+- not overwrite working logic
+- not remove current features
+- only extend functionality safely
+
+---
+
+# 6. FALLBACK SYSTEM
+
+If any provider fails:
+- retry once
+- switch to fallback provider automatically
+- if still fails, return:
+"AI service is temporarily busy, try again later."
+
+---
+
+# 7. STATE MEMORY
+
+Bot must store:
+- selected global provider
+- enabled/disabled providers
+- task routing configuration
+- last used provider
+
+All settings must persist after restart.
+
+---
+
+# 8. FINAL RULE
+
+Ensure:
+- no errors
+- no broken handlers
+- inline keyboard fully working
+- all buttons responsive
+- all provider switching updates instantly

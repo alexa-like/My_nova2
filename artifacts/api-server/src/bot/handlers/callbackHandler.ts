@@ -12,6 +12,13 @@ import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
 import { textToSpeech, VOICE_PREVIEW_TEXT } from "../services/tts.js";
 import { analyzeImage } from "../services/imageAnalysis.js";
 import {
+  getProviderStatus,
+  setGlobalProvider,
+  toggleProvider,
+  setTaskRoute,
+  resetTaskRouting,
+} from "../services/providerRouter.js";
+import {
   mainMenuKeyboard,
   funMenuKeyboard,
   gamesMenuKeyboard,
@@ -46,6 +53,13 @@ import {
   ownerVoiceModelsKeyboard,
   ownerUserListKeyboard,
   backToOwnerKeyboard,
+  providerMainKeyboard,
+  providerSwitchKeyboard,
+  providerRoutingKeyboard,
+  providerEnableKeyboard,
+  providerDisableKeyboard,
+  providerStatusKeyboard,
+  providerRoutePickKeyboard,
 } from "../utils/keyboards.js";
 import { logger } from "../../lib/logger.js";
 
@@ -1410,6 +1424,167 @@ export async function handleCallbackQuery(
           `Could not generate preview for ${voice.name}. The model may be loading — try again in a moment.`
         );
       }
+      return;
+    }
+
+    // ── Provider Control Panel (owner only) ──────────────────────────────
+
+    if (data === "prov_main") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      await editMsg(bot, query,
+        `⚡ Provider Control\n━━━━━━━━━━━━━━━━━━\nManage AI provider routing and availability.\nOnly the owner can access this panel.`,
+        providerMainKeyboard()
+      );
+      return;
+    }
+
+    if (data === "prov_switch_menu") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const status = await getProviderStatus();
+      await editMsg(bot, query,
+        `🔄 Switch Provider\n━━━━━━━━━━━━━━━━━\nCurrent global provider: ${status.globalProvider}\n\nSelect a provider to make it global default:`,
+        providerSwitchKeyboard()
+      );
+      return;
+    }
+
+    if (data === "prov_set_openrouter" || data === "prov_set_huggingface" || data === "prov_set_auto") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const provider = data.replace("prov_set_", "") as "openrouter" | "huggingface" | "auto";
+      await setGlobalProvider(provider);
+      await answer(bot, query.id, `✅ Global provider set to: ${provider}`);
+      await editMsg(bot, query,
+        `✅ Provider Switched!\n━━━━━━━━━━━━━━━━━━\nGlobal provider: ${provider}\n\nAll AI requests will now route through ${provider === "auto" ? "the smart auto-routing system" : provider}.`,
+        providerMainKeyboard()
+      );
+      return;
+    }
+
+    if (data === "prov_status") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const status = await getProviderStatus();
+      const enabledList = Object.entries(status.enabledProviders)
+        .map(([k, v]) => `${v ? "✅" : "⛔"} ${k}`)
+        .join("\n");
+      const routingList = Object.entries(status.taskRouting)
+        .map(([task, prov]) => `• ${task} → ${prov}`)
+        .join("\n");
+      await editMsg(bot, query,
+        `📊 Provider Status\n━━━━━━━━━━━━━━━━━\n` +
+        `🌐 Global Provider: ${status.globalProvider}\n\n` +
+        `📡 Enabled Providers:\n${enabledList}\n\n` +
+        `⚙️ Task Routing:\n${routingList}\n\n` +
+        `🕒 Last Used: ${status.lastUsedProvider}\n` +
+        `❌ Last Error: ${status.lastError || "none"}`,
+        providerStatusKeyboard()
+      );
+      return;
+    }
+
+    if (data === "prov_routing_menu") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const status = await getProviderStatus();
+      await editMsg(bot, query,
+        `⚙️ Task Routing\n━━━━━━━━━━━━━━\nConfigure which provider handles each task type.\nTap a task to change its provider:`,
+        providerRoutingKeyboard(status.taskRouting)
+      );
+      return;
+    }
+
+    if (data === "prov_route_text" || data === "prov_route_code" || data === "prov_route_image" || data === "prov_route_video") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const task = data.replace("prov_route_", "");
+      const status = await getProviderStatus();
+      const current = (status.taskRouting as Record<string, string>)[task] || "openrouter";
+      await editMsg(bot, query,
+        `⚙️ Route: ${task.toUpperCase()}\n━━━━━━━━━━━━━━━━━\nCurrent: ${current}\n\nSelect new provider for ${task} tasks:`,
+        providerRoutePickKeyboard(task, current)
+      );
+      return;
+    }
+
+    if (data.startsWith("prov_routeset_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const parts = data.replace("prov_routeset_", "").split("_");
+      const task = parts[0] as "text" | "code" | "image" | "video";
+      const provider = parts.slice(1).join("_") as "openrouter" | "huggingface" | "auto";
+      await setTaskRoute(task, provider);
+      await answer(bot, query.id, `✅ ${task} → ${provider}`);
+      const status = await getProviderStatus();
+      await editMsg(bot, query,
+        `⚙️ Task Routing\n━━━━━━━━━━━━━━\n✅ ${task} → ${provider} updated!\n\nConfigure which provider handles each task:`,
+        providerRoutingKeyboard(status.taskRouting)
+      );
+      return;
+    }
+
+    if (data === "prov_route_reset") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      await resetTaskRouting();
+      await answer(bot, query.id, "✅ Task routing reset to defaults");
+      const status = await getProviderStatus();
+      await editMsg(bot, query,
+        `⚙️ Task Routing\n━━━━━━━━━━━━━━\n✅ Reset to defaults!\n\nText/Code → OpenRouter\nImage/Video → HuggingFace`,
+        providerRoutingKeyboard(status.taskRouting)
+      );
+      return;
+    }
+
+    if (data === "prov_enable_menu") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const status = await getProviderStatus();
+      const enabledList = Object.entries(status.enabledProviders)
+        .map(([k, v]) => `${v ? "✅" : "⛔"} ${k}`)
+        .join("  |  ");
+      await editMsg(bot, query,
+        `🚀 Enable Provider\n━━━━━━━━━━━━━━━━━\nCurrent: ${enabledList}\n\nSelect a provider to enable:`,
+        providerEnableKeyboard()
+      );
+      return;
+    }
+
+    if (data === "prov_disable_menu") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const status = await getProviderStatus();
+      const enabledList = Object.entries(status.enabledProviders)
+        .map(([k, v]) => `${v ? "✅" : "⛔"} ${k}`)
+        .join("  |  ");
+      await editMsg(bot, query,
+        `⛔ Disable Provider\n━━━━━━━━━━━━━━━━━━\nCurrent: ${enabledList}\n\nSelect a provider to disable:`,
+        providerDisableKeyboard()
+      );
+      return;
+    }
+
+    if (data === "prov_enable_openrouter" || data === "prov_enable_huggingface") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const provider = data.replace("prov_enable_", "") as "openrouter" | "huggingface";
+      await toggleProvider(provider, true);
+      await answer(bot, query.id, `✅ ${provider} enabled`);
+      await editMsg(bot, query,
+        `✅ ${provider} has been enabled.\n\nAll tasks routed to ${provider} will now work.`,
+        providerMainKeyboard()
+      );
+      return;
+    }
+
+    if (data === "prov_disable_openrouter" || data === "prov_disable_huggingface") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const provider = data.replace("prov_disable_", "") as "openrouter" | "huggingface";
+      const status = await getProviderStatus();
+      const otherEnabled = provider === "openrouter"
+        ? status.enabledProviders.huggingface
+        : status.enabledProviders.openrouter;
+      if (!otherEnabled) {
+        await answer(bot, query.id, "⚠️ Cannot disable both providers at once!");
+        return;
+      }
+      await toggleProvider(provider, false);
+      await answer(bot, query.id, `⛔ ${provider} disabled`);
+      await editMsg(bot, query,
+        `⛔ ${provider} has been disabled.\n\nTasks will fall back to the other provider automatically.`,
+        providerMainKeyboard()
+      );
       return;
     }
 

@@ -397,6 +397,7 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
           callback_data: "own_maint",
         },
       ],
+      [{ text: "⚡ Provider Control", callback_data: "prov_main" }],
     ],
   };
 }
@@ -649,6 +650,93 @@ export function ownerVoiceModelsKeyboard(
       ...modelButtons,
       [{ text: "➕ Add New Voice", callback_data: "own_add_voice" }],
       [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+// ── Provider Control Keyboards ────────────────────────────────────────────────
+
+export function providerMainKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "🔄 Switch Provider", callback_data: "prov_switch_menu" }],
+      [{ text: "📊 Status", callback_data: "prov_status" }],
+      [{ text: "⚙️ Task Routing", callback_data: "prov_routing_menu" }],
+      [{ text: "🚀 Enable Provider", callback_data: "prov_enable_menu" }],
+      [{ text: "⛔ Disable Provider", callback_data: "prov_disable_menu" }],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+export function providerSwitchKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "OpenRouter", callback_data: "prov_set_openrouter" }],
+      [{ text: "Hugging Face", callback_data: "prov_set_huggingface" }],
+      [{ text: "🤖 Auto (Smart Mode)", callback_data: "prov_set_auto" }],
+      [{ text: "⬅️ Back", callback_data: "prov_main" }],
+    ],
+  };
+}
+
+export function providerRoutingKeyboard(routing: Record<string, string>): TelegramBot.InlineKeyboardMarkup {
+  const icon = (task: string) => {
+    const p = routing[task] || "openrouter";
+    return p === "openrouter" ? "🧠" : p === "huggingface" ? "🤗" : "🤖";
+  };
+  return {
+    inline_keyboard: [
+      [{ text: `${icon("text")} Text → ${routing.text || "openrouter"}`, callback_data: "prov_route_text" }],
+      [{ text: `${icon("code")} Code → ${routing.code || "openrouter"}`, callback_data: "prov_route_code" }],
+      [{ text: `${icon("image")} Image → ${routing.image || "huggingface"}`, callback_data: "prov_route_image" }],
+      [{ text: `${icon("video")} Video → ${routing.video || "huggingface"}`, callback_data: "prov_route_video" }],
+      [{ text: "🔄 Reset Defaults", callback_data: "prov_route_reset" }],
+      [{ text: "⬅️ Back", callback_data: "prov_main" }],
+    ],
+  };
+}
+
+export function providerEnableKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "✅ Enable OpenRouter", callback_data: "prov_enable_openrouter" }],
+      [{ text: "✅ Enable Hugging Face", callback_data: "prov_enable_huggingface" }],
+      [{ text: "⬅️ Back", callback_data: "prov_main" }],
+    ],
+  };
+}
+
+export function providerDisableKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "⛔ Disable OpenRouter", callback_data: "prov_disable_openrouter" }],
+      [{ text: "⛔ Disable Hugging Face", callback_data: "prov_disable_huggingface" }],
+      [{ text: "⬅️ Back", callback_data: "prov_main" }],
+    ],
+  };
+}
+
+export function providerStatusKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "🔄 Refresh", callback_data: "prov_status" }],
+      [{ text: "⬅️ Back", callback_data: "prov_main" }],
+    ],
+  };
+}
+
+export function providerRoutePickKeyboard(task: string, current: string): TelegramBot.InlineKeyboardMarkup {
+  const makeBtn = (label: string, val: string) => ({
+    text: (current === val ? "✅ " : "") + label,
+    callback_data: `prov_routeset_${task}_${val}`,
+  });
+  return {
+    inline_keyboard: [
+      [makeBtn("OpenRouter", "openrouter")],
+      [makeBtn("Hugging Face", "huggingface")],
+      [makeBtn("🤖 Auto", "auto")],
+      [{ text: "⬅️ Back", callback_data: "prov_routing_menu" }],
     ],
   };
 }
