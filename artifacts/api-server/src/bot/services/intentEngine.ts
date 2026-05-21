@@ -72,8 +72,8 @@ export function detectVideoIntent(text: string): string | null {
 
 // ── Music ──────────────────────────────────────────────────────────────────────
 const MUSIC_PATTERNS: PatternSet = [
-  { pattern: /^(?:generate|create|make|compose|produce|write)\s+(?:some\s+|me\s+|me\s+some\s+)?(?:music|audio|a song|a beat|a track|a melody|a tune)\s*(?:that|with|about|like|for|of)?\s*(.*)/i, extract: (m) => m[1] || text },
-  { pattern: /^(?:play|make)\s+(?:me\s+)?(?:some\s+)?(?:music|a song|a beat|a track)\s*(?:that|with|about|like|for|of)?\s*(.*)/i, extract: (m) => m[1] || text },
+  { pattern: /^(?:generate|create|make|compose|produce|write)\s+(?:some\s+|me\s+|me\s+some\s+)?(?:music|audio|a song|a beat|a track|a melody|a tune)\s*(?:that|with|about|like|for|of)?\s*(.*)/i, extract: (m) => m[1] || m.input || "" },
+  { pattern: /^(?:play|make)\s+(?:me\s+)?(?:some\s+)?(?:music|a song|a beat|a track)\s*(?:that|with|about|like|for|of)?\s*(.*)/i, extract: (m) => m[1] || m.input || "" },
   { pattern: /^(?:generate|make|create)\s+(?:a\s+)?(?:lo-?fi|hip-?hop|jazz|classical|ambient|chill|upbeat|epic|sad|happy|calm|relaxing|energetic|electronic|pop|rock)\s+(?:music|beat|track|song|melody|vibe)?\s*(.*)/i, extract: (m) => m[0] },
 ];
 

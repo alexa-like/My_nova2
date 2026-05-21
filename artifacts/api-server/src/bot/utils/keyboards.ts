@@ -247,6 +247,7 @@ export function moodPickerKeyboard(current?: string): TelegramBot.InlineKeyboard
 export function settingsMenuKeyboard(user: IUser): TelegramBot.InlineKeyboardMarkup {
   const moodLabel = user.mood ? `😶 Mood: ${user.mood}` : "😶 Set Mood";
   const voiceLabel = user.settings?.voiceEnabled ? "🔊 Voice: ON" : "🔇 Voice: OFF";
+  const githubLabel = user.github?.username ? `🔑 GitHub: @${user.github.username}` : "🔑 GitHub";
   return {
     inline_keyboard: [
       [
@@ -272,9 +273,30 @@ export function settingsMenuKeyboard(user: IUser): TelegramBot.InlineKeyboardMar
         { text: "🧹 Clear Memory", callback_data: "settings_clear_memory" },
         { text: "💎 Premium", callback_data: "settings_premium" },
       ],
+      [{ text: githubLabel, callback_data: "settings_github" }],
       [{ text: "⬅️ Back", callback_data: "main_menu" }],
     ],
   };
+}
+
+export function githubSettingsKeyboard(
+  hasToken: boolean,
+  username?: string
+): TelegramBot.InlineKeyboardMarkup {
+  const rows: TelegramBot.InlineKeyboardButton[][] = [
+    [
+      { text: "✏️ Set Username", callback_data: "github_set_username" },
+      { text: "🔑 Set Token", callback_data: "github_set_token" },
+    ],
+  ];
+  if (username) {
+    rows.push([{ text: "🗑 Remove Username", callback_data: "github_remove_username" }]);
+  }
+  if (hasToken) {
+    rows.push([{ text: "🗑 Remove Token", callback_data: "github_remove_token" }]);
+  }
+  rows.push([{ text: "⬅️ Back to Settings", callback_data: "settings_menu" }]);
+  return { inline_keyboard: rows };
 }
 
 export function styleMenuKeyboard(current: string): TelegramBot.InlineKeyboardMarkup {

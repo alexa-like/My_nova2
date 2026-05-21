@@ -22,9 +22,11 @@ import {
   settingsMenuKeyboard,
   moodPickerKeyboard,
   backToMainKeyboard,
+  backToSettingsKeyboard,
   repeatKeyboard,
   buildResultKeyboard,
 } from "../utils/keyboards.js";
+import { encrypt, decrypt } from "../utils/crypto.js";
 import { webSearch, formatSearchResults } from "../services/webSearch.js";
 import { generateMusic } from "../services/music.js";
 import { generateProject, typeLabel } from "../services/projectGenerator.js";
@@ -54,6 +56,27 @@ function checkBuildCooldown(userId: number): number {
 
 function setBuildCooldown(userId: number): void {
   buildCooldownMap.set(userId, Date.now());
+}
+
+// ── Resolve GitHub credentials: user's stored > env vars ─────────────────────
+
+async function resolveGitHubCreds(
+  user: IUser
+): Promise<{ token: string; username: string } | null> {
+  const username = user.github?.username || process.env.GITHUB_USERNAME;
+  let token = process.env.GITHUB_TOKEN;
+
+  try {
+    const fresh = await User.findOne({ userId: user.userId }).select("+github.tokenEncrypted");
+    const enc = (fresh as any)?.github?.tokenEncrypted as string | undefined;
+    if (enc) {
+      const dec = decrypt(enc);
+      if (dec) token = dec;
+    }
+  } catch {}
+
+  if (token && username) return { token, username };
+  return null;
 }
 
 async function sendAIReply(
@@ -352,7 +375,7 @@ export async function handlePrivateMessage(
       );
       return;
     }
-    await handlePendingText(bot, chatId, user, pendingAction.type, text, e, pendingAction.data);
+    await handlePendingText(bot, chatId, user, pendingAction.type, text, e, pendingAction.data, msg.message_id);
     return;
   }
 
@@ -978,7 +1001,7 @@ export async function handlePrivateMessage(
   if (text.startsWith("/build")) {
     const prompt = text.replace(/^\/build\s*/i, "").trim();
     if (!prompt) {
-      const hasGitHub = !!(process.env.GITHUB_TOKEN && process.env.GITHUB_USERNAME);
+      const ghCreds = await resolveGitHubCreds(user);
       await bot.sendMessage(chatId,
         `🌐 AI Website & App Builder\n\n` +
         `Usage: /build <describe what you want>\n\n` +
@@ -988,8 +1011,8 @@ export async function handlePrivateMessage(
         `• /build todo app with dark mode\n` +
         `• /build React dashboard with live charts\n` +
         `• /build real-time chat app with Node.js\n\n` +
-        `Nova will generate a complete, working project and ${hasGitHub ? "push it to GitHub with a live repo link 🚀" : "send you all the files directly 📁"}\n\n` +
-        (hasGitHub ? "" : `💡 Set GITHUB_TOKEN + GITHUB_USERNAME secrets for automatic GitHub deployment.`),
+        `Nova will generate a complete, working project and ${ghCreds ? "push it to your GitHub automatically 🚀" : "send you all the files directly 📁"}\n\n` +
+        (ghCreds ? "" : `💡 Go to ⚙️ Settings → 🔑 GitHub to connect your account for automatic deployment.`),
         { reply_markup: backToMainKeyboard() }
       );
       return;
@@ -1167,7 +1190,8 @@ async function handlePendingText(
   actionType: string,
   input: string,
   e: boolean,
-  pendingData?: Record<string, string>
+  pendingData?: Record<string, string>,
+  messageId?: number
 ): Promise<void> {
   const stopTyping = startTypingLoop(bot, chatId);
   try {
@@ -1371,6 +1395,42 @@ async function handlePendingText(
         await bot.sendMessage(chatId, `💭 ${reply}`, { reply_markup: funMenuKeyboard() });
         break;
       }
+      case "github_set_username": {
+        const trimmed = input.trim().replace(/^@/, "");
+        if (!trimmed || /\s/.test(trimmed) || trimmed.length > 39) {
+          await bot.sendMessage(chatId,
+            "❌ Invalid username. Please send just your GitHub username (no spaces, max 39 characters).",
+            { reply_markup: backToSettingsKeyboard() }
+          );
+          break;
+        }
+        await User.updateOne({ userId: user.userId }, { "github.username": trimmed });
+        await bot.sendMessage(chatId,
+          `✅ GitHub username saved: @${trimmed}\n\nNow set your token via ⚙️ Settings → 🔑 GitHub → Set Token to enable automatic project pushing.`,
+          { reply_markup: backToSettingsKeyboard() }
+        );
+        break;
+      }
+      case "github_set_token": {
+        const token = input.trim();
+        try { if (messageId) await bot.deleteMessage(chatId, messageId); } catch {}
+        if (!token || token.length < 10) {
+          await bot.sendMessage(chatId,
+            "❌ That doesn't look like a valid token. Please try again from ⚙️ Settings → 🔑 GitHub.",
+            { reply_markup: backToSettingsKeyboard() }
+          );
+          break;
+        }
+        const encrypted = encrypt(token);
+        await User.updateOne({ userId: user.userId }, { "github.tokenEncrypted": encrypted });
+        await bot.sendMessage(chatId,
+          `✅ GitHub token saved securely!\n\n` +
+          `🔒 Your token is AES-256 encrypted and stored safely. Nova will use it automatically every time you run /build.\n\n` +
+          `To remove or update it: ⚙️ Settings → 🔑 GitHub`,
+          { reply_markup: backToSettingsKeyboard() }
+        );
+        break;
+      }
       default:
         await bot.sendMessage(chatId, "Something went wrong. Try again from the menu.", { reply_markup: mainMenuKeyboard() });
     }
@@ -1567,8 +1627,9 @@ async function handleBuildRequest(
 
   setBuildCooldown(user.userId);
 
-  const githubToken = process.env.GITHUB_TOKEN;
-  const githubUsername = process.env.GITHUB_USERNAME;
+  const ghCreds = await resolveGitHubCreds(user);
+  const githubToken = ghCreds?.token;
+  const githubUsername = ghCreds?.username;
   const hasGitHub = !!(githubToken && githubUsername);
 
   const statusMsg = await bot.sendMessage(chatId,
@@ -1706,7 +1767,7 @@ async function handleBuildRequest(
     `${fileCount} files · ${label}\n\n` +
     `Sending files now 👇\n\n` +
     `💡 ${project.deploymentTip}\n\n` +
-    `💡 Tip: Set GITHUB_TOKEN + GITHUB_USERNAME secrets to auto-push to GitHub next time.`,
+    `💡 Tip: Go to ⚙️ Settings → 🔑 GitHub to connect your GitHub account for auto-push next time.`,
     { reply_markup: buildResultKeyboard(undefined, canDeploy) }
   );
   await sendProjectFiles(bot, chatId, project, e);

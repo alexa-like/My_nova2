@@ -64,6 +64,7 @@ import {
   providerDisableKeyboard,
   providerStatusKeyboard,
   providerRoutePickKeyboard,
+  githubSettingsKeyboard,
 } from "../utils/keyboards.js";
 import { logger } from "../../lib/logger.js";
 
@@ -957,6 +958,64 @@ export async function handleCallbackQuery(
       user.settings.language = code;
       await user.save();
       await editMsg(bot, query, `✅ Language set to: ${code}`, langMenuKeyboard(code));
+      return;
+    }
+
+    // ── GitHub settings ──────────────────────────────────────────────────────
+
+    if (data === "settings_github") {
+      const userWithToken = await User.findOne({ userId }).select("+github.tokenEncrypted");
+      const hasToken = !!(userWithToken as any)?.github?.tokenEncrypted;
+      const username = user.github?.username;
+      await editMsg(bot, query,
+        `🔑 GitHub Integration\n\n` +
+        `Username: ${username ? `@${username}` : "❌ Not set"}\n` +
+        `Token: ${hasToken ? "✅ Saved securely (encrypted)" : "❌ Not set"}\n\n` +
+        `Connect your GitHub account so Nova can automatically push your /build projects to your own repositories.\n\n` +
+        `Your token is AES-256 encrypted and never shown after saving. Not even the bot owner can read it.`,
+        githubSettingsKeyboard(hasToken, username)
+      );
+      return;
+    }
+
+    if (data === "github_set_username") {
+      setPending(userId, "github_set_username");
+      await editMsg(bot, query,
+        `✏️ Set GitHub Username\n\nSend your GitHub username as a reply:\n\nExample: john-doe\n\n(No @ symbol needed)`,
+        { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "settings_github" }]] }
+      );
+      return;
+    }
+
+    if (data === "github_set_token") {
+      setPending(userId, "github_set_token");
+      await editMsg(bot, query,
+        `🔑 Set GitHub Token\n\nSend your GitHub Personal Access Token as a reply.\n\n` +
+        `⚠️ Your message will be automatically deleted after saving.\n\n` +
+        `How to create a token:\n` +
+        `GitHub → Settings → Developer settings → Personal access tokens → Generate new token\n\n` +
+        `Required scopes: ✅ repo (Full control of private repositories)`,
+        { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "settings_github" }]] }
+      );
+      return;
+    }
+
+    if (data === "github_remove_token") {
+      await User.updateOne({ userId }, { $unset: { "github.tokenEncrypted": 1 } });
+      const username = user.github?.username;
+      await editMsg(bot, query,
+        `🗑 Token removed.\n\nYour GitHub token has been deleted securely.`,
+        githubSettingsKeyboard(false, username)
+      );
+      return;
+    }
+
+    if (data === "github_remove_username") {
+      await User.updateOne({ userId }, { $unset: { "github.username": 1 } });
+      await editMsg(bot, query,
+        `🗑 Username removed.`,
+        githubSettingsKeyboard(false, undefined)
+      );
       return;
     }
 

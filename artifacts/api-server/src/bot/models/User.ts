@@ -34,7 +34,7 @@ export interface IUser extends Document {
     lastReset: Date;
   };
   github: {
-    token?: string;
+    tokenEncrypted?: string;
     username?: string;
   };
   projects: Array<{
@@ -88,7 +88,7 @@ const UserSchema = new Schema<IUser>(
       lastReset: { type: Date, default: Date.now },
     },
     github: {
-      token: { type: String, select: false },
+      tokenEncrypted: { type: String, select: false },
       username: { type: String },
     },
     projects: [
