@@ -1,8 +1,12 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import path from "path";
+import { fileURLToPath } from "url";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app: Express = express();
 
@@ -30,5 +34,14 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+
+// Serve admin dashboard static files
+const dashboardDist = path.resolve(__dirname, "../../admin-dashboard/dist/public");
+app.use(express.static(dashboardDist));
+
+// Fallback: serve index.html for all non-API routes (SPA routing)
+app.get("/{*path}", (_req, res) => {
+  res.sendFile(path.join(dashboardDist, "index.html"));
+});
 
 export default app;
