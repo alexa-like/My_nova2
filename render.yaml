@@ -4,7 +4,7 @@ services:
     env: node
     region: oregon
     plan: free
-    buildCommand: npm install --no-save pnpm@10 && node_modules/.bin/pnpm install --frozen-lockfile && node_modules/.bin/pnpm --filter @workspace/api-server run build
+    buildCommand: npm install --no-save pnpm@10 && node_modules/.bin/pnpm install --frozen-lockfile && node_modules/.bin/pnpm --filter @workspace/admin-dashboard run build && node_modules/.bin/pnpm --filter @workspace/api-server run build
     startCommand: node_modules/.bin/pnpm --filter @workspace/api-server run start
     healthCheckPath: /api/healthz
     envVars:
@@ -21,6 +21,8 @@ services:
       - key: HUGGINGFACE_API_TOKEN
         sync: false
       - key: OWNER_ID
+        sync: false
+      - key: ADMIN_API_KEY
         sync: false
       - key: SESSION_SECRET
         sync: false
