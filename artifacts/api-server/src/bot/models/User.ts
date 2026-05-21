@@ -29,8 +29,20 @@ export interface IUser extends Document {
     messages: number;
     images: number;
     builds: number;
+    videos: number;
+    music: number;
     lastReset: Date;
   };
+  github: {
+    token?: string;
+    username?: string;
+  };
+  projects: Array<{
+    name: string;
+    repoUrl: string;
+    deployUrl?: string;
+    createdAt: Date;
+  }>;
   warnings: number;
   banned: boolean;
   isOwner: boolean;
@@ -71,8 +83,22 @@ const UserSchema = new Schema<IUser>(
       messages: { type: Number, default: 0 },
       images: { type: Number, default: 0 },
       builds: { type: Number, default: 0 },
+      videos: { type: Number, default: 0 },
+      music: { type: Number, default: 0 },
       lastReset: { type: Date, default: Date.now },
     },
+    github: {
+      token: { type: String, select: false },
+      username: { type: String },
+    },
+    projects: [
+      {
+        name: { type: String },
+        repoUrl: { type: String },
+        deployUrl: { type: String },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
     warnings: { type: Number, default: 0 },
     banned: { type: Boolean, default: false },
     isOwner: { type: Boolean, default: false },

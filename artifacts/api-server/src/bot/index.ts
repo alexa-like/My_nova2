@@ -212,46 +212,14 @@ export async function startBot(): Promise<void> {
           await handlePrivateMessage(bot!, msg, user, getMaintenance());
         }
       } else if (isGroup(msg)) {
-        // Check captcha answer in group messages
+        // Captcha: muted users use inline keyboard buttons, not text
+        // (text answers still supported as fallback but muted users can't type)
         if (msg.text) {
           const captchaKey = `${msg.chat.id}:${msg.from!.id}`;
           const challenge = captchaStore.get(captchaKey);
           if (challenge) {
-            if (Date.now() > challenge.expiresAt) {
-              captchaStore.delete(captchaKey);
-              try {
-                await bot!.banChatMember(msg.chat.id, msg.from!.id);
-                await bot!.unbanChatMember(msg.chat.id, msg.from!.id);
-              } catch {}
-            } else {
-              const answer = parseInt(msg.text.trim());
-              if (!isNaN(answer) && answer === challenge.answer) {
-                captchaStore.delete(captchaKey);
-                try {
-                  await bot!.restrictChatMember(msg.chat.id, msg.from!.id, {
-                    permissions: {
-                      can_send_messages: true,
-                      can_send_other_messages: true,
-                      can_add_web_page_previews: true,
-                      can_send_polls: true,
-                    },
-                  });
-                  await bot!.deleteMessage(msg.chat.id, msg.message_id).catch(() => {});
-                  try { await bot!.deleteMessage(msg.chat.id, challenge.messageId); } catch {}
-                  const name = msg.from!.first_name || msg.from!.username || "User";
-                  const groupSettings2 = await GroupSettings.findOne({ chatId: msg.chat.id });
-                  const welcomeText = groupSettings2?.welcomeMessage
-                    ? groupSettings2.welcomeMessage
-                        .replace(/\{name\}/g, name)
-                        .replace(/\{group\}/g, msg.chat.title || "this group")
-                    : `✅ Welcome, ${name}! You've been verified.`;
-                  await bot!.sendMessage(msg.chat.id, welcomeText);
-                } catch {}
-              } else {
-                await bot!.deleteMessage(msg.chat.id, msg.message_id).catch(() => {});
-              }
-              return;
-            }
+            await bot!.deleteMessage(msg.chat.id, msg.message_id).catch(() => {});
+            return; // Ignore text while pending — they use the button
           }
         }
         await handleGroupMessage(bot!, msg, user, botUsername, getMaintenance());
@@ -278,35 +246,80 @@ export async function startBot(): Promise<void> {
           try { await bot!.deleteMessage(chatId, msg.message_id); } catch {}
         }
 
-        // Captcha verification
+        // Captcha verification — uses inline keyboard buttons so muted users can answer
         if (groupSettings?.captchaEnabled) {
           const captcha = generateCaptcha();
           const captchaKey = `${chatId}:${member.id}`;
+
+          // Mute the new member immediately
           try {
             await bot!.restrictChatMember(chatId, member.id, {
-              permissions: { can_send_messages: false },
+              permissions: { can_send_messages: false, can_send_other_messages: false },
             });
           } catch {}
-          const challengeMsg = await bot!.sendMessage(chatId,
-            `👋 Welcome, ${name}!\n\n` +
-            `To verify you're human, please answer this math question:\n\n` +
-            `🔢 What is: ${captcha.question} = ?\n\n` +
-            `Reply with just the number. You have 2 minutes.`
-          );
+
+          // Generate 4 answer choices (correct + 3 distractors)
+          const correctAnswer = captcha.answer;
+          const wrongAnswers = new Set<number>();
+          while (wrongAnswers.size < 3) {
+            const offset = Math.floor(Math.random() * 10) - 5;
+            const wrong = correctAnswer + offset;
+            if (wrong !== correctAnswer && wrong > 0) wrongAnswers.add(wrong);
+          }
+          const choices = [...wrongAnswers, correctAnswer].sort(() => Math.random() - 0.5);
+
+          const callbackPrefix = `captcha:${chatId}:${member.id}:`;
+          const keyboard = {
+            inline_keyboard: [
+              choices.map(c => ({
+                text: String(c),
+                callback_data: `${callbackPrefix}${c}`,
+              })),
+            ],
+          };
+
+          // Try to send via DM first, fall back to group inline keyboard
+          let sentViaDM = false;
+          try {
+            await bot!.sendMessage(member.id,
+              `👋 Welcome to *${groupName}*!\n\n` +
+              `To verify you're human, tap the correct answer below:\n\n` +
+              `🔢 *What is: ${captcha.question} = ?*\n\nYou have 2 minutes.`,
+              { parse_mode: "Markdown", reply_markup: keyboard }
+            );
+            sentViaDM = true;
+            await bot!.sendMessage(chatId,
+              `👋 Welcome, ${name}! I sent you a DM with a verification challenge. Please check your messages.`
+            );
+          } catch {
+            // User hasn't started the bot — show inline keyboard in group (muted users can still tap buttons)
+          }
+
+          let challengeMsg: { message_id: number } = { message_id: 0 };
+          if (!sentViaDM) {
+            challengeMsg = await bot!.sendMessage(chatId,
+              `👋 Welcome, ${name}!\n\n` +
+              `Tap the correct answer to verify you're human:\n\n` +
+              `🔢 *What is: ${captcha.question} = ?*`,
+              { parse_mode: "Markdown", reply_markup: keyboard }
+            );
+          }
+
           captchaStore.set(captchaKey, {
             answer: captcha.answer,
             messageId: challengeMsg.message_id,
             expiresAt: Date.now() + 2 * 60 * 1000,
           });
+
           setTimeout(async () => {
             const remaining = captchaStore.get(captchaKey);
             if (remaining) {
               captchaStore.delete(captchaKey);
               try {
-                await bot!.deleteMessage(chatId, challengeMsg.message_id);
+                if (remaining.messageId) await bot!.deleteMessage(chatId, remaining.messageId);
                 await bot!.banChatMember(chatId, member.id);
                 await bot!.unbanChatMember(chatId, member.id);
-                await bot!.sendMessage(chatId, `⏰ ${name} was removed for not completing the captcha.`);
+                await bot!.sendMessage(chatId, `⏰ ${name} was removed for not completing the verification.`);
               } catch {}
             }
           }, 2 * 60 * 1000);
@@ -353,6 +366,76 @@ export async function startBot(): Promise<void> {
   // ── Callback query handler (inline button presses) ────────────────────────
   bot.on("callback_query", async (query) => {
     try {
+      // Handle captcha answer buttons before delegating
+      if (query.data?.startsWith("captcha:") && query.message) {
+        const parts = query.data.split(":");
+        // Format: captcha:CHATID:USERID:ANSWER
+        if (parts.length === 4) {
+          const [, chatIdStr, userIdStr, answerStr] = parts;
+          const chatId = parseInt(chatIdStr);
+          const userId = parseInt(userIdStr);
+          const answer = parseInt(answerStr);
+
+          // Only the correct user can answer
+          if (query.from.id !== userId) {
+            await bot!.answerCallbackQuery(query.id, { text: "This verification is not for you.", show_alert: true });
+            return;
+          }
+
+          const captchaKey = `${chatId}:${userId}`;
+          const challenge = captchaStore.get(captchaKey);
+
+          if (!challenge) {
+            await bot!.answerCallbackQuery(query.id, { text: "Verification already completed or expired." });
+            return;
+          }
+
+          if (Date.now() > challenge.expiresAt) {
+            captchaStore.delete(captchaKey);
+            await bot!.answerCallbackQuery(query.id, { text: "Verification expired. You have been removed." });
+            try {
+              await bot!.banChatMember(chatId, userId);
+              await bot!.unbanChatMember(chatId, userId);
+            } catch {}
+            return;
+          }
+
+          if (answer === challenge.answer) {
+            captchaStore.delete(captchaKey);
+            await bot!.answerCallbackQuery(query.id, { text: "✅ Verified! Welcome to the group." });
+            try {
+              // Restore permissions
+              await bot!.restrictChatMember(chatId, userId, {
+                permissions: {
+                  can_send_messages: true,
+                  can_send_other_messages: true,
+                  can_add_web_page_previews: true,
+                  can_send_polls: true,
+                },
+              });
+              // Delete challenge message
+              if (challenge.messageId) {
+                await bot!.deleteMessage(chatId, challenge.messageId).catch(() => {});
+              }
+              // Delete DM challenge if sent via DM
+              if (query.message?.chat.type === "private") {
+                await bot!.deleteMessage(query.message.chat.id, query.message.message_id).catch(() => {});
+              }
+              // Send welcome message
+              const name = query.from.first_name || query.from.username || "User";
+              const groupSettings2 = await GroupSettings.findOne({ chatId });
+              const welcomeText = groupSettings2?.welcomeMessage
+                ? groupSettings2.welcomeMessage.replace(/\{name\}/g, name).replace(/\{group\}/g, "the group")
+                : `✅ Welcome, ${name}! You've been verified.`;
+              await bot!.sendMessage(chatId, welcomeText);
+            } catch {}
+          } else {
+            await bot!.answerCallbackQuery(query.id, { text: "❌ Wrong answer. Try again.", show_alert: true });
+          }
+          return;
+        }
+      }
+
       await handleCallbackQuery(bot!, query);
     } catch (err) {
       logger.error({ err }, "Error in callback_query handler");
