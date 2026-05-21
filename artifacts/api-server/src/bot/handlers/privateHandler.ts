@@ -390,20 +390,42 @@ export async function handlePrivateMessage(
     await bot.sendMessage(chatId,
       `Hey ${name}${badge}! Here's everything I can do:\n\n` +
       `💬 Just type anything to chat with me!\n\n` +
+      `── Create ──\n` +
       `🎨 /image <prompt> — Generate an image\n` +
       `🎬 /video <prompt> — Generate a short video\n` +
-      `📄 Send any PDF/TXT/DOCX — I'll read and analyze it!\n\n` +
-      `Everything else is in the menu — tap a button below:\n` +
-      `🔍 Web Search · 🎵 Music · 🖼️ Sticker\n` +
-      `⏰ Reminders · 📜 History · 🤖 AI Tools\n\n` +
-      `📝 /summarize — Summarize our conversation\n` +
+      `🎵 /music <prompt> — Generate music\n` +
+      `🖼️ /sticker <prompt> — Generate a sticker\n` +
+      `🔨 /build <idea> — Build a website or app with AI\n` +
+      `🚀 /deploy <idea> — Build + deploy to Vercel\n\n` +
+      `── Explore ──\n` +
+      `🔍 /search <query> — Search the web\n` +
+      `❓ /ask <question> — Quick answer (no memory)\n` +
+      `🌍 /translate <text> — Translate text\n` +
+      `📝 /summarize — Summarize conversation\n` +
+      `📜 /history — View recent messages\n\n` +
+      `── Tools ──\n` +
+      `⏰ /remind <time> <msg> — Set a reminder\n` +
+      `📋 /reminders — View your reminders\n` +
+      `📊 /poll <q> | <opt1> | <opt2> — Create a poll\n` +
+      `📤 /export — Export conversation\n\n` +
+      `── Fun ──\n` +
       `💬 /quote — Inspiring quote\n` +
       `🎲 /fact — Random mind-blowing fact\n` +
       `💡 /tip — Life or productivity tip\n` +
-      `😶 /mood <mood> — Set your mood\n` +
-      `❓ /ask <question> — Quick answer (no memory)\n` +
-      `📤 /feedback <msg> — Send feedback\n\n` +
-      `⚙️ /profile /settings /premium /redeem /forget\n\n` +
+      `😶 /mood <mood> — Set your mood\n\n` +
+      `── Account ──\n` +
+      `👤 /profile — Your profile\n` +
+      `📊 /stats — Your usage stats\n` +
+      `⚙️ /settings — Your preferences\n` +
+      `🔊 /voice — Voice reply settings\n` +
+      `🤖 /model — Choose AI model\n` +
+      `💎 /premium — Check premium status\n` +
+      `🎁 /redeem — Redeem a code\n` +
+      `🧹 /forget — Clear memory\n` +
+      `❌ /cancel — Cancel current action\n` +
+      `📢 /feedback <msg> — Send feedback\n\n` +
+      `📄 Send any PDF/TXT/DOCX — I'll read and analyze it!\n` +
+      `🖼️ Send a photo — I'll describe or edit it!\n\n` +
       `Or tap a button below to explore everything 👇`,
       { reply_markup: mainMenuKeyboard() }
     );
@@ -415,22 +437,29 @@ export async function handlePrivateMessage(
     const premiumLine = user.premium.active
       ? `✨ Premium — expires ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}`
       : "Free";
+    const builds = user.usage.builds ?? 0;
+    const daysSinceJoin = Math.floor((Date.now() - user.firstSeen.getTime()) / 86400000);
     await bot.sendMessage(chatId,
       `👤 Your Profile\n\n` +
       `Name: ${name}\n` +
       `ID: ${user.userId}\n` +
       `Username: ${user.username ? "@" + user.username : "N/A"}\n` +
       `Status: ${premiumLine}\n` +
+      `Member for: ${daysSinceJoin} day${daysSinceJoin !== 1 ? "s" : ""}\n\n` +
+      `── Settings ──\n` +
       `Style: ${user.settings.style}\n` +
       `Language: ${user.settings.language || "en"}\n` +
       `Mood: ${user.mood || "Not set"}\n` +
       `Emojis: ${user.settings.emoji ? "On" : "Off"}\n` +
       `Reply length: ${user.settings.length}\n` +
-      `Warnings: ${user.warnings}\n` +
-      `First seen: ${formatDate(user.firstSeen)}\n` +
-      `Messages: ${user.usage.messages}\n` +
-      `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}`,
-      { reply_markup: { inline_keyboard: [[{ text: "⚙️ Settings", callback_data: "settings_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+      `Voice replies: ${user.settings.voiceEnabled ? "On" : "Off"}\n\n` +
+      `── Usage ──\n` +
+      `Messages today: ${user.usage.messages}\n` +
+      `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}\n` +
+      `Total builds: ${builds}\n` +
+      `Groups: ${user.groups.length}\n` +
+      `Warnings: ${user.warnings}`,
+      { reply_markup: { inline_keyboard: [[{ text: "⚙️ Settings", callback_data: "settings_menu" }, { text: "📊 Stats", callback_data: "show_stats" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
     );
     return;
   }
@@ -517,6 +546,52 @@ export async function handlePrivateMessage(
     await bot.sendMessage(chatId,
       e ? "Memory cleared! Fresh start — I remember nothing now 🧹" : "Memory cleared. Starting fresh.",
       { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] } }
+    );
+    return;
+  }
+
+  // /cancel — cancel any pending action
+  if (text === "/cancel") {
+    const pending = getPending(user.userId);
+    if (pending) {
+      clearPending(user.userId);
+      await bot.sendMessage(chatId,
+        e ? "✅ Action cancelled! What else can I help you with?" : "Action cancelled.",
+        { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] } }
+      );
+    } else {
+      await bot.sendMessage(chatId,
+        e ? "Nothing to cancel! You're not in the middle of any action." : "Nothing to cancel.",
+        { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] } }
+      );
+    }
+    return;
+  }
+
+  // /stats — personal usage stats
+  if (text === "/stats") {
+    const premiumLine = user.premium.active
+      ? `✨ Premium${user.premium.expiresAt ? ` (expires ${formatDate(user.premium.expiresAt)})` : ""}`
+      : "Free";
+    const imageLimit = getImageLimit(user.premium.active);
+    const daysSinceJoin = Math.floor((Date.now() - user.firstSeen.getTime()) / 86400000);
+    const builds = user.usage.builds ?? 0;
+    await bot.sendMessage(chatId,
+      `📊 Your Stats\n\n` +
+      `👤 ${name}\n` +
+      `🆔 ID: ${user.userId}\n` +
+      `🗓️ Member for: ${daysSinceJoin} day${daysSinceJoin !== 1 ? "s" : ""}\n` +
+      `💎 Plan: ${premiumLine}\n\n` +
+      `── Today ──\n` +
+      `💬 Messages: ${user.usage.messages}\n` +
+      `🖼️ Images: ${user.usage.images}/${imageLimit}\n\n` +
+      `── All Time ──\n` +
+      `🔨 Builds: ${builds}\n` +
+      `👥 Groups: ${user.groups.length}\n` +
+      `🎭 Style: ${user.settings.style}\n` +
+      `🔊 Voice: ${user.settings.voiceEnabled ? "On" : "Off"}\n` +
+      `🌐 Language: ${user.settings.language || "en"}`,
+      { reply_markup: { inline_keyboard: [[{ text: "👤 Profile", callback_data: "show_profile" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
     );
     return;
   }
@@ -1602,6 +1677,9 @@ async function handleBuildRequest(
     stopTyping();
     try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
 
+    user.usage.builds = (user.usage.builds ?? 0) + 1;
+    await user.save();
+
     await bot.sendMessage(chatId,
       `🚀 Your project is ready!\n\n` +
       `📦 ${project.name}\n` +
@@ -1615,6 +1693,9 @@ async function handleBuildRequest(
   }
 
   // ── Step 2b: No GitHub — send files directly ────────────────────────────────
+  user.usage.builds = (user.usage.builds ?? 0) + 1;
+  await user.save();
+
   stopTyping();
   try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
 

@@ -185,7 +185,7 @@ export async function handleGroupMessage(
   maintenanceMode: boolean
 ): Promise<void> {
   const chatId = msg.chat.id;
-  const text = msg.text || "";
+  const text = msg.text || msg.caption || "";
   const fromId = msg.from!.id;
 
   // Track every sender for future @username resolution + group membership
@@ -992,6 +992,30 @@ export async function handleGroupMessage(
   }
 
   const cleanText = text.replace(new RegExp(`@${botUsername}`, "gi"), "").trim();
+
+  // ── Photo sent with bot mentioned — analyze the image ────────────────────
+  if (msg.photo && msg.photo.length > 0) {
+    if (!process.env.HUGGINGFACE_API_TOKEN) {
+      await bot.sendMessage(chatId, "Image analysis is not configured.", { reply_to_message_id: msg.message_id });
+      return;
+    }
+    try {
+      const photoId = msg.photo[msg.photo.length - 1].file_id;
+      const { downloadTelegramPhoto } = await import("../services/image.js");
+      const { analyzeImage } = await import("../services/imageAnalysis.js");
+      const imageBuffer = await downloadTelegramPhoto(bot, photoId);
+      if (!imageBuffer) throw new Error("Download failed");
+      const question = cleanText || "Describe this image in detail.";
+      const statusMsg = await bot.sendMessage(chatId, "🔍 Analyzing image...", { reply_to_message_id: msg.message_id });
+      const description = await analyzeImage(imageBuffer, question);
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, description ?? "I couldn't analyze that image.", { reply_to_message_id: msg.message_id });
+    } catch {
+      await bot.sendMessage(chatId, "Couldn't analyze that image. Please try again.", { reply_to_message_id: msg.message_id });
+    }
+    return;
+  }
+
   if (!cleanText) return;
 
   // /image command when bot is mentioned

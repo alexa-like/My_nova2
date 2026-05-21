@@ -1053,6 +1053,72 @@ export async function handleCallbackQuery(
       return;
     }
 
+    // ── Show Profile ──────────────────────────────────────────────────────
+    if (data === "show_profile") {
+      const { formatDate } = await import("../utils/helpers.js");
+      const { getImageLimit } = await import("../services/image.js");
+      const name = user.firstName || user.username || "Friend";
+      const premiumLine = user.premium.active
+        ? `✨ Premium — expires ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}`
+        : "Free";
+      const builds2 = user.usage.builds ?? 0;
+      const daysSinceJoin = Math.floor((Date.now() - user.firstSeen.getTime()) / 86400000);
+      await editMsg(bot, query,
+        `👤 Your Profile\n\n` +
+        `Name: ${name}\n` +
+        `ID: ${user.userId}\n` +
+        `Username: ${user.username ? "@" + user.username : "N/A"}\n` +
+        `Status: ${premiumLine}\n` +
+        `Member for: ${daysSinceJoin} day${daysSinceJoin !== 1 ? "s" : ""}\n\n` +
+        `── Settings ──\n` +
+        `Style: ${user.settings.style}\n` +
+        `Language: ${user.settings.language || "en"}\n` +
+        `Mood: ${user.mood || "Not set"}\n` +
+        `Emojis: ${user.settings.emoji ? "On" : "Off"}\n` +
+        `Reply length: ${user.settings.length}\n` +
+        `Voice replies: ${user.settings.voiceEnabled ? "On" : "Off"}\n\n` +
+        `── Usage ──\n` +
+        `Messages today: ${user.usage.messages}\n` +
+        `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}\n` +
+        `Total builds: ${builds2}\n` +
+        `Groups: ${user.groups.length}\n` +
+        `Warnings: ${user.warnings}`,
+        { inline_keyboard: [[{ text: "⚙️ Settings", callback_data: "settings_menu" }, { text: "📊 Stats", callback_data: "show_stats" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] }
+      );
+      return;
+    }
+
+    // ── Show Stats ────────────────────────────────────────────────────────
+    if (data === "show_stats") {
+      const { formatDate } = await import("../utils/helpers.js");
+      const { getImageLimit } = await import("../services/image.js");
+      const name = user.firstName || user.username || "Friend";
+      const premiumLine = user.premium.active
+        ? `✨ Premium${user.premium.expiresAt ? ` (expires ${formatDate(user.premium.expiresAt)})` : ""}`
+        : "Free";
+      const imageLimit = getImageLimit(user.premium.active);
+      const daysSinceJoin = Math.floor((Date.now() - user.firstSeen.getTime()) / 86400000);
+      const builds2 = user.usage.builds ?? 0;
+      await editMsg(bot, query,
+        `📊 Your Stats\n\n` +
+        `👤 ${name}\n` +
+        `🆔 ID: ${user.userId}\n` +
+        `🗓️ Member for: ${daysSinceJoin} day${daysSinceJoin !== 1 ? "s" : ""}\n` +
+        `💎 Plan: ${premiumLine}\n\n` +
+        `── Today ──\n` +
+        `💬 Messages: ${user.usage.messages}\n` +
+        `🖼️ Images: ${user.usage.images}/${imageLimit}\n\n` +
+        `── All Time ──\n` +
+        `🔨 Builds: ${builds2}\n` +
+        `👥 Groups: ${user.groups.length}\n` +
+        `🎭 Style: ${user.settings.style}\n` +
+        `🔊 Voice: ${user.settings.voiceEnabled ? "On" : "Off"}\n` +
+        `🌐 Language: ${user.settings.language || "en"}`,
+        { inline_keyboard: [[{ text: "👤 Profile", callback_data: "show_profile" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] }
+      );
+      return;
+    }
+
     // ── Owner Panel ───────────────────────────────────────────────────────
 
     if (data === "own_panel") {

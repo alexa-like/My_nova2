@@ -78,42 +78,77 @@ export async function startBot(): Promise<void> {
   try {
     await bot.setMyCommands([
       { command: "start", description: "Open Nova menu" },
-      { command: "help", description: "Show help" },
+      { command: "help", description: "Show all commands" },
       { command: "image", description: "Generate an image" },
       { command: "video", description: "Generate a short video" },
       { command: "music", description: "Generate music" },
       { command: "sticker", description: "Generate a sticker" },
       { command: "search", description: "Search the web" },
+      { command: "ask", description: "Quick AI answer (no memory)" },
+      { command: "translate", description: "Translate text" },
       { command: "build", description: "Build a website or app with AI" },
-      { command: "deploy", description: "Generate and deploy to Vercel" },
+      { command: "deploy", description: "Build and deploy to Vercel" },
+      { command: "remind", description: "Set a reminder" },
+      { command: "reminders", description: "View your reminders" },
+      { command: "poll", description: "Create a poll" },
+      { command: "summarize", description: "Summarize conversation" },
+      { command: "history", description: "View recent messages" },
+      { command: "export", description: "Export conversation" },
+      { command: "quote", description: "Get an inspiring quote" },
+      { command: "fact", description: "Random mind-blowing fact" },
+      { command: "tip", description: "Life or productivity tip" },
+      { command: "mood", description: "Set your mood" },
+      { command: "feedback", description: "Send feedback to the owner" },
       { command: "profile", description: "View your profile" },
-      { command: "settings", description: "Your settings" },
+      { command: "stats", description: "View your usage stats" },
+      { command: "settings", description: "Your preferences" },
+      { command: "voice", description: "Voice reply settings" },
+      { command: "model", description: "Choose AI model" },
       { command: "premium", description: "Check premium status" },
       { command: "redeem", description: "Redeem a premium code" },
       { command: "forget", description: "Clear conversation memory" },
+      { command: "cancel", description: "Cancel current action" },
     ], { scope: { type: "all_private_chats" } });
 
     await bot.setMyCommands([
       { command: "help", description: "Show group commands" },
       { command: "rules", description: "Show group rules" },
       { command: "report", description: "Report a message (reply to it)" },
-      { command: "ban", description: "Ban a user" },
-      { command: "unban", description: "Unban a user" },
-      { command: "mute", description: "Mute a user [duration: 10m 2h 1d]" },
-      { command: "unmute", description: "Unmute a user" },
-      { command: "kick", description: "Kick a user" },
-      { command: "warn", description: "Warn a user" },
-      { command: "warnings", description: "Check user warnings" },
-      { command: "clearwarn", description: "Clear user warnings" },
+      { command: "ban", description: "Ban a user (reply)" },
+      { command: "unban", description: "Unban a user (reply)" },
+      { command: "mute", description: "Mute a user [10m 2h 1d] (reply)" },
+      { command: "unmute", description: "Unmute a user (reply)" },
+      { command: "kick", description: "Kick a user (reply)" },
+      { command: "warn", description: "Warn a user [reason] (reply)" },
+      { command: "warnings", description: "Check warnings (reply)" },
+      { command: "clearwarn", description: "Clear warnings (reply)" },
+      { command: "note", description: "Add note to user (reply)" },
+      { command: "notes", description: "View user notes (reply)" },
+      { command: "clearnotes", description: "Clear user notes (reply)" },
       { command: "purge", description: "Delete last N messages" },
-      { command: "pin", description: "Pin a message" },
+      { command: "pin", description: "Pin a message (reply)" },
       { command: "unpin", description: "Unpin latest pinned message" },
-      { command: "delete", description: "Delete a message" },
+      { command: "delete", description: "Delete a message (reply)" },
       { command: "lock", description: "Lock group (admins only)" },
       { command: "unlock", description: "Unlock group" },
-      { command: "slowmode", description: "Set slow mode" },
+      { command: "slowmode", description: "Set slow mode [seconds]" },
       { command: "captcha", description: "Toggle captcha for new members" },
       { command: "autodelete", description: "Auto-delete service messages" },
+      { command: "antilink", description: "Toggle anti-link protection" },
+      { command: "antiflood", description: "Toggle anti-flood [limit]" },
+      { command: "setlimit", description: "Set warn limit before auto-ban" },
+      { command: "promote", description: "Promote user to admin (reply)" },
+      { command: "demote", description: "Demote user from admin (reply)" },
+      { command: "welcome", description: "Set welcome message" },
+      { command: "setgoodbye", description: "Set goodbye message" },
+      { command: "setrules", description: "Set group rules" },
+      { command: "addword", description: "Add word to filter" },
+      { command: "removeword", description: "Remove word from filter" },
+      { command: "wordlist", description: "Show filtered words" },
+      { command: "ai", description: "Toggle AI replies on/off" },
+      { command: "style", description: "Set AI personality style" },
+      { command: "poll", description: "Create a poll" },
+      { command: "messageall", description: "DM all group members privately" },
       { command: "image", description: "Generate an image (mention bot)" },
       { command: "ask", description: "Quick AI answer (mention bot)" },
       { command: "translate", description: "Translate text (mention bot)" },
@@ -122,16 +157,6 @@ export async function startBot(): Promise<void> {
       { command: "sticker", description: "Generate a sticker (mention bot)" },
       { command: "search", description: "Search the web (mention bot)" },
       { command: "build", description: "Build an app or website (mention bot)" },
-      { command: "antilink", description: "Toggle anti-link protection" },
-      { command: "antiflood", description: "Toggle anti-flood protection" },
-      { command: "promote", description: "Promote user to admin" },
-      { command: "demote", description: "Demote user from admin" },
-      { command: "note", description: "Add note to user (reply)" },
-      { command: "notes", description: "View user notes" },
-      { command: "ai", description: "Toggle AI replies" },
-      { command: "messageall", description: "DM all group members privately" },
-      { command: "setgoodbye", description: "Set goodbye message" },
-      { command: "poll", description: "Create a poll" },
     ], { scope: { type: "all_group_chats" } });
 
     logger.info("Bot command menus registered");
@@ -214,7 +239,13 @@ export async function startBot(): Promise<void> {
                   await bot!.deleteMessage(msg.chat.id, msg.message_id).catch(() => {});
                   try { await bot!.deleteMessage(msg.chat.id, challenge.messageId); } catch {}
                   const name = msg.from!.first_name || msg.from!.username || "User";
-                  await bot!.sendMessage(msg.chat.id, `✅ Welcome, ${name}! You've been verified.`);
+                  const groupSettings2 = await GroupSettings.findOne({ chatId: msg.chat.id });
+                  const welcomeText = groupSettings2?.welcomeMessage
+                    ? groupSettings2.welcomeMessage
+                        .replace(/\{name\}/g, name)
+                        .replace(/\{group\}/g, msg.chat.title || "this group")
+                    : `✅ Welcome, ${name}! You've been verified.`;
+                  await bot!.sendMessage(msg.chat.id, welcomeText);
                 } catch {}
               } else {
                 await bot!.deleteMessage(msg.chat.id, msg.message_id).catch(() => {});

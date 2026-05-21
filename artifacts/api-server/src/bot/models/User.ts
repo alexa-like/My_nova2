@@ -28,6 +28,7 @@ export interface IUser extends Document {
   usage: {
     messages: number;
     images: number;
+    builds: number;
     lastReset: Date;
   };
   warnings: number;
@@ -69,6 +70,7 @@ const UserSchema = new Schema<IUser>(
     usage: {
       messages: { type: Number, default: 0 },
       images: { type: Number, default: 0 },
+      builds: { type: Number, default: 0 },
       lastReset: { type: Date, default: Date.now },
     },
     warnings: { type: Number, default: 0 },
