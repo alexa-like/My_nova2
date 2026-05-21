@@ -705,6 +705,41 @@ export async function handleOwnerPendingText(
         break;
       }
 
+      case "owner_add_asr_step1": {
+        const name = input.trim();
+        if (!name || name.length < 2) {
+          await bot.sendMessage(chatId, "❌ Name too short. Try again — e.g. Whisper Large or Wav2Vec2", { reply_markup: backToOwnerKeyboard() });
+          return;
+        }
+        setPending(userId, "owner_add_asr_step2", { name });
+        await bot.sendMessage(chatId,
+          `✅ Name set to: "${name}"\n\n` +
+          `Now paste the HuggingFace ASR model ID.\n\n` +
+          `Examples:\n` +
+          `• openai/whisper-large-v3\n` +
+          `• openai/whisper-medium\n` +
+          `• facebook/wav2vec2-large-960h\n\n` +
+          `Browse at huggingface.co/models?pipeline_tag=automatic-speech-recognition`,
+          { reply_markup: backToOwnerKeyboard() }
+        );
+        break;
+      }
+
+      case "owner_add_asr_step2": {
+        const modelId = input.trim();
+        const modelName = pendingData?.name;
+        if (!modelId || !modelName) { await bot.sendMessage(chatId, "Something went wrong. Start over.", { reply_markup: backToOwnerKeyboard() }); return; }
+        const config = await getOrCreateBotConfig();
+        if (config.asrModels.find((m) => m.id === modelId)) {
+          await bot.sendMessage(chatId, `A model with ID "${modelId}" already exists.`, { reply_markup: backToOwnerKeyboard() });
+          return;
+        }
+        config.asrModels.push({ id: modelId, name: modelName, active: false });
+        await config.save();
+        await bot.sendMessage(chatId, `✅ ASR model added!\n\nName: ${modelName}\nID: ${modelId}\n\nHead to 🎙 Speech (ASR) in the dashboard to activate it.`, { reply_markup: backToOwnerKeyboard() });
+        break;
+      }
+
       // ── Legacy single-step (kept for backwards compat) ──────────────────
 
       case "owner_add_chat_model": {

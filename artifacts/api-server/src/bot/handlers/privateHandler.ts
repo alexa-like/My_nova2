@@ -6,6 +6,7 @@ import { generateImage, getImageLimit, editImage, downloadTelegramPhoto } from "
 import { generateVideo } from "../services/video.js";
 import { transcribeVoice, downloadTelegramAudio } from "../services/voice.js";
 import { textToSpeech, VOICE_PREVIEW_TEXT } from "../services/tts.js";
+import { analyzeImage } from "../services/imageAnalysis.js";
 import { isRateLimited } from "../utils/rateLimiter.js";
 import { formatDate, addDays, getUserName, safeSend, startTypingLoop } from "../utils/helpers.js";
 import { parseDuration } from "../models/RedeemCode.js";
@@ -759,10 +760,62 @@ export async function handlePhotoMessage(
   const pending = getPending(user.userId);
 
   if (!pending || !PHOTO_ACTIONS.has(pending.type)) {
-    await bot.sendMessage(chatId,
-      "Select an image tool from the menu first, then send your photo:",
-      { reply_markup: imageMenuKeyboard() }
+    // Auto-analyze any photo sent without a pending image action
+    const photos = msg.photo;
+    if (!photos || photos.length === 0) return;
+    const photo = photos[photos.length - 1];
+    const question = msg.caption?.trim();
+
+    const statusMsg = await bot.sendMessage(chatId,
+      question
+        ? `Analyzing your image for: "${question.slice(0, 60)}"...`
+        : "Analyzing your image..."
     );
+    const stopTyping = startTypingLoop(bot, chatId, "upload_photo");
+
+    try {
+      const imageBuffer = await downloadTelegramPhoto(bot, photo.file_id);
+      if (!imageBuffer) {
+        stopTyping();
+        await bot.editMessageText("Failed to download your image. Please try again.", {
+          chat_id: chatId, message_id: statusMsg.message_id,
+        });
+        return;
+      }
+
+      const rawAnalysis = await analyzeImage(imageBuffer, question);
+      stopTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+
+      if (!rawAnalysis) {
+        await bot.sendMessage(chatId,
+          "I couldn't analyze this image right now — the model may be warming up. Try again in a moment.",
+          { reply_markup: imageMenuKeyboard() }
+        );
+        return;
+      }
+
+      // Enrich the raw BLIP output with a full AI response
+      const enrichPrompt = question
+        ? `The user asked: "${question}"\nAbout an image described as: "${rawAnalysis}"\n\nAnswer their question about the image naturally and helpfully. If the description doesn't answer it directly, say so and give what you can.`
+        : `Describe this image to the user in an interesting and helpful way. The vision model identified it as: "${rawAnalysis}"\n\nExpand on this naturally, mentioning details, mood, and what stands out.`;
+
+      const fullReply = await chat(
+        user.userId, chatId + 7777, enrichPrompt,
+        { style: user.settings.style, emoji: user.settings.emoji, length: "short" },
+        user.premium.active
+      );
+
+      const header = question ? `🔍 Image Analysis\n\nQ: ${question}\n\n` : `🖼 Image Description\n\n`;
+      await safeSend(bot, chatId, header + fullReply, { reply_markup: imageMenuKeyboard() });
+    } catch (err) {
+      stopTyping();
+      logger.error({ err }, "Photo auto-analysis error");
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Something went wrong analyzing this image. Try again.", {
+        reply_markup: imageMenuKeyboard(),
+      });
+    }
     return;
   }
 

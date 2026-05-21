@@ -1,39 +1,57 @@
 import axios from "axios";
 import { logger } from "../../lib/logger.js";
+import { getOrCreateBotConfig } from "../models/BotConfig.js";
 
-const WHISPER_ENDPOINT =
-  "https://api-inference.huggingface.co/models/openai/whisper-large-v3";
+const WHISPER_FALLBACK = "openai/whisper-base";
 
-export async function transcribeVoice(audioBuffer: Buffer): Promise<string | null> {
+export async function transcribeVoice(
+  audioBuffer: Buffer,
+  modelId?: string
+): Promise<string | null> {
   const token = process.env.HUGGINGFACE_API_TOKEN;
   if (!token) return null;
 
-  try {
-    logger.info("Transcribing voice with Whisper");
-    const response = await axios.post(WHISPER_ENDPOINT, audioBuffer, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "audio/ogg",
-        Accept: "application/json",
-      },
-      timeout: 90000,
-    });
-
-    const text = response.data?.text?.trim();
-    if (text && text.length > 0) {
-      logger.info({ length: text.length }, "Voice transcribed successfully");
-      return text;
-    }
-
-    logger.warn({ data: response.data }, "Whisper returned empty transcription");
-    return null;
-  } catch (err: any) {
-    logger.warn(
-      { err: err?.message, status: err?.response?.status },
-      "Voice transcription failed"
-    );
-    return null;
+  let model = modelId;
+  if (!model) {
+    const config = await getOrCreateBotConfig();
+    model = config.activeAsrModel || "openai/whisper-large-v3";
   }
+
+  const endpoints = [
+    `https://api-inference.huggingface.co/models/${model}`,
+    `https://api-inference.huggingface.co/models/${WHISPER_FALLBACK}`,
+  ].filter((v, i, a) => a.indexOf(v) === i); // deduplicate if same model
+
+  for (const endpoint of endpoints) {
+    try {
+      logger.info({ endpoint }, "Transcribing voice");
+      const response = await axios.post(endpoint, audioBuffer, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "audio/ogg",
+          Accept: "application/json",
+        },
+        timeout: 90000,
+      });
+
+      const text = response.data?.text?.trim();
+      if (text && text.length > 0) {
+        logger.info({ length: text.length, endpoint }, "Voice transcribed successfully");
+        return text;
+      }
+
+      logger.warn({ data: response.data, endpoint }, "Whisper returned empty transcription, trying next");
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 503) {
+        logger.warn({ endpoint }, "ASR model warming up (503), trying fallback");
+      } else {
+        logger.warn({ err: err?.message, status, endpoint }, "Voice transcription failed, trying next");
+      }
+    }
+  }
+
+  return null;
 }
 
 export async function downloadTelegramAudio(

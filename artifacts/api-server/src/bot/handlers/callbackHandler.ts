@@ -10,6 +10,7 @@ import { getOrCreateBotConfig } from "../models/BotConfig.js";
 import { sendOwnerPanel } from "./ownerHandler.js";
 import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
 import { textToSpeech, VOICE_PREVIEW_TEXT } from "../services/tts.js";
+import { analyzeImage } from "../services/imageAnalysis.js";
 import {
   mainMenuKeyboard,
   funMenuKeyboard,
@@ -33,6 +34,7 @@ import {
   repeatKeyboard,
   userModelKeyboard,
   voiceSettingsKeyboard,
+  ownerAsrModelsKeyboard,
   ownerUsersKeyboard,
   ownerPremiumKeyboard,
   ownerCodesKeyboard,
@@ -826,7 +828,9 @@ export async function handleCallbackQuery(
         `🔧 Maintenance: ${getMaintenance() ? "🔴 ON" : "🟢 OFF"}\n\n` +
         `🧠 Chat: ${config.chatModels.find((m) => m.id === config.activeChatModel)?.name || config.activeChatModel}\n` +
         `🖼 Image: ${config.imageModels.find((m) => m.id === config.activeImageModel)?.name || config.activeImageModel}\n` +
-        `🎬 Video: ${config.videoModels.find((m) => m.id === config.activeVideoModel)?.name || config.activeVideoModel}`,
+        `🎬 Video: ${config.videoModels.find((m) => m.id === config.activeVideoModel)?.name || config.activeVideoModel}\n` +
+        `🔊 Voice: ${config.voiceModels.find((m) => m.id === config.activeVoiceModel)?.name || config.activeVoiceModel}\n` +
+        `🎙 ASR: ${config.asrModels?.find((m) => m.id === config.activeAsrModel)?.name || config.activeAsrModel || "Whisper Large v3"}`,
         backToOwnerKeyboard()
       );
       return;
@@ -1060,6 +1064,59 @@ export async function handleCallbackQuery(
       setPending(userId, "owner_add_voice_step1");
       await editMsg(bot, query,
         `🔊 Add Voice — Step 1 of 2\n━━━━━━━━━━━━━━━━━━━━━━━\nWhat do you want to call this voice?\n\nExamples: Crystal, Deep Male, Soft Female\n\nJust type the display name:`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_asr_models") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const config = await getOrCreateBotConfig();
+      const active = config.asrModels.find((m) => m.id === config.activeAsrModel);
+      await editMsg(bot, query,
+        `🎙 Speech Recognition (ASR)\n━━━━━━━━━━━━━━━━━━━━━━━━\nActive: ${active?.name || config.activeAsrModel}\n\nThis model transcribes voice messages into text.\nTap to activate. 🗑 to remove.`,
+        ownerAsrModelsKeyboard(config.asrModels, config.activeAsrModel)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_set_asr_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_set_asr_", ""));
+      const config = await getOrCreateBotConfig();
+      const model = config.asrModels[idx];
+      if (!model) { await answer(bot, query.id, "Model not found."); return; }
+      config.activeAsrModel = model.id;
+      await config.save();
+      await answer(bot, query.id, `✅ ASR switched to ${model.name}`);
+      await editMsg(bot, query,
+        `🎙 Speech Recognition (ASR)\n━━━━━━━━━━━━━━━━━━━━━━━━\nActive: ${model.name} ✅\n\nTap to activate. 🗑 to remove.`,
+        ownerAsrModelsKeyboard(config.asrModels, config.activeAsrModel)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_del_asr_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_del_asr_", ""));
+      const config = await getOrCreateBotConfig();
+      if (config.asrModels.length <= 1) { await answer(bot, query.id, "Cannot delete the only ASR model."); return; }
+      const removed = config.asrModels.splice(idx, 1)[0];
+      if (config.activeAsrModel === removed?.id) config.activeAsrModel = config.asrModels[0].id;
+      await config.save();
+      await answer(bot, query.id, `🗑 Removed ${removed?.name}`);
+      await editMsg(bot, query,
+        `🎙 Speech Recognition (ASR)\n━━━━━━━━━━━━━━━━━━━━━━━━\nActive: ${config.asrModels.find((m) => m.id === config.activeAsrModel)?.name}\n\nTap to activate. 🗑 to remove.`,
+        ownerAsrModelsKeyboard(config.asrModels, config.activeAsrModel)
+      );
+      return;
+    }
+
+    if (data === "own_add_asr") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_add_asr_step1");
+      await editMsg(bot, query,
+        `🎙 Add ASR Model — Step 1 of 2\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nWhat do you want to call this model?\n\nExamples: Whisper Large, Fast Whisper\n\nJust type the display name:`,
         backToOwnerKeyboard()
       );
       return;

@@ -891,6 +891,80 @@ export async function handleGroupMessage(
   const cleanText = text.replace(new RegExp(`@${botUsername}`, "gi"), "").trim();
   if (!cleanText) return;
 
+  // /image command when bot is mentioned
+  if (cleanText.toLowerCase().startsWith("/image") || cleanText.toLowerCase().startsWith("/img")) {
+    const prompt = cleanText.replace(/^\/(image|img)\s*/i, "").trim();
+    if (!prompt) {
+      await bot.sendMessage(chatId,
+        `Give me a prompt — e.g. @${botUsername} /image a futuristic city at night`,
+        { reply_to_message_id: msg.message_id }
+      );
+      return;
+    }
+    if (!process.env.HUGGINGFACE_API_TOKEN) {
+      await bot.sendMessage(chatId, "Image generation is not configured.", { reply_to_message_id: msg.message_id });
+      return;
+    }
+    const sentMsg = await bot.sendMessage(chatId, `🎨 Generating image: "${prompt.slice(0, 60)}"...`);
+    const stopImgTyping = startTypingLoop(bot, chatId, "upload_photo");
+    try {
+      const { generateImage } = await import("../services/image.js");
+      const imgBuffer = await generateImage(prompt);
+      stopImgTyping();
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      if (!imgBuffer) {
+        await bot.sendMessage(chatId, "Image generation failed — model may be warming up. Try again in 30s.");
+        return;
+      }
+      await bot.sendPhoto(chatId, imgBuffer, { caption: prompt });
+    } catch (err) {
+      stopImgTyping();
+      logger.error({ err }, "Group image generation error");
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Image generation failed. Please try again.");
+    }
+    return;
+  }
+
+  // /ask command when bot is mentioned
+  if (cleanText.toLowerCase().startsWith("/ask")) {
+    const question = cleanText.replace(/^\/ask\s*/i, "").trim();
+    if (!question) {
+      await bot.sendMessage(chatId, "Ask me something — e.g. /ask What is the speed of light?", { reply_to_message_id: msg.message_id });
+      return;
+    }
+    const stopTypingAsk = startTypingLoop(bot, chatId);
+    const reply = await chat(fromId, chatId + 5555, question, {
+      style: groupSettings.style,
+      emoji: groupSettings.emoji,
+      length: "short",
+    }, user.premium.active);
+    stopTypingAsk();
+    await safeSend(bot, chatId, reply);
+    return;
+  }
+
+  // /translate command when bot is mentioned
+  if (cleanText.toLowerCase().startsWith("/translate") || cleanText.toLowerCase().startsWith("/tr")) {
+    const textToTranslate = cleanText.replace(/^\/(translate|tr)\s*/i, "").trim();
+    if (!textToTranslate) {
+      await bot.sendMessage(chatId,
+        `Provide text to translate — e.g. @${botUsername} /translate Bonjour le monde`,
+        { reply_to_message_id: msg.message_id }
+      );
+      return;
+    }
+    const stopTypingTr = startTypingLoop(bot, chatId);
+    const reply = await chat(fromId, chatId + 9999,
+      `Translate the following to English. Only respond with the translation, nothing else:\n\n"${textToTranslate}"`,
+      { style: "serious", emoji: false, length: "short" },
+      user.premium.active
+    );
+    stopTypingTr();
+    await safeSend(bot, chatId, `Translation:\n\n${reply}`);
+    return;
+  }
+
   // /video command when bot is mentioned
   if (cleanText.toLowerCase().startsWith("/video")) {
     const prompt = cleanText.replace(/^\/video\s*/i, "").trim();

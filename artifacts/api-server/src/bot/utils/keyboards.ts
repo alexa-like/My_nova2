@@ -391,11 +391,35 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
         { text: "🔊 Voice Model", callback_data: "own_voice_models" },
       ],
       [
+        { text: "🎙 Speech (ASR)", callback_data: "own_asr_models" },
         {
           text: maintenanceOn ? "🔴 Maintenance: ON" : "🟢 Maintenance: OFF",
           callback_data: "own_maint",
         },
       ],
+    ],
+  };
+}
+
+export function ownerAsrModelsKeyboard(
+  models: IModelEntry[],
+  activeId: string
+): TelegramBot.InlineKeyboardMarkup {
+  const modelButtons = models.map((m, i) => [
+    {
+      text: (m.id === activeId ? "✅ " : "") + m.name,
+      callback_data: `own_set_asr_${i}`,
+    },
+    {
+      text: "🗑",
+      callback_data: `own_del_asr_${i}`,
+    },
+  ]);
+  return {
+    inline_keyboard: [
+      ...modelButtons,
+      [{ text: "➕ Add New ASR Model", callback_data: "own_add_asr" }],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
     ],
   };
 }
