@@ -9,10 +9,19 @@ export type PendingTextAction =
   | "ai_translate"
   | "ai_generate"
   | "ai_summarize_input"
+  | "ai_debate"
+  | "ai_analyze"
   | "img_generate_text"
   | "fun_8ball"
   | "fun_ship"
-  | "fun_roast_name";
+  | "fun_roast_name"
+  | "fun_truth_reply"
+  | "write_tweet"
+  | "write_caption"
+  | "write_bio"
+  | "write_poem"
+  | "write_email"
+  | "write_lyrics";
 
 export type PendingPhotoAction =
   | "img_edit"

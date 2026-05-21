@@ -10,6 +10,7 @@ import { getPending, clearPending, setPending, PHOTO_ACTIONS } from "../utils/pe
 import {
   mainMenuKeyboard,
   funMenuKeyboard,
+  gamesMenuKeyboard,
   aiMenuKeyboard,
   imageMenuKeyboard,
   backToMainKeyboard,
@@ -51,7 +52,7 @@ export async function handlePrivateMessage(
   const pendingAction = getPending(user.userId);
   if (pendingAction && !PHOTO_ACTIONS.has(pendingAction.type) && !text.startsWith("/")) {
     clearPending(user.userId);
-    await handlePendingText(bot, chatId, user, pendingAction.type, text, e);
+    await handlePendingText(bot, chatId, user, pendingAction.type, text, e, pendingAction.data);
     return;
   }
 
@@ -382,7 +383,8 @@ async function handlePendingText(
   user: IUser,
   actionType: string,
   input: string,
-  e: boolean
+  e: boolean,
+  pendingData?: Record<string, string>
 ): Promise<void> {
   await bot.sendChatAction(chatId, "typing");
   try {
@@ -408,7 +410,21 @@ async function handlePendingText(
         break;
       }
       case "img_generate_text": {
-        await handleImageGeneration(bot, chatId, user, input, e);
+        const styleMap: Record<string, string> = {
+          anime: "anime art style, vibrant colors, cel shading",
+          cyberpunk: "cyberpunk aesthetic, neon lights, dark city, futuristic",
+          fantasy: "epic fantasy art, dramatic lighting, detailed illustration",
+          realistic: "photorealistic, ultra detailed, 8k photography",
+          oil: "oil painting style, textured brushstrokes, classical art",
+          watercolor: "soft watercolor painting, gentle washes, artistic",
+          sketch: "detailed pencil sketch, black and white, fine line art",
+          pixel: "pixel art style, retro 16-bit, colorful pixelated",
+        };
+        const preset = pendingData?.preset;
+        const styledPrompt = preset && styleMap[preset]
+          ? `${input}, ${styleMap[preset]}`
+          : input;
+        await handleImageGeneration(bot, chatId, user, styledPrompt, e);
         break;
       }
       case "fun_8ball": {
@@ -449,6 +465,70 @@ async function handlePendingText(
           { style: "funny", emoji: e, length: "short" }, user.premium.active
         );
         await bot.sendMessage(chatId, `🔥 Roast\n\n${roast}`, { reply_markup: funMenuKeyboard() });
+        break;
+      }
+      case "write_tweet": {
+        const reply = await chat(user.userId, chatId + 9001,
+          `Write a punchy, engaging tweet about: ${input}\n\nRules: max 260 characters, no hashtag spam (at most 2), no "here's a tweet" intro — just the tweet itself.`,
+          { style: user.settings.style, emoji: e, length: "short" }, user.premium.active
+        );
+        await safeSend(bot, chatId, `🐦 Tweet\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
+        break;
+      }
+      case "write_caption": {
+        const reply = await chat(user.userId, chatId + 9002,
+          `Write an engaging Instagram caption for: ${input}\n\nInclude 5-8 relevant hashtags at the end. No intro — just the caption and hashtags.`,
+          { style: user.settings.style, emoji: e, length: "short" }, user.premium.active
+        );
+        await safeSend(bot, chatId, `📸 Instagram Caption\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
+        break;
+      }
+      case "write_bio": {
+        const reply = await chat(user.userId, chatId + 9003,
+          `Write a compelling, memorable bio based on this: ${input}\n\nMake it feel authentic and distinctive. Keep it under 150 characters. No intro.`,
+          { style: user.settings.style, emoji: e, length: "short" }, user.premium.active
+        );
+        await safeSend(bot, chatId, `👤 Bio\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
+        break;
+      }
+      case "write_lyrics": {
+        const reply = await chat(user.userId, chatId + 9004,
+          `Write original song lyrics about: ${input}\n\nInclude one verse and one chorus. Make them flow naturally with rhythm. No intro text.`,
+          { style: user.settings.style, emoji: false, length: "long" }, user.premium.active
+        );
+        await safeSend(bot, chatId, `🎵 Song Lyrics\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
+        break;
+      }
+      case "write_email": {
+        const reply = await chat(user.userId, chatId + 9005,
+          `Write a professional, well-structured email for this situation: ${input}\n\nInclude subject line, greeting, body, and sign-off. No meta-commentary.`,
+          { style: "serious", emoji: false, length: "long" }, user.premium.active
+        );
+        await safeSend(bot, chatId, `📧 Email\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
+        break;
+      }
+      case "write_poem": {
+        const reply = await chat(user.userId, chatId + 9006,
+          `Write a beautiful, original poem about: ${input}\n\nMake it evocative and memorable. Any style. No intro — just the poem.`,
+          { style: user.settings.style, emoji: false, length: "short" }, user.premium.active
+        );
+        await safeSend(bot, chatId, `🎭 Poem\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
+        break;
+      }
+      case "ai_debate": {
+        const reply = await chat(user.userId, chatId + 9007,
+          `Debate both sides of: "${input}"\n\nFormat:\nSide A (For):\n[3 strong arguments]\n\nSide B (Against):\n[3 strong arguments]\n\nVerdict: [1 sentence on which side has the stronger case]\n\nBe sharp, fair, and thought-provoking.`,
+          { style: "serious", emoji: e, length: "long" }, user.premium.active
+        );
+        await safeSend(bot, chatId, `🗣️ Debate: ${input}\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
+        break;
+      }
+      case "ai_analyze": {
+        const reply = await chat(user.userId, chatId + 9008,
+          `Analyze the following text and break it down:\n\n"${input}"\n\nProvide:\n• Tone (e.g. formal, casual, aggressive)\n• Emotion (what feeling does it convey)\n• Intent (what is the writer trying to do)\n• Writing style (e.g. persuasive, descriptive, narrative)\n• Readability (who is the target audience)\n\nBe concise and insightful.`,
+          { style: "serious", emoji: false, length: "short" }, user.premium.active
+        );
+        await safeSend(bot, chatId, `🔬 Text Analysis\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
         break;
       }
       default:
