@@ -132,13 +132,14 @@ export async function chat(
     language?: string;
   },
   isPremium: boolean,
-  mood?: string
+  mood?: string,
+  preferredModel?: string
 ): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return "AI service is not configured.";
 
   const config = await getOrCreateBotConfig();
-  const model = config.activeChatModel;
+  const model = preferredModel || config.activeChatModel;
 
   let memory = await Memory.findOne({ userId, chatId });
   if (!memory) {

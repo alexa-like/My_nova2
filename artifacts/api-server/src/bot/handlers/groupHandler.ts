@@ -891,6 +891,40 @@ export async function handleGroupMessage(
   const cleanText = text.replace(new RegExp(`@${botUsername}`, "gi"), "").trim();
   if (!cleanText) return;
 
+  // /video command when bot is mentioned
+  if (cleanText.toLowerCase().startsWith("/video")) {
+    const prompt = cleanText.replace(/^\/video\s*/i, "").trim();
+    if (!prompt) {
+      await bot.sendMessage(chatId, "Give me a prompt — e.g. @Novabyolabot /video a sunset timelapse over the ocean");
+      return;
+    }
+    if (!process.env.HUGGINGFACE_API_TOKEN) {
+      await bot.sendMessage(chatId, "Video generation is not configured.");
+      return;
+    }
+    const sentMsg = await bot.sendMessage(chatId,
+      `🎬 Generating video: "${prompt.slice(0, 60)}"... This takes 1-3 minutes.`
+    );
+    const stopVidTyping = startTypingLoop(bot, chatId, "upload_video");
+    try {
+      const { generateVideo } = await import("../services/video.js");
+      const videoBuffer = await generateVideo(prompt);
+      stopVidTyping();
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      if (!videoBuffer) {
+        await bot.sendMessage(chatId, "Video generation failed. The model may be warming up — try again.");
+        return;
+      }
+      await bot.sendVideo(chatId, videoBuffer, { caption: prompt });
+    } catch (err) {
+      stopVidTyping();
+      logger.error({ err }, "Group video generation error");
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Video generation failed. Please try again later.");
+    }
+    return;
+  }
+
   const stopTyping = startTypingLoop(bot, chatId);
   const reply = await chat(fromId, chatId, cleanText, {
     style: groupSettings.style,

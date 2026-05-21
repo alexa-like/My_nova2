@@ -9,6 +9,7 @@ import { setPending } from "../utils/pendingActions.js";
 import { getOrCreateBotConfig } from "../models/BotConfig.js";
 import { sendOwnerPanel } from "./ownerHandler.js";
 import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
+import { textToSpeech, VOICE_PREVIEW_TEXT } from "../services/tts.js";
 import {
   mainMenuKeyboard,
   funMenuKeyboard,
@@ -30,6 +31,8 @@ import {
   triviaKeyboard,
   wyrKeyboard,
   repeatKeyboard,
+  userModelKeyboard,
+  voiceSettingsKeyboard,
   ownerUsersKeyboard,
   ownerPremiumKeyboard,
   ownerCodesKeyboard,
@@ -38,6 +41,7 @@ import {
   ownerChatModelsKeyboard,
   ownerImageModelsKeyboard,
   ownerVideoModelsKeyboard,
+  ownerVoiceModelsKeyboard,
   ownerUserListKeyboard,
   backToOwnerKeyboard,
 } from "../utils/keyboards.js";
@@ -104,12 +108,18 @@ async function editMsg(
   bot: TelegramBot,
   query: TelegramBot.CallbackQuery,
   text: string,
-  reply_markup?: TelegramBot.InlineKeyboardMarkup
+  reply_markup?: TelegramBot.InlineKeyboardMarkup,
+  parse_mode?: "HTML" | "Markdown"
 ): Promise<void> {
   const chatId = query.message!.chat.id;
   const messageId = query.message!.message_id;
   try {
-    await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, reply_markup });
+    await bot.editMessageText(text, {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup,
+      ...(parse_mode ? { parse_mode } : {}),
+    });
   } catch {
     // Message may be identical — not an error
   }
@@ -1017,9 +1027,9 @@ export async function handleCallbackQuery(
 
     if (data === "own_add_chat") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      setPending(userId, "owner_add_chat_model");
+      setPending(userId, "owner_add_chat_step1");
       await editMsg(bot, query,
-        `🧠 Add Chat Model\n━━━━━━━━━━━━━━━━\nSend the model in this format:\n\n<code>modelId|Display Name</code>\n\nExample:\n<code>openai/gpt-4o|GPT-4o</code>\n<code>anthropic/claude-3-5-sonnet|Claude 3.5</code>\n\nModel IDs come from OpenRouter.`,
+        `🧠 Add Chat Model — Step 1 of 2\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nWhat do you want to call this model?\n\nExamples: GPT-4o, Claude 3.5, Llama 3.3\n\nJust type the display name:`,
         backToOwnerKeyboard()
       );
       return;
@@ -1027,9 +1037,9 @@ export async function handleCallbackQuery(
 
     if (data === "own_add_img") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      setPending(userId, "owner_add_image_model");
+      setPending(userId, "owner_add_img_step1");
       await editMsg(bot, query,
-        `🖼 Add Image Model\n━━━━━━━━━━━━━━━━\nSend the model in this format:\n\n<code>modelId|Display Name</code>\n\nExample:\n<code>black-forest-labs/FLUX.1-dev|FLUX Dev</code>\n\nModel IDs come from HuggingFace.`,
+        `🖼 Add Image Model — Step 1 of 2\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nWhat do you want to call this model?\n\nExamples: FLUX Dev, SD 3, Playground v3\n\nJust type the display name:`,
         backToOwnerKeyboard()
       );
       return;
@@ -1037,10 +1047,63 @@ export async function handleCallbackQuery(
 
     if (data === "own_add_vid") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      setPending(userId, "owner_add_video_model");
+      setPending(userId, "owner_add_vid_step1");
       await editMsg(bot, query,
-        `🎬 Add Video Model\n━━━━━━━━━━━━━━━━\nSend the model in this format:\n\n<code>modelId|Display Name</code>\n\nExample:\n<code>damo-vilab/text-to-video-ms-1.7b|ModelScope</code>\n\nModel IDs come from HuggingFace.`,
+        `🎬 Add Video Model — Step 1 of 2\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nWhat do you want to call this model?\n\nExamples: ModelScope, I2VGen XL\n\nJust type the display name:`,
         backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_add_voice") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_add_voice_step1");
+      await editMsg(bot, query,
+        `🔊 Add Voice — Step 1 of 2\n━━━━━━━━━━━━━━━━━━━━━━━\nWhat do you want to call this voice?\n\nExamples: Crystal, Deep Male, Soft Female\n\nJust type the display name:`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_voice_models") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const config = await getOrCreateBotConfig();
+      const active = config.voiceModels.find((m) => m.id === config.activeVoiceModel);
+      await editMsg(bot, query,
+        `🔊 Voice Models\n━━━━━━━━━━━━━━\nActive: ${active?.name || config.activeVoiceModel}\n\nTap to set as default. 🗑 to remove.\nAdd new with ➕.`,
+        ownerVoiceModelsKeyboard(config.voiceModels, config.activeVoiceModel)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_set_voice_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_set_voice_", ""));
+      const config = await getOrCreateBotConfig();
+      const model = config.voiceModels[idx];
+      if (!model) { await answer(bot, query.id, "Voice not found."); return; }
+      config.activeVoiceModel = model.id;
+      await config.save();
+      await answer(bot, query.id, `✅ Voice switched to ${model.name}`);
+      await editMsg(bot, query,
+        `🔊 Voice Models\n━━━━━━━━━━━━━━\nActive: ${model.name}\n\nTap to set as default. 🗑 to remove.\nAdd new with ➕.`,
+        ownerVoiceModelsKeyboard(config.voiceModels, config.activeVoiceModel)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_del_voice_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_del_voice_", ""));
+      const config = await getOrCreateBotConfig();
+      if (config.voiceModels.length <= 1) { await answer(bot, query.id, "Cannot delete the only voice."); return; }
+      const removed = config.voiceModels.splice(idx, 1)[0];
+      if (config.activeVoiceModel === removed?.id) config.activeVoiceModel = config.voiceModels[0].id;
+      await config.save();
+      await answer(bot, query.id, `🗑 Removed ${removed?.name}`);
+      await editMsg(bot, query,
+        `🔊 Voice Models\n━━━━━━━━━━━━━━\nActive: ${config.voiceModels.find((m) => m.id === config.activeVoiceModel)?.name}\n\nTap to set as default. 🗑 to remove.\nAdd new with ➕.`,
+        ownerVoiceModelsKeyboard(config.voiceModels, config.activeVoiceModel)
       );
       return;
     }
@@ -1188,6 +1251,108 @@ export async function handleCallbackQuery(
         `👥 Users — Page ${page}/${totalPages}\n━━━━━━━━━━━━━━━━━\n${lines.join("\n")}`,
         ownerUserListKeyboard(page, totalPages)
       );
+      return;
+    }
+
+    // ── User: AI Model Selection ──────────────────────────────────────────
+
+    if (data === "model_panel") {
+      const config = await getOrCreateBotConfig();
+      const currentModel = config.chatModels.find(
+        (m) => m.id === (user.preferredChatModel || config.activeChatModel)
+      );
+      await editMsg(bot, query,
+        `🤖 AI Model\n━━━━━━━━━━\nCurrent: ${currentModel?.name || "Default"}\n${user.preferredChatModel ? "You have a custom model set." : "Using the global default."}\n\nTap to switch models:`,
+        userModelKeyboard(config.chatModels, user.preferredChatModel, config.activeChatModel)
+      );
+      return;
+    }
+
+    if (data.startsWith("model_pick_")) {
+      const idx = parseInt(data.replace("model_pick_", ""));
+      const config = await getOrCreateBotConfig();
+      const model = config.chatModels[idx];
+      if (!model) { await answer(bot, query.id, "Model not found."); return; }
+      user.preferredChatModel = model.id;
+      await user.save();
+      await answer(bot, query.id, `✅ Switched to ${model.name}`);
+      await editMsg(bot, query,
+        `🤖 AI Model\n━━━━━━━━━━\nCurrent: ${model.name}\n✅ Model switched!\n\nTap to switch again:`,
+        userModelKeyboard(config.chatModels, user.preferredChatModel, config.activeChatModel)
+      );
+      return;
+    }
+
+    // ── User: Voice Settings ──────────────────────────────────────────────
+
+    if (data === "voice_panel") {
+      const config = await getOrCreateBotConfig();
+      const currentVoice = config.voiceModels.find(
+        (m) => m.id === (user.settings?.voiceName || config.activeVoiceModel)
+      );
+      const voiceEnabled = user.settings?.voiceEnabled ?? false;
+      await editMsg(bot, query,
+        `🔊 Voice Replies\n━━━━━━━━━━━━━━\n` +
+        `Status: ${voiceEnabled ? "ON — I'll send a voice note with every reply" : "OFF — text only"}\n` +
+        `Current voice: ${currentVoice?.name || "Nova"}\n\n` +
+        `${voiceEnabled ? "Pick your voice and tap ▶️ Preview to hear a sample:" : "Turn on to enable voice replies:"}`,
+        voiceSettingsKeyboard(voiceEnabled, user.settings?.voiceName || config.activeVoiceModel, config.voiceModels)
+      );
+      return;
+    }
+
+    if (data === "voice_toggle") {
+      user.settings.voiceEnabled = !user.settings.voiceEnabled;
+      await user.save();
+      const config = await getOrCreateBotConfig();
+      const voiceEnabled = user.settings.voiceEnabled;
+      await answer(bot, query.id, voiceEnabled ? "🔊 Voice replies turned ON!" : "🔇 Voice replies turned OFF");
+      await editMsg(bot, query,
+        `🔊 Voice Replies\n━━━━━━━━━━━━━━\n` +
+        `Status: ${voiceEnabled ? "ON — I'll send a voice note with every reply" : "OFF — text only"}\n` +
+        `Current voice: ${config.voiceModels.find((m) => m.id === (user.settings.voiceName || config.activeVoiceModel))?.name || "Nova"}\n\n` +
+        `${voiceEnabled ? "Pick your voice and tap ▶️ Preview to hear a sample:" : "Turn on to enable voice replies:"}`,
+        voiceSettingsKeyboard(voiceEnabled, user.settings.voiceName || config.activeVoiceModel, config.voiceModels)
+      );
+      return;
+    }
+
+    if (data.startsWith("voice_pick_")) {
+      const idx = parseInt(data.replace("voice_pick_", ""));
+      const config = await getOrCreateBotConfig();
+      const voice = config.voiceModels[idx];
+      if (!voice) { await answer(bot, query.id, "Voice not found."); return; }
+      user.settings.voiceName = voice.id;
+      await user.save();
+      await answer(bot, query.id, `✅ Voice set to ${voice.name}`);
+      await editMsg(bot, query,
+        `🔊 Voice Replies\n━━━━━━━━━━━━━━\n` +
+        `Status: ${user.settings.voiceEnabled ? "ON" : "OFF"}\n` +
+        `Current voice: ${voice.name} ✅\n\n` +
+        `Tap ▶️ Preview to hear how this voice sounds:`,
+        voiceSettingsKeyboard(user.settings.voiceEnabled, voice.id, config.voiceModels)
+      );
+      return;
+    }
+
+    if (data.startsWith("voice_preview_")) {
+      const idx = parseInt(data.replace("voice_preview_", ""));
+      const config = await getOrCreateBotConfig();
+      const voice = config.voiceModels[idx];
+      if (!voice) { await answer(bot, query.id, "Voice not found."); return; }
+      await answer(bot, query.id, `Generating preview for ${voice.name}...`);
+      if (!process.env.HUGGINGFACE_API_TOKEN) {
+        await bot.sendMessage(chatId, "Voice preview is not available — HuggingFace API key not set.");
+        return;
+      }
+      const audio = await textToSpeech(VOICE_PREVIEW_TEXT, voice.id);
+      if (audio) {
+        await bot.sendVoice(chatId, audio, { caption: `🎙 ${voice.name} — voice preview` });
+      } else {
+        await bot.sendMessage(chatId,
+          `Could not generate preview for ${voice.name}. The model may be loading — try again in a moment.`
+        );
+      }
       return;
     }
 

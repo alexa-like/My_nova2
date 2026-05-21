@@ -216,6 +216,7 @@ export function moodPickerKeyboard(current?: string): TelegramBot.InlineKeyboard
 
 export function settingsMenuKeyboard(user: IUser): TelegramBot.InlineKeyboardMarkup {
   const moodLabel = user.mood ? `😶 Mood: ${user.mood}` : "😶 Set Mood";
+  const voiceLabel = user.settings?.voiceEnabled ? "🔊 Voice: ON" : "🔇 Voice: OFF";
   return {
     inline_keyboard: [
       [
@@ -232,6 +233,10 @@ export function settingsMenuKeyboard(user: IUser): TelegramBot.InlineKeyboardMar
       [
         { text: "🌐 Language", callback_data: "settings_lang" },
         { text: moodLabel, callback_data: "settings_mood" },
+      ],
+      [
+        { text: "🤖 AI Model", callback_data: "model_panel" },
+        { text: voiceLabel, callback_data: "voice_panel" },
       ],
       [
         { text: "🧹 Clear Memory", callback_data: "settings_clear_memory" },
@@ -383,6 +388,9 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
       ],
       [
         { text: "🎬 Video Model", callback_data: "own_vid_models" },
+        { text: "🔊 Voice Model", callback_data: "own_voice_models" },
+      ],
+      [
         {
           text: maintenanceOn ? "🔴 Maintenance: ON" : "🟢 Maintenance: OFF",
           callback_data: "own_maint",
@@ -533,6 +541,89 @@ export function ownerVideoModelsKeyboard(
     inline_keyboard: [
       ...modelButtons,
       [{ text: "➕ Add New Model", callback_data: "own_add_vid" }],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+// ── User: AI Model selection keyboard ─────────────────────────────────────────
+
+export function userModelKeyboard(
+  models: IModelEntry[],
+  preferredId?: string,
+  globalActiveId?: string
+): TelegramBot.InlineKeyboardMarkup {
+  const modelRows = models.map((m) => {
+    const isSelected = m.id === (preferredId || globalActiveId);
+    return [
+      {
+        text: (isSelected ? "✅ " : "") + m.name,
+        callback_data: `model_pick_${models.indexOf(m)}`,
+      },
+    ];
+  });
+
+  return {
+    inline_keyboard: [
+      ...modelRows,
+      [{ text: "⬅️ Back to Settings", callback_data: "settings_menu" }],
+    ],
+  };
+}
+
+// ── User: Voice settings keyboard ─────────────────────────────────────────────
+
+export function voiceSettingsKeyboard(
+  voiceEnabled: boolean,
+  currentVoiceId: string,
+  voices: IModelEntry[]
+): TelegramBot.InlineKeyboardMarkup {
+  const voiceRows = voices.map((v, i) => [
+    {
+      text: (v.id === currentVoiceId ? "✅ " : "") + v.name,
+      callback_data: `voice_pick_${i}`,
+    },
+    {
+      text: "▶️ Preview",
+      callback_data: `voice_preview_${i}`,
+    },
+  ]);
+
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: voiceEnabled ? "🔊 Voice: ON — tap to turn OFF" : "🔇 Voice: OFF — tap to turn ON",
+          callback_data: "voice_toggle",
+        },
+      ],
+      ...(voiceEnabled ? voiceRows : []),
+      [{ text: "⬅️ Back to Settings", callback_data: "settings_menu" }],
+    ],
+  };
+}
+
+// ── Owner: Voice models keyboard ───────────────────────────────────────────────
+
+export function ownerVoiceModelsKeyboard(
+  models: IModelEntry[],
+  activeId: string
+): TelegramBot.InlineKeyboardMarkup {
+  const modelButtons = models.map((m, i) => [
+    {
+      text: (m.id === activeId ? "✅ " : "") + m.name,
+      callback_data: `own_set_voice_${i}`,
+    },
+    {
+      text: "🗑",
+      callback_data: `own_del_voice_${i}`,
+    },
+  ]);
+
+  return {
+    inline_keyboard: [
+      ...modelButtons,
+      [{ text: "➕ Add New Voice", callback_data: "own_add_voice" }],
       [{ text: "⬅️ Back", callback_data: "own_panel" }],
     ],
   };

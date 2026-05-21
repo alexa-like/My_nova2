@@ -5,6 +5,7 @@ import { chat, clearMemory } from "../services/ai.js";
 import { generateImage, getImageLimit, editImage, downloadTelegramPhoto } from "../services/image.js";
 import { generateVideo } from "../services/video.js";
 import { transcribeVoice, downloadTelegramAudio } from "../services/voice.js";
+import { textToSpeech, VOICE_PREVIEW_TEXT } from "../services/tts.js";
 import { isRateLimited } from "../utils/rateLimiter.js";
 import { formatDate, addDays, getUserName, safeSend, startTypingLoop } from "../utils/helpers.js";
 import { parseDuration } from "../models/RedeemCode.js";
@@ -158,7 +159,7 @@ export async function handlePrivateMessage(
     if (OWNER_PENDING_ACTIONS.has(pendingAction.type) && user.isOwner) {
       await handleOwnerPendingText(
         bot, chatId, user.userId, pendingAction.type, text,
-        getMaintenance, setMaintenance
+        getMaintenance, setMaintenance, pendingAction.data
       );
       return;
     }
@@ -218,6 +219,41 @@ export async function handlePrivateMessage(
       `Messages: ${user.usage.messages}\n` +
       `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}`,
       { reply_markup: { inline_keyboard: [[{ text: "⚙️ Settings", callback_data: "settings_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+    );
+    return;
+  }
+
+  // /voice — voice settings
+  if (text === "/voice") {
+    const config = await (await import("../models/BotConfig.js")).getOrCreateBotConfig();
+    const { voiceSettingsKeyboard } = await import("../utils/keyboards.js");
+    const voiceEnabled = user.settings?.voiceEnabled ?? false;
+    const currentVoice = config.voiceModels.find(
+      (m) => m.id === (user.settings?.voiceName || config.activeVoiceModel)
+    );
+    await bot.sendMessage(chatId,
+      `🔊 Voice Replies\n\n` +
+      `Status: ${voiceEnabled ? "ON" : "OFF"}\n` +
+      `Voice: ${currentVoice?.name || "Nova"}\n\n` +
+      `${voiceEnabled ? "Pick a voice below, or tap ▶️ Preview to hear a sample:" : "Tap below to turn voice replies on:"}`,
+      { reply_markup: voiceSettingsKeyboard(voiceEnabled, user.settings?.voiceName || config.activeVoiceModel, config.voiceModels) }
+    );
+    return;
+  }
+
+  // /model — AI model selection
+  if (text === "/model" || text === "/models") {
+    const config = await (await import("../models/BotConfig.js")).getOrCreateBotConfig();
+    const currentModel = config.chatModels.find(
+      (m) => m.id === (user.preferredChatModel || config.activeChatModel)
+    );
+    const { userModelKeyboard } = await import("../utils/keyboards.js");
+    await bot.sendMessage(chatId,
+      `🤖 AI Model\n\n` +
+      `Current model: ${currentModel?.name || "Default"}\n` +
+      `${user.preferredChatModel ? "You have a custom model set." : "Using the global active model."}\n\n` +
+      `Tap to switch:`,
+      { reply_markup: userModelKeyboard(config.chatModels, user.preferredChatModel, config.activeChatModel) }
     );
     return;
   }
@@ -528,9 +564,18 @@ export async function handlePrivateMessage(
   user.usage.messages += 1;
   await user.save();
   const stopTyping = startTypingLoop(bot, chatId);
-  const reply = await chat(user.userId, chatId, text, user.settings, user.premium.active, user.mood ?? undefined);
+  const reply = await chat(user.userId, chatId, text, user.settings, user.premium.active, user.mood ?? undefined, user.preferredChatModel ?? undefined);
   stopTyping();
   await safeSend(bot, chatId, reply);
+
+  // Voice reply — fire-and-forget so it doesn't block the text response
+  if (user.settings?.voiceEnabled && process.env.HUGGINGFACE_API_TOKEN) {
+    textToSpeech(reply, user.settings.voiceName).then(async (audio) => {
+      if (audio) {
+        try { await bot.sendVoice(chatId, audio); } catch {}
+      }
+    }).catch(() => {});
+  }
 }
 
 // ── Pending text action handler (for button-triggered multi-step flows) ────────

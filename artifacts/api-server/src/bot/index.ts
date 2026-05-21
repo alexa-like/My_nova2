@@ -60,6 +60,8 @@ export async function startBot(): Promise<void> {
       { command: "feedback", description: "Send feedback to owner" },
       { command: "profile", description: "View your profile" },
       { command: "settings", description: "View your settings" },
+      { command: "model", description: "Switch your AI chat model" },
+      { command: "voice", description: "Configure voice reply settings" },
       { command: "premium", description: "Check premium status" },
       { command: "redeem", description: "Redeem a premium code" },
       { command: "forget", description: "Clear conversation memory" },

@@ -12,7 +12,10 @@ export interface IUser extends Document {
     emoji: boolean;
     length: "long" | "short";
     language: string;
+    voiceEnabled: boolean;
+    voiceName: string;
   };
+  preferredChatModel?: string;
   mood?: string;
   interests: string[];
   notes: string[];
@@ -50,7 +53,10 @@ const UserSchema = new Schema<IUser>(
       emoji: { type: Boolean, default: true },
       length: { type: String, enum: ["long", "short"], default: "long" },
       language: { type: String, default: "en" },
+      voiceEnabled: { type: Boolean, default: false },
+      voiceName: { type: String, default: "facebook/mms-tts-eng" },
     },
+    preferredChatModel: { type: String },
     mood: { type: String },
     interests: [{ type: String }],
     notes: [{ type: String }],
