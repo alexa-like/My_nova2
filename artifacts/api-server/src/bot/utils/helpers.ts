@@ -46,9 +46,43 @@ export function startTypingLoop(
   return () => clearInterval(interval);
 }
 
+const MAX_MSG_LEN = 4000;
+
 /**
- * Send a message safely — tries Markdown first, falls back to plain text.
- * Prevents crashes when AI returns unbalanced markdown characters.
+ * Split a long string into chunks at natural break points (paragraph → line → word).
+ * Each chunk is guaranteed to be ≤ maxLen characters.
+ */
+function splitMessage(text: string, maxLen = MAX_MSG_LEN): string[] {
+  if (text.length <= maxLen) return [text];
+  const chunks: string[] = [];
+  let remaining = text.trim();
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLen) {
+      chunks.push(remaining);
+      break;
+    }
+    // Prefer paragraph break
+    let splitAt = remaining.lastIndexOf("\n\n", maxLen);
+    if (splitAt < maxLen * 0.5) {
+      // Fall back to newline
+      splitAt = remaining.lastIndexOf("\n", maxLen);
+    }
+    if (splitAt < maxLen * 0.5) {
+      // Fall back to word boundary
+      splitAt = remaining.lastIndexOf(" ", maxLen);
+    }
+    if (splitAt <= 0) {
+      splitAt = maxLen;
+    }
+    chunks.push(remaining.slice(0, splitAt).trimEnd());
+    remaining = remaining.slice(splitAt).trimStart();
+  }
+  return chunks.filter((c) => c.length > 0);
+}
+
+/**
+ * Send a message safely — handles Markdown parse errors and splits long messages.
+ * Only the final chunk gets the reply_markup so buttons appear once at the end.
  */
 export async function safeSend(
   bot: TelegramBot,
@@ -56,15 +90,27 @@ export async function safeSend(
   text: string,
   extra: TelegramBot.SendMessageOptions = {}
 ): Promise<void> {
-  try {
-    await bot.sendMessage(chatId, text, { parse_mode: "Markdown", ...extra });
-  } catch {
-    // Markdown failed (unbalanced chars from AI) — send as plain text
+  const chunks = splitMessage(text);
+
+  for (let i = 0; i < chunks.length; i++) {
+    const isLast = i === chunks.length - 1;
+    const chunkExtra = isLast ? extra : { ...extra, reply_markup: undefined };
+    const chunk = chunks[i];
+
     try {
-      await bot.sendMessage(chatId, text, extra);
-    } catch (err) {
-      // Last resort — send a truncated safe version
-      await bot.sendMessage(chatId, text.slice(0, 4000).replace(/[*_`[\]()]/g, ""), extra);
+      await bot.sendMessage(chatId, chunk, { parse_mode: "Markdown", ...chunkExtra });
+    } catch {
+      // Markdown failed (unbalanced chars from AI) — send as plain text
+      try {
+        await bot.sendMessage(chatId, chunk, chunkExtra);
+      } catch {
+        // Last resort — strip markdown chars
+        await bot.sendMessage(
+          chatId,
+          chunk.replace(/[*_`[\]()]/g, ""),
+          chunkExtra
+        ).catch(() => {});
+      }
     }
   }
 }

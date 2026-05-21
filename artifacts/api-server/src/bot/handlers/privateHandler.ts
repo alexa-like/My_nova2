@@ -43,6 +43,19 @@ import { parseDurationToMs } from "../models/Reminder.js";
 import { isPremiumEmojiEnabled, applyPremiumEmojiSafe } from "../utils/premiumEmoji.js";
 import { logger } from "../../lib/logger.js";
 
+// ── Per-user build/deploy cooldown (3 min) ────────────────────────────────────
+const BUILD_COOLDOWN_MS = 3 * 60 * 1000;
+const buildCooldownMap = new Map<number, number>();
+
+function checkBuildCooldown(userId: number): number {
+  const last = buildCooldownMap.get(userId) ?? 0;
+  return Math.max(0, BUILD_COOLDOWN_MS - (Date.now() - last));
+}
+
+function setBuildCooldown(userId: number): void {
+  buildCooldownMap.set(userId, Date.now());
+}
+
 async function sendAIReply(
   bot: TelegramBot,
   chatId: number,
@@ -230,7 +243,8 @@ export async function handleVoiceMessage(
 
     try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
 
-    await bot.sendMessage(chatId, e ? `🎙️ I heard: "${transcription}"` : `Voice: "${transcription}"`);
+    const heard = e ? `🎙️ I heard: "${transcription}"` : `Voice: "${transcription}"`;
+    await safeSend(bot, chatId, heard);
 
     const imagePrompt = detectImageIntent(transcription);
     if (imagePrompt) {
@@ -1463,11 +1477,20 @@ async function handleBuildRequest(
   prompt: string,
   e: boolean
 ): Promise<void> {
+  const cooldownMs = checkBuildCooldown(user.userId);
+  if (cooldownMs > 0) {
+    const secs = Math.ceil(cooldownMs / 1000);
+    await bot.sendMessage(chatId, `⏳ Please wait ${secs}s before building again.\n\nBuilding takes significant resources — one at a time!`);
+    return;
+  }
+
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     await bot.sendMessage(chatId, "AI service is not configured. Ask the bot owner to set up OPENROUTER_API_KEY.");
     return;
   }
+
+  setBuildCooldown(user.userId);
 
   const githubToken = process.env.GITHUB_TOKEN;
   const githubUsername = process.env.GITHUB_USERNAME;
@@ -1618,11 +1641,20 @@ async function handleDeployRequest(
   vercelToken: string,
   e: boolean
 ): Promise<void> {
+  const cooldownMs = checkBuildCooldown(user.userId);
+  if (cooldownMs > 0) {
+    const secs = Math.ceil(cooldownMs / 1000);
+    await bot.sendMessage(chatId, `⏳ Please wait ${secs}s before deploying again.`);
+    return;
+  }
+
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     await bot.sendMessage(chatId, "AI service not configured. OPENROUTER_API_KEY is missing.");
     return;
   }
+
+  setBuildCooldown(user.userId);
 
   const statusMsg = await bot.sendMessage(chatId,
     `🔨 Generating your project...\n\n"${prompt.substring(0, 100)}"\n\nThis takes 1-3 minutes — generation + deployment.`
