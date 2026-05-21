@@ -10,12 +10,41 @@ import { getPending, clearPending, setPending, PHOTO_ACTIONS } from "../utils/pe
 import {
   mainMenuKeyboard,
   funMenuKeyboard,
-  gamesMenuKeyboard,
   aiMenuKeyboard,
   imageMenuKeyboard,
+  settingsMenuKeyboard,
+  moodPickerKeyboard,
   backToMainKeyboard,
+  repeatKeyboard,
 } from "../utils/keyboards.js";
 import { logger } from "../../lib/logger.js";
+
+// ── Image intent detection ────────────────────────────────────────────────────
+
+function detectImageIntent(text: string): string | null {
+  const t = text.trim();
+  if (t.length < 5 || t.startsWith("/")) return null;
+
+  const patterns = [
+    /^(?:generate|create|make|produce)\s+(?:an?\s+)?(?:image|photo|picture|pic|illustration|artwork|drawing|painting|wallpaper|render|poster)\s+(?:of|showing|depicting|about|with|for)?\s*(.+)/i,
+    /^(?:draw|paint|illustrate|sketch|render|design)\s+(?:me\s+)?(?:an?\s+)?(.+)/i,
+    /^(?:show me|gimme|give me)\s+(?:an?\s+)?(?:image|photo|picture|pic|illustration)\s+(?:of\s+)?(.+)/i,
+    /^(?:image|photo|picture)\s+(?:of\s+|showing\s+)?(.+)/i,
+    /^(?:can you|could you|please)\s+(?:generate|create|make|draw|paint|design)\s+(?:an?\s+)?(?:image|photo|picture|illustration|drawing)\s+(?:of|showing|with|about|for)?\s*(.+)/i,
+  ];
+
+  const skip = ["me", "that", "this", "one", "some", "it", "anything", "something", "a photo", "an image", "sure", "yes"];
+
+  for (const pattern of patterns) {
+    const match = t.match(pattern);
+    const captured = match?.[1]?.trim();
+    if (match && captured && captured.length > 3) {
+      const prompt = captured.replace(/[?.!]+$/, "");
+      if (!skip.includes(prompt.toLowerCase())) return prompt;
+    }
+  }
+  return null;
+}
 
 export async function handlePrivateMessage(
   bot: TelegramBot,
@@ -67,33 +96,22 @@ export async function handlePrivateMessage(
 
   // /help
   if (text === "/help") {
-    const badge = user.premium.active ? " (Premium)" : "";
+    const badge = user.premium.active ? " ✨ Premium" : "";
     await bot.sendMessage(chatId,
-      `Nova Commands${badge}\n\n` +
-      `Chat:\n` +
-      `Just type anything to chat with Nova!\n` +
-      `/ask <question> — Quick answer (no memory saved)\n` +
-      `/forget — Clear conversation memory\n\n` +
-      `Images:\n` +
-      `/image <prompt> — Generate an image\n\n` +
-      `Utilities:\n` +
-      `/translate <text> — Translate text to English\n` +
-      `/summarize — Summarize our conversation\n` +
-      `/quote — Get an inspiring quote\n` +
-      `/fact — Random fun fact\n` +
-      `/tip — Productivity tip\n` +
-      `/mood <mood> — Set your mood (happy/sad/stressed/bored/excited)\n` +
-      `/feedback <message> — Send feedback to the owner\n\n` +
-      `Settings:\n` +
-      `/profile — Your profile\n` +
-      `/settings — Your settings\n` +
-      `/lang <en|ar|fr|es> — Set language\n` +
-      `/style friendly|funny|serious|balanced\n` +
-      `/length long|short\n` +
-      `/emoji on|off\n\n` +
-      `Premium:\n` +
-      `/premium — Premium status\n` +
-      `/redeem <code> — Redeem a code`
+      `Hey ${name}${badge}! Here's everything I can do:\n\n` +
+      `💬 Just type anything to chat with me!\n\n` +
+      `🎨 /image <prompt> — Generate an image\n` +
+      `🔤 /translate <text> — Translate to English\n` +
+      `📝 /summarize — Summarize our conversation\n` +
+      `💬 /quote — Inspiring quote\n` +
+      `🎲 /fact — Random mind-blowing fact\n` +
+      `💡 /tip — Life or productivity tip\n` +
+      `😶 /mood <mood> — Set your mood\n` +
+      `❓ /ask <question> — Quick answer (no memory)\n` +
+      `📤 /feedback <msg> — Send feedback\n\n` +
+      `⚙️ /profile /settings /premium /redeem /forget\n\n` +
+      `Or tap a button below to explore everything 👇`,
+      { reply_markup: mainMenuKeyboard() }
     );
     return;
   }
@@ -101,10 +119,10 @@ export async function handlePrivateMessage(
   // /profile
   if (text === "/profile") {
     const premiumLine = user.premium.active
-      ? `Premium — expires ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}`
+      ? `✨ Premium — expires ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}`
       : "Free";
     await bot.sendMessage(chatId,
-      `Your Profile\n\n` +
+      `👤 Your Profile\n\n` +
       `Name: ${name}\n` +
       `ID: ${user.userId}\n` +
       `Username: ${user.username ? "@" + user.username : "N/A"}\n` +
@@ -116,8 +134,9 @@ export async function handlePrivateMessage(
       `Reply length: ${user.settings.length}\n` +
       `Warnings: ${user.warnings}\n` +
       `First seen: ${formatDate(user.firstSeen)}\n` +
-      `Messages today: ${user.usage.messages}\n` +
-      `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}`
+      `Messages: ${user.usage.messages}\n` +
+      `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}`,
+      { reply_markup: { inline_keyboard: [[{ text: "⚙️ Settings", callback_data: "settings_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
     );
     return;
   }
@@ -125,38 +144,39 @@ export async function handlePrivateMessage(
   // /settings
   if (text === "/settings") {
     await bot.sendMessage(chatId,
-      `Your Settings\n\n` +
+      `⚙️ Settings\n\n` +
       `Style: ${user.settings.style}\n` +
       `Language: ${user.settings.language || "en"}\n` +
       `Emojis: ${user.settings.emoji ? "On" : "Off"}\n` +
-      `Reply length: ${user.settings.length}\n\n` +
-      `Change with:\n` +
-      `/style friendly | funny | serious | balanced\n` +
-      `/lang en | ar | fr | es\n` +
-      `/emoji on | off\n` +
-      `/length long | short`
+      `Reply length: ${user.settings.length}\n` +
+      `Mood: ${user.mood || "Not set"}\n\n` +
+      `Use the buttons below to change anything:`,
+      { reply_markup: settingsMenuKeyboard(user) }
     );
     return;
   }
 
   // /premium
   if (text === "/premium") {
+    const backKb = { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] };
     if (user.premium.active) {
       await bot.sendMessage(chatId,
-        `You are a Premium member!\n\n` +
+        `✨ You are a Premium member!\n\n` +
         `Expires: ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}\n\n` +
         `Perks:\n` +
-        `- ${getImageLimit(true)} images per day\n` +
-        `- Longer AI context\n` +
-        `- Richer responses`
+        `• ${getImageLimit(true)} images per day\n` +
+        `• Longer AI context\n` +
+        `• Richer responses`,
+        { reply_markup: backKb }
       );
     } else {
       await bot.sendMessage(chatId,
         `You are on the Free plan.\n\n` +
-        `Limits:\n` +
-        `- ${getImageLimit(false)} images per day\n` +
-        `- Standard AI\n\n` +
-        `Upgrade with a redeem code: /redeem CODE`
+        `Free limits:\n` +
+        `• ${getImageLimit(false)} images per day\n` +
+        `• Standard AI responses\n\n` +
+        `Get Premium with a redeem code:\n/redeem CODE`,
+        { reply_markup: backKb }
       );
     }
     return;
@@ -166,7 +186,8 @@ export async function handlePrivateMessage(
   if (text === "/forget") {
     await clearMemory(user.userId, chatId);
     await bot.sendMessage(chatId,
-      e ? "Memory cleared! I have forgotten our previous conversations. Fresh start!" : "Memory cleared. Starting fresh."
+      e ? "Memory cleared! Fresh start — I remember nothing now 🧹" : "Memory cleared. Starting fresh.",
+      { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] } }
     );
     return;
   }
@@ -251,24 +272,30 @@ export async function handlePrivateMessage(
     const validMoods = ["happy", "sad", "stressed", "bored", "excited", "angry", "anxious", "tired", "motivated", "neutral"];
     const chosen = parts[1]?.toLowerCase();
     if (!chosen || !validMoods.includes(chosen)) {
-      await bot.sendMessage(chatId, `Valid moods: ${validMoods.join(", ")}\n\nExample: /mood happy`);
+      await bot.sendMessage(chatId,
+        `How are you feeling right now? Tap one below:`,
+        { reply_markup: moodPickerKeyboard() }
+      );
       return;
     }
     user.mood = chosen;
     await user.save();
     const moodResponses: Record<string, string> = {
-      happy: "That is great! I love seeing you in a good mood!",
-      sad: "I am sorry to hear that. I am here for you whenever you need to talk.",
-      stressed: "Take a deep breath. I am here to help however I can.",
+      happy: "That's great! I love seeing you in a good mood!",
+      sad: "I'm sorry to hear that. I'm here for you whenever you need to talk.",
+      stressed: "Take a deep breath. I'm here to help however I can.",
       bored: "Let's fix that! Ask me anything or request an image.",
       excited: "Your excitement is contagious! What are we talking about?",
-      angry: "I hear you. Talking it out can help. What is on your mind?",
-      anxious: "It is okay. I am here. We can take it slow.",
-      tired: "Rest is important. I will keep my answers concise for now.",
+      angry: "I hear you. Talking it out can help. What's on your mind?",
+      anxious: "It's okay. I'm here. We can take it slow.",
+      tired: "Rest is important. I'll keep my answers concise for now.",
       motivated: "Let's make the most of it! What are we working on?",
-      neutral: "All good. I am here whenever you need me.",
+      neutral: "All good. I'm here whenever you need me.",
     };
-    await bot.sendMessage(chatId, `Mood set to: ${chosen}.\n\n${moodResponses[chosen] || ""}`);
+    await bot.sendMessage(chatId,
+      `Mood set to: ${chosen}.\n\n${moodResponses[chosen] || ""}`,
+      { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] } }
+    );
     return;
   }
 
@@ -306,24 +333,24 @@ export async function handlePrivateMessage(
   // /quote
   if (text === "/quote") {
     await bot.sendChatAction(chatId, "typing");
-    const reply = await chat(user.userId, chatId + 1111, "Give me one inspiring or thought-provoking quote. Format: Quote — Author", { style: "friendly", emoji: e, length: "short" }, user.premium.active);
-    await bot.sendMessage(chatId, e ? `"${reply}"` : reply);
+    const reply = await chat(user.userId, chatId + 1111, "Give me one inspiring or thought-provoking quote. Format: \"Quote\" — Author. No intro, just the quote.", { style: "friendly", emoji: e, length: "short" }, user.premium.active);
+    await bot.sendMessage(chatId, `💬 Quote\n\n${reply}`, { reply_markup: repeatKeyboard("quick_quote", "fun_menu") });
     return;
   }
 
   // /fact
   if (text === "/fact") {
     await bot.sendChatAction(chatId, "typing");
-    const reply = await chat(user.userId, chatId + 2222, "Tell me one surprising, interesting, and true fact. Keep it to 2-3 sentences.", { style: "funny", emoji: e, length: "short" }, user.premium.active);
-    await bot.sendMessage(chatId, e ? `Did you know?\n\n${reply}` : `Did you know?\n\n${reply}`);
+    const reply = await chat(user.userId, chatId + 2222, "Tell me one surprising, mind-blowing, and true fact. Keep it to 2-3 sentences. Start directly with the fact.", { style: "funny", emoji: e, length: "short" }, user.premium.active);
+    await bot.sendMessage(chatId, `🎲 Did You Know?\n\n${reply}`, { reply_markup: repeatKeyboard("quick_fact", "fun_menu") });
     return;
   }
 
   // /tip
   if (text === "/tip") {
     await bot.sendChatAction(chatId, "typing");
-    const reply = await chat(user.userId, chatId + 3333, "Give me one actionable productivity, health, or life improvement tip. Be specific and practical. 2-3 sentences.", { style: "balanced", emoji: e, length: "short" }, user.premium.active);
-    await bot.sendMessage(chatId, e ? `Tip of the moment:\n\n${reply}` : `Tip:\n\n${reply}`);
+    const reply = await chat(user.userId, chatId + 3333, "Give me one specific, actionable productivity, health, or life improvement tip. 2-3 sentences. No generic advice.", { style: "balanced", emoji: e, length: "short" }, user.premium.active);
+    await bot.sendMessage(chatId, `💡 Tip\n\n${reply}`, { reply_markup: repeatKeyboard("quick_tip", "main_menu") });
     return;
   }
 
@@ -364,6 +391,13 @@ export async function handlePrivateMessage(
 
   // Ignore unknown slash commands
   if (text.startsWith("/")) return;
+
+  // ── Auto-detect image generation intent ────────────────────────────────────
+  const imagePrompt = detectImageIntent(text);
+  if (imagePrompt) {
+    await handleImageGeneration(bot, chatId, user, imagePrompt, e);
+    return;
+  }
 
   // ── Plain text → AI chat ─────────────────────────────────────────────────
 

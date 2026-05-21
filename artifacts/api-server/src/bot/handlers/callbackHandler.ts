@@ -26,6 +26,7 @@ import {
   backToImgKeyboard,
   triviaKeyboard,
   wyrKeyboard,
+  repeatKeyboard,
 } from "../utils/keyboards.js";
 import { logger } from "../../lib/logger.js";
 
@@ -736,6 +737,29 @@ export async function handleCallbackQuery(
         `Banned: ${bannedUsers}  |  Active groups: ${totalGroups}`,
         backToMainKeyboard()
       );
+      return;
+    }
+
+    // ── Quick Repeat Actions ──────────────────────────────────────────────
+
+    if (data === "quick_quote") {
+      await editMsg(bot, query, "✍️ Fetching a quote...");
+      const reply = await chat(userId, chatId + 1111, "Give me one inspiring or thought-provoking quote. Format: \"Quote\" — Author. No intro.", { style: "friendly", emoji: e, length: "short" }, user.premium.active);
+      await editMsg(bot, query, `💬 Quote\n\n${reply}`, repeatKeyboard("quick_quote", "fun_menu"));
+      return;
+    }
+
+    if (data === "quick_fact") {
+      await editMsg(bot, query, "🔍 Looking up something wild...");
+      const reply = await chat(userId, chatId + 2222, "Tell me one surprising, mind-blowing, and true fact. Keep it to 2-3 sentences. Start directly with the fact.", { style: "balanced", emoji: e, length: "short" }, user.premium.active);
+      await editMsg(bot, query, `🎲 Did You Know?\n\n${reply}`, repeatKeyboard("quick_fact", "fun_menu"));
+      return;
+    }
+
+    if (data === "quick_tip") {
+      await editMsg(bot, query, "💡 Thinking...");
+      const reply = await chat(userId, chatId + 3333, "Give me one specific, actionable productivity, health, or life improvement tip. 2-3 sentences. No generic advice.", { style: "balanced", emoji: e, length: "short" }, user.premium.active);
+      await editMsg(bot, query, `💡 Tip\n\n${reply}`, repeatKeyboard("quick_tip", "main_menu"));
       return;
     }
 

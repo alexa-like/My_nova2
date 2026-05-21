@@ -304,6 +304,17 @@ export function wyrKeyboard(idx: number): TelegramBot.InlineKeyboardMarkup {
   };
 }
 
+// ── Repeat / quick-action keyboard ───────────────────────────────────────────
+
+export function repeatKeyboard(action: string, backCb = "main_menu"): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [[
+      { text: "🔄 Again", callback_data: action },
+      { text: "⬅️ Back", callback_data: backCb },
+    ]],
+  };
+}
+
 // ── Trivia game ───────────────────────────────────────────────────────────────
 
 export function triviaKeyboard(
