@@ -3,10 +3,14 @@ import { IUser, User } from "../models/User.js";
 import { RedeemCode } from "../models/RedeemCode.js";
 import { chat, clearMemory } from "../services/ai.js";
 import { generateImage, getImageLimit, editImage, downloadTelegramPhoto } from "../services/image.js";
+import { generateVideo } from "../services/video.js";
+import { transcribeVoice, downloadTelegramAudio } from "../services/voice.js";
 import { isRateLimited } from "../utils/rateLimiter.js";
 import { formatDate, addDays, getUserName, safeSend, startTypingLoop } from "../utils/helpers.js";
 import { parseDuration } from "../models/RedeemCode.js";
-import { getPending, clearPending, setPending, PHOTO_ACTIONS } from "../utils/pendingActions.js";
+import { getPending, clearPending, setPending, PHOTO_ACTIONS, OWNER_PENDING_ACTIONS } from "../utils/pendingActions.js";
+import { handleOwnerPendingText } from "./ownerHandler.js";
+import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
 import {
   mainMenuKeyboard,
   funMenuKeyboard,
@@ -46,6 +50,76 @@ function detectImageIntent(text: string): string | null {
   return null;
 }
 
+export async function handleVoiceMessage(
+  bot: TelegramBot,
+  msg: TelegramBot.Message,
+  user: IUser
+): Promise<void> {
+  const chatId = msg.chat.id;
+  if (user.banned) return;
+
+  if (isRateLimited(user.userId)) {
+    await bot.sendMessage(chatId, "Too many messages. Wait a minute.");
+    return;
+  }
+
+  if (getMaintenance()) {
+    await bot.sendMessage(chatId, "Nova is currently under maintenance. Check back soon!");
+    return;
+  }
+
+  const voice = msg.voice;
+  if (!voice) return;
+
+  const e = user.settings.emoji;
+  const statusMsg = await bot.sendMessage(chatId, e ? "🎧 Listening to your voice..." : "Processing your voice message...");
+  const stopTyping = startTypingLoop(bot, chatId);
+
+  try {
+    const audioBuffer = await downloadTelegramAudio(bot, voice.file_id);
+    if (!audioBuffer) {
+      stopTyping();
+      await bot.editMessageText("Failed to download your voice message. Please try again.", {
+        chat_id: chatId, message_id: statusMsg.message_id,
+      });
+      return;
+    }
+
+    const transcription = await transcribeVoice(audioBuffer);
+    if (!transcription) {
+      stopTyping();
+      await bot.editMessageText(
+        e ? "Couldn't make out what you said 🙉 Please try again or type your message." : "Voice transcription failed. Please type your message instead.",
+        { chat_id: chatId, message_id: statusMsg.message_id }
+      );
+      return;
+    }
+
+    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+
+    await bot.sendMessage(chatId, e ? `🎙️ I heard: "${transcription}"` : `Voice: "${transcription}"`);
+
+    const imagePrompt = detectImageIntent(transcription);
+    if (imagePrompt) {
+      await handleImageGeneration(bot, chatId, user, imagePrompt, e);
+      stopTyping();
+      return;
+    }
+
+    user.usage.messages += 1;
+    await user.save();
+
+    const reply = await chat(user.userId, chatId, transcription, user.settings, user.premium.active, user.mood ?? undefined);
+    stopTyping();
+    await safeSend(bot, chatId, reply);
+  } catch (err) {
+    stopTyping();
+    logger.error({ err }, "Voice message error");
+    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+    await bot.sendMessage(chatId, "Something went wrong processing your voice message. Please try again.");
+  }
+}
+
 export async function handlePrivateMessage(
   bot: TelegramBot,
   msg: TelegramBot.Message,
@@ -77,10 +151,17 @@ export async function handlePrivateMessage(
   const e = user.settings.emoji;
   const name = getUserName(msg);
 
-  // ── Check pending text action from button-triggered flows ─────────────────
+  // ── Check pending action (owner or user flows) ────────────────────────────
   const pendingAction = getPending(user.userId);
   if (pendingAction && !PHOTO_ACTIONS.has(pendingAction.type) && !text.startsWith("/")) {
     clearPending(user.userId);
+    if (OWNER_PENDING_ACTIONS.has(pendingAction.type) && user.isOwner) {
+      await handleOwnerPendingText(
+        bot, chatId, user.userId, pendingAction.type, text,
+        getMaintenance, setMaintenance
+      );
+      return;
+    }
     await handlePendingText(bot, chatId, user, pendingAction.type, text, e, pendingAction.data);
     return;
   }
@@ -307,6 +388,44 @@ export async function handlePrivateMessage(
       return;
     }
     await handleImageGeneration(bot, chatId, user, prompt, e);
+    return;
+  }
+
+  // /video <prompt>
+  if (text.startsWith("/video")) {
+    const prompt = text.replace(/^\/video\s*/i, "").trim();
+    if (!prompt) {
+      await bot.sendMessage(chatId,
+        e ? "🎬 Give me a prompt!\nExample: /video a cat playing piano in jazz style" : "Usage: /video <prompt>\nExample: /video a sunset timelapse over the ocean"
+      );
+      return;
+    }
+    if (!process.env.HUGGINGFACE_API_TOKEN) {
+      await bot.sendMessage(chatId, "Video generation is not configured yet.");
+      return;
+    }
+    const sentMsg = await bot.sendMessage(chatId,
+      e ? "🎬 Generating your video... This can take 1-3 minutes, hang tight!" : "Generating your video..."
+    );
+    const stopVidTyping = startTypingLoop(bot, chatId, "upload_video");
+    try {
+      const videoBuffer = await generateVideo(prompt);
+      stopVidTyping();
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      if (!videoBuffer) {
+        await bot.sendMessage(chatId,
+          "Video generation failed. The model may be warming up — try again in a minute.",
+          { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] } }
+        );
+        return;
+      }
+      await bot.sendVideo(chatId, videoBuffer, { caption: prompt });
+    } catch (err) {
+      stopVidTyping();
+      logger.error({ err }, "Video generation error");
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Video generation failed. Please try again later.");
+    }
     return;
   }
 

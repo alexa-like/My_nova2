@@ -6,6 +6,9 @@ import { chat } from "../services/ai.js";
 import { formatDate } from "../utils/helpers.js";
 import { getImageLimit } from "../services/image.js";
 import { setPending } from "../utils/pendingActions.js";
+import { getOrCreateBotConfig } from "../models/BotConfig.js";
+import { sendOwnerPanel } from "./ownerHandler.js";
+import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
 import {
   mainMenuKeyboard,
   funMenuKeyboard,
@@ -27,6 +30,16 @@ import {
   triviaKeyboard,
   wyrKeyboard,
   repeatKeyboard,
+  ownerUsersKeyboard,
+  ownerPremiumKeyboard,
+  ownerCodesKeyboard,
+  ownerBroadcastKeyboard,
+  ownerGroupsKeyboard,
+  ownerChatModelsKeyboard,
+  ownerImageModelsKeyboard,
+  ownerVideoModelsKeyboard,
+  ownerUserListKeyboard,
+  backToOwnerKeyboard,
 } from "../utils/keyboards.js";
 import { logger } from "../../lib/logger.js";
 
@@ -760,6 +773,421 @@ export async function handleCallbackQuery(
       await editMsg(bot, query, "💡 Thinking...");
       const reply = await chat(userId, chatId + 3333, "Give me one specific, actionable productivity, health, or life improvement tip. 2-3 sentences. No generic advice.", { style: "balanced", emoji: e, length: "short" }, user.premium.active);
       await editMsg(bot, query, `💡 Tip\n\n${reply}`, repeatKeyboard("quick_tip", "main_menu"));
+      return;
+    }
+
+    // ── Owner Panel ───────────────────────────────────────────────────────
+
+    if (data === "own_panel") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      await sendOwnerPanel(bot, chatId, getMaintenance, query.message!.message_id);
+      return;
+    }
+
+    if (data === "own_stats") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const [totalUsers, premiumUsers, bannedUsers, activeToday, totalMemories, totalCodes, totalGroups] =
+        await Promise.all([
+          User.countDocuments(),
+          User.countDocuments({ "premium.active": true }),
+          User.countDocuments({ banned: true }),
+          User.countDocuments({ lastSeen: { $gte: new Date(Date.now() - 86400000) } }),
+          Memory.countDocuments(),
+          (await import("../models/RedeemCode.js")).RedeemCode.countDocuments(),
+          GroupSettings.countDocuments(),
+        ]);
+      const usageResult = await User.aggregate([
+        { $group: { _id: null, msgs: { $sum: "$usage.messages" }, imgs: { $sum: "$usage.images" } } },
+      ]);
+      const usage = usageResult[0] || { msgs: 0, imgs: 0 };
+      const config = await getOrCreateBotConfig();
+      await editMsg(bot, query,
+        `📊 Full Statistics\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `👥 Total users: ${totalUsers}\n` +
+        `🕐 Active today: ${activeToday}\n` +
+        `💎 Premium: ${premiumUsers}\n` +
+        `🚫 Banned: ${bannedUsers}\n` +
+        `🏘 Groups: ${totalGroups}\n` +
+        `🧠 Memories: ${totalMemories}\n` +
+        `🎟 Codes: ${totalCodes}\n` +
+        `💬 Total messages: ${usage.msgs}\n` +
+        `🖼 Total images: ${usage.imgs}\n` +
+        `🔧 Maintenance: ${getMaintenance() ? "🔴 ON" : "🟢 OFF"}\n\n` +
+        `🧠 Chat: ${config.chatModels.find((m) => m.id === config.activeChatModel)?.name || config.activeChatModel}\n` +
+        `🖼 Image: ${config.imageModels.find((m) => m.id === config.activeImageModel)?.name || config.activeImageModel}\n` +
+        `🎬 Video: ${config.videoModels.find((m) => m.id === config.activeVideoModel)?.name || config.activeVideoModel}`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_users") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const total = await User.countDocuments();
+      const premium = await User.countDocuments({ "premium.active": true });
+      const banned = await User.countDocuments({ banned: true });
+      await editMsg(bot, query,
+        `👥 User Management\n━━━━━━━━━━━━━━━\nTotal: ${total}  |  Premium: ${premium}  |  Banned: ${banned}\n\nSelect an action:`,
+        ownerUsersKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_premium") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const total = await User.countDocuments({ "premium.active": true });
+      await editMsg(bot, query,
+        `💎 Premium Management\n━━━━━━━━━━━━━━━━━━━\nActive premium users: ${total}\n\nSelect an action:`,
+        ownerPremiumKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_codes") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const { RedeemCode } = await import("../models/RedeemCode.js");
+      const total = await RedeemCode.countDocuments();
+      const used = await RedeemCode.countDocuments({ used: true });
+      await editMsg(bot, query,
+        `🎟 Redeem Codes\n━━━━━━━━━━━━━━\nTotal: ${total}  |  Used: ${used}  |  Available: ${total - used}\n\nSelect an action:`,
+        ownerCodesKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_broadcast") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const total = await User.countDocuments({ banned: false });
+      await editMsg(bot, query,
+        `📢 Broadcast\n━━━━━━━━━━━\nWill reach ${total} active users.\n\nSelect broadcast type:`,
+        ownerBroadcastKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_groups") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const total = await GroupSettings.countDocuments();
+      await editMsg(bot, query,
+        `🏘 Group Management\n━━━━━━━━━━━━━━━━━\nTotal groups: ${total}\n\nSelect an action:`,
+        ownerGroupsKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_maint") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setMaintenance(!getMaintenance());
+      const now = getMaintenance();
+      await answer(bot, query.id, now ? "🔴 Maintenance ON" : "🟢 Maintenance OFF");
+      await sendOwnerPanel(bot, chatId, getMaintenance, query.message!.message_id);
+      return;
+    }
+
+    if (data === "own_chat_models") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const config = await getOrCreateBotConfig();
+      const active = config.chatModels.find((m) => m.id === config.activeChatModel);
+      await editMsg(bot, query,
+        `🧠 Chat AI Models\n━━━━━━━━━━━━━━━━\nActive: ${active?.name || config.activeChatModel}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
+        ownerChatModelsKeyboard(config.chatModels, config.activeChatModel)
+      );
+      return;
+    }
+
+    if (data === "own_img_models") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const config = await getOrCreateBotConfig();
+      const active = config.imageModels.find((m) => m.id === config.activeImageModel);
+      await editMsg(bot, query,
+        `🖼 Image Models\n━━━━━━━━━━━━━━\nActive: ${active?.name || config.activeImageModel}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
+        ownerImageModelsKeyboard(config.imageModels, config.activeImageModel)
+      );
+      return;
+    }
+
+    if (data === "own_vid_models") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const config = await getOrCreateBotConfig();
+      const active = config.videoModels.find((m) => m.id === config.activeVideoModel);
+      await editMsg(bot, query,
+        `🎬 Video Models\n━━━━━━━━━━━━━━\nActive: ${active?.name || config.activeVideoModel}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
+        ownerVideoModelsKeyboard(config.videoModels, config.activeVideoModel)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_set_chat_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_set_chat_", ""));
+      const config = await getOrCreateBotConfig();
+      const model = config.chatModels[idx];
+      if (!model) { await answer(bot, query.id, "Model not found."); return; }
+      config.activeChatModel = model.id;
+      await config.save();
+      await answer(bot, query.id, `✅ Switched to ${model.name}`);
+      await editMsg(bot, query,
+        `🧠 Chat AI Models\n━━━━━━━━━━━━━━━━\nActive: ${model.name}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
+        ownerChatModelsKeyboard(config.chatModels, config.activeChatModel)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_set_img_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_set_img_", ""));
+      const config = await getOrCreateBotConfig();
+      const model = config.imageModels[idx];
+      if (!model) { await answer(bot, query.id, "Model not found."); return; }
+      config.activeImageModel = model.id;
+      await config.save();
+      await answer(bot, query.id, `✅ Switched to ${model.name}`);
+      await editMsg(bot, query,
+        `🖼 Image Models\n━━━━━━━━━━━━━━\nActive: ${model.name}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
+        ownerImageModelsKeyboard(config.imageModels, config.activeImageModel)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_set_vid_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_set_vid_", ""));
+      const config = await getOrCreateBotConfig();
+      const model = config.videoModels[idx];
+      if (!model) { await answer(bot, query.id, "Model not found."); return; }
+      config.activeVideoModel = model.id;
+      await config.save();
+      await answer(bot, query.id, `✅ Switched to ${model.name}`);
+      await editMsg(bot, query,
+        `🎬 Video Models\n━━━━━━━━━━━━━━\nActive: ${model.name}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
+        ownerVideoModelsKeyboard(config.videoModels, config.activeVideoModel)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_del_chat_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_del_chat_", ""));
+      const config = await getOrCreateBotConfig();
+      if (config.chatModels.length <= 1) { await answer(bot, query.id, "Cannot delete the only model."); return; }
+      const removed = config.chatModels.splice(idx, 1)[0];
+      if (config.activeChatModel === removed?.id) config.activeChatModel = config.chatModels[0].id;
+      await config.save();
+      await answer(bot, query.id, `🗑 Removed ${removed?.name}`);
+      const active = config.chatModels.find((m) => m.id === config.activeChatModel);
+      await editMsg(bot, query,
+        `🧠 Chat AI Models\n━━━━━━━━━━━━━━━━\nActive: ${active?.name || config.activeChatModel}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
+        ownerChatModelsKeyboard(config.chatModels, config.activeChatModel)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_del_img_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_del_img_", ""));
+      const config = await getOrCreateBotConfig();
+      if (config.imageModels.length <= 1) { await answer(bot, query.id, "Cannot delete the only model."); return; }
+      const removed = config.imageModels.splice(idx, 1)[0];
+      if (config.activeImageModel === removed?.id) config.activeImageModel = config.imageModels[0].id;
+      await config.save();
+      await answer(bot, query.id, `🗑 Removed ${removed?.name}`);
+      await editMsg(bot, query,
+        `🖼 Image Models\n━━━━━━━━━━━━━━\nActive: ${config.imageModels.find((m) => m.id === config.activeImageModel)?.name}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
+        ownerImageModelsKeyboard(config.imageModels, config.activeImageModel)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_del_vid_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_del_vid_", ""));
+      const config = await getOrCreateBotConfig();
+      if (config.videoModels.length <= 1) { await answer(bot, query.id, "Cannot delete the only model."); return; }
+      const removed = config.videoModels.splice(idx, 1)[0];
+      if (config.activeVideoModel === removed?.id) config.activeVideoModel = config.videoModels[0].id;
+      await config.save();
+      await answer(bot, query.id, `🗑 Removed ${removed?.name}`);
+      await editMsg(bot, query,
+        `🎬 Video Models\n━━━━━━━━━━━━━━\nActive: ${config.videoModels.find((m) => m.id === config.activeVideoModel)?.name}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
+        ownerVideoModelsKeyboard(config.videoModels, config.activeVideoModel)
+      );
+      return;
+    }
+
+    if (data === "own_add_chat") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_add_chat_model");
+      await editMsg(bot, query,
+        `🧠 Add Chat Model\n━━━━━━━━━━━━━━━━\nSend the model in this format:\n\n<code>modelId|Display Name</code>\n\nExample:\n<code>openai/gpt-4o|GPT-4o</code>\n<code>anthropic/claude-3-5-sonnet|Claude 3.5</code>\n\nModel IDs come from OpenRouter.`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_add_img") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_add_image_model");
+      await editMsg(bot, query,
+        `🖼 Add Image Model\n━━━━━━━━━━━━━━━━\nSend the model in this format:\n\n<code>modelId|Display Name</code>\n\nExample:\n<code>black-forest-labs/FLUX.1-dev|FLUX Dev</code>\n\nModel IDs come from HuggingFace.`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_add_vid") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_add_video_model");
+      await editMsg(bot, query,
+        `🎬 Add Video Model\n━━━━━━━━━━━━━━━━\nSend the model in this format:\n\n<code>modelId|Display Name</code>\n\nExample:\n<code>damo-vilab/text-to-video-ms-1.7b|ModelScope</code>\n\nModel IDs come from HuggingFace.`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_do_lookup") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_lookup");
+      await editMsg(bot, query, `🔍 Lookup User\n━━━━━━━━━━━━━\nSend the user's Telegram ID:`, backToOwnerKeyboard());
+      return;
+    }
+
+    if (data === "own_do_ban") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_ban");
+      await editMsg(bot, query, `⛔ Ban User\n━━━━━━━━━━\nSend the user's Telegram ID to ban:`, backToOwnerKeyboard());
+      return;
+    }
+
+    if (data === "own_do_unban") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_unban");
+      await editMsg(bot, query, `✅ Unban User\n━━━━━━━━━━━━\nSend the user's Telegram ID to unban:`, backToOwnerKeyboard());
+      return;
+    }
+
+    if (data === "own_do_del_user") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_deleteuser");
+      await editMsg(bot, query, `🗑 Delete User\n━━━━━━━━━━━━━\nSend the user's Telegram ID to permanently delete:`, backToOwnerKeyboard());
+      return;
+    }
+
+    if (data === "own_do_clear_mem") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_cleardata");
+      await editMsg(bot, query, `🧹 Clear Memory\n━━━━━━━━━━━━━━\nSend the user's Telegram ID to clear their memory:`, backToOwnerKeyboard());
+      return;
+    }
+
+    if (data === "own_do_grant") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_grantpremium");
+      await editMsg(bot, query,
+        `💎 Grant Premium\n━━━━━━━━━━━━━━━\nSend: <code>user_id duration</code>\n\nExample: <code>123456789 30d</code>\nDurations: 1d, 7d, 30d, 90d, 1y, lifetime`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_do_revoke") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_revokepremium");
+      await editMsg(bot, query, `➖ Revoke Premium\n━━━━━━━━━━━━━━━━\nSend the user's Telegram ID:`, backToOwnerKeyboard());
+      return;
+    }
+
+    if (data === "own_do_bc") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_broadcast");
+      await editMsg(bot, query, `📣 Broadcast\n━━━━━━━━━━━\nType the message to send to all users:`, backToOwnerKeyboard());
+      return;
+    }
+
+    if (data === "own_do_ann") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_announcement");
+      await editMsg(bot, query, `📢 Announcement\n━━━━━━━━━━━━━━\nType the announcement (will be prefixed with 📢 NOVA ANNOUNCEMENT):`, backToOwnerKeyboard());
+      return;
+    }
+
+    if (data === "own_do_sched") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_schedule");
+      await editMsg(bot, query,
+        `⏰ Schedule Broadcast\n━━━━━━━━━━━━━━━━━━━\nSend: <code>minutes message</code>\n\nExample: <code>30 Hello everyone!</code>`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_do_mkcode") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_createcode");
+      await editMsg(bot, query,
+        `➕ Create Code\n━━━━━━━━━━━━━\nSend: <code>CODE duration</code>\n\nExample: <code>NOVA-VIP 30d</code>\nDurations: 1d, 7d, 30d, 90d, 1y, lifetime`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_do_reset_code") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_resetcode");
+      await editMsg(bot, query, `🔄 Reset Code\n━━━━━━━━━━━━\nSend the code name to reset:\nExample: <code>NOVA-VIP</code>`, backToOwnerKeyboard());
+      return;
+    }
+
+    if (data === "own_do_del_grp") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_deletegroup");
+      await editMsg(bot, query, `🗑 Delete Group\n━━━━━━━━━━━━━━\nSend the group's Chat ID:`, backToOwnerKeyboard());
+      return;
+    }
+
+    if (data === "own_list_codes") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const { RedeemCode } = await import("../models/RedeemCode.js");
+      const codes = await RedeemCode.find().sort({ createdAt: -1 }).limit(20);
+      if (!codes.length) {
+        await editMsg(bot, query, `🎟 No codes found.`, ownerCodesKeyboard());
+        return;
+      }
+      const lines = codes.map((c) => `${c.code} | ${c.duration} | ${c.used ? `Used by ${c.usedBy}` : "Available"}`);
+      await editMsg(bot, query, `🎟 Redeem Codes:\n\n${lines.join("\n")}`, ownerCodesKeyboard());
+      return;
+    }
+
+    if (data === "own_grouplist") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const groups = await GroupSettings.find().sort({ updatedAt: -1 }).limit(20);
+      if (!groups.length) {
+        await editMsg(bot, query, `🏘 No groups found.`, ownerGroupsKeyboard());
+        return;
+      }
+      const lines = groups.map((g, i) => `${i + 1}. ${g.title || "Unnamed"} (${g.chatId}) AI:${g.aiEnabled ? "on" : "off"}`);
+      await editMsg(bot, query, `🏘 Groups:\n\n${lines.join("\n")}`, ownerGroupsKeyboard());
+      return;
+    }
+
+    if (data.startsWith("own_userlist_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const page = Math.max(1, parseInt(data.replace("own_userlist_", "")) || 1);
+      const perPage = 10;
+      const [users, total] = await Promise.all([
+        User.find().sort({ lastSeen: -1 }).skip((page - 1) * perPage).limit(perPage),
+        User.countDocuments(),
+      ]);
+      if (!users.length) { await editMsg(bot, query, "No users found.", ownerUsersKeyboard()); return; }
+      const totalPages = Math.ceil(total / perPage);
+      const lines = users.map((u, i) => {
+        const badge = u.premium.active ? "💎" : u.banned ? "🚫" : "👤";
+        return `${badge} ${u.firstName || "?"} ${u.username ? "@" + u.username : ""} (${u.userId})`;
+      });
+      await editMsg(bot, query,
+        `👥 Users — Page ${page}/${totalPages}\n━━━━━━━━━━━━━━━━━\n${lines.join("\n")}`,
+        ownerUserListKeyboard(page, totalPages)
+      );
       return;
     }
 

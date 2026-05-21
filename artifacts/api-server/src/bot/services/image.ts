@@ -1,11 +1,9 @@
 import axios from "axios";
+import { getOrCreateBotConfig } from "../models/BotConfig.js";
 import { logger } from "../../lib/logger.js";
 
 const FREE_LIMIT = 3;
 const PREMIUM_LIMIT = 20;
-
-const PRIMARY_ENDPOINT =
-  "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0";
 
 const FALLBACK_ENDPOINT =
   "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-3-medium-diffusers";
@@ -17,7 +15,11 @@ export async function generateImage(prompt: string): Promise<Buffer | null> {
   const token = process.env.HUGGINGFACE_API_TOKEN;
   if (!token) return null;
 
-  const endpoints = [PRIMARY_ENDPOINT, FALLBACK_ENDPOINT];
+  const config = await getOrCreateBotConfig();
+  const primaryModel = config.activeImageModel;
+  const primaryEndpoint = `https://api-inference.huggingface.co/models/${primaryModel}`;
+
+  const endpoints = [primaryEndpoint, FALLBACK_ENDPOINT];
 
   for (const url of endpoints) {
     try {
@@ -38,15 +40,24 @@ export async function generateImage(prompt: string): Promise<Buffer | null> {
       );
 
       const contentType = (response.headers["content-type"] as string) || "";
-      if (contentType.includes("image") || response.data?.byteLength > 1000) {
+      if (
+        contentType.includes("image") ||
+        (response.data as Buffer)?.byteLength > 1000
+      ) {
         logger.info({ url }, "Image generated successfully");
         return Buffer.from(response.data);
       }
 
-      logger.warn({ url, contentType }, "Response was not an image, trying fallback");
+      logger.warn(
+        { url, contentType },
+        "Response was not an image, trying fallback"
+      );
     } catch (err: any) {
       const status = err?.response?.status;
-      logger.warn({ url, status }, "Image generation failed for endpoint, trying next");
+      logger.warn(
+        { url, status },
+        "Image generation failed for endpoint, trying next"
+      );
     }
   }
 
@@ -55,10 +66,12 @@ export async function generateImage(prompt: string): Promise<Buffer | null> {
 
 /**
  * Edit an existing image using a text instruction (img2img).
- * Uses InstructPix2Pix — handles both raw binary and JSON base64 responses.
  * Falls back to text-to-image if img2img fails.
  */
-export async function editImage(imageBuffer: Buffer, prompt: string): Promise<Buffer | null> {
+export async function editImage(
+  imageBuffer: Buffer,
+  prompt: string
+): Promise<Buffer | null> {
   const token = process.env.HUGGINGFACE_API_TOKEN;
   if (!token) return null;
 
@@ -91,14 +104,11 @@ export async function editImage(imageBuffer: Buffer, prompt: string): Promise<Bu
     const contentType = (response.headers["content-type"] as string) || "";
     const rawData = response.data as Buffer;
 
-    // Case 1: Raw image bytes returned directly
     if (contentType.includes("image") && rawData?.byteLength > 1000) {
       logger.info("img2img succeeded (raw binary)");
       return Buffer.from(rawData);
     }
 
-    // Case 2: JSON response — HuggingFace wraps image in JSON
-    // Shape: [{ "generated_image": "base64..." }] or { "image": "base64..." }
     try {
       const json = JSON.parse(rawData.toString("utf-8"));
       const b64 =
@@ -111,19 +121,23 @@ export async function editImage(imageBuffer: Buffer, prompt: string): Promise<Bu
         return Buffer.from(b64, "base64");
       }
     } catch {
-      // Not valid JSON — if bytes are large enough, treat as raw image
       if (rawData?.byteLength > 1000) {
         logger.info("img2img succeeded (raw, non-image content-type)");
         return Buffer.from(rawData);
       }
     }
 
-    logger.warn({ contentType, byteLength: rawData?.byteLength }, "img2img response unrecognised — falling back");
+    logger.warn(
+      { contentType, byteLength: rawData?.byteLength },
+      "img2img response unrecognised — falling back"
+    );
   } catch (err: any) {
-    logger.warn({ err: err?.message, status: err?.response?.status }, "img2img failed — falling back to text generation");
+    logger.warn(
+      { err: err?.message, status: err?.response?.status },
+      "img2img failed — falling back to text generation"
+    );
   }
 
-  // Fallback: generate a new image from the prompt
   return generateImage(prompt);
 }
 
@@ -140,7 +154,10 @@ export async function downloadTelegramPhoto(
     const file = await bot.getFile(fileId);
     if (!file.file_path) return null;
     const url = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
-    const response = await axios.get(url, { responseType: "arraybuffer", timeout: 30000 });
+    const response = await axios.get(url, {
+      responseType: "arraybuffer",
+      timeout: 30000,
+    });
     return Buffer.from(response.data);
   } catch (err: any) {
     logger.warn({ err: err?.message }, "Failed to download Telegram photo");
@@ -152,15 +169,12 @@ export function getImageLimit(isPremium: boolean): number {
   return isPremium ? PREMIUM_LIMIT : FREE_LIMIT;
 }
 
-// ── Style presets ──────────────────────────────────────────────────────────
-
 const STYLE_PRESETS: Record<string, string> = {
   anime:
     "anime style, vibrant colors, cel-shaded, sharp outlines, Studio Ghibli inspired, beautiful",
   realistic:
     "photorealistic, 8K resolution, ultra-detailed, professional photography, natural lighting",
-  oil:
-    "oil painting, thick brushstrokes, impressionist style, canvas texture, rich colors, museum quality",
+  oil: "oil painting, thick brushstrokes, impressionist style, canvas texture, rich colors, museum quality",
   watercolor:
     "watercolor painting, soft washes, delicate brushwork, pastel tones, artistic",
   cyberpunk:
@@ -169,14 +183,9 @@ const STYLE_PRESETS: Record<string, string> = {
     "fantasy art, magical, ethereal lighting, epic scale, detailed world-building, concept art",
   sketch:
     "pencil sketch, detailed line art, black and white, cross-hatching, professional illustration",
-  pixel:
-    "pixel art, 16-bit style, retro game aesthetic, vibrant palette, crisp pixels",
+  pixel: "pixel art, 16-bit style, retro game aesthetic, vibrant palette, crisp pixels",
 };
 
-/**
- * Apply a named style preset to a prompt.
- * Returns the original prompt if preset is not recognized.
- */
 export function applyStylePreset(prompt: string, preset?: string): string {
   if (!preset) return prompt;
   const style = STYLE_PRESETS[preset.toLowerCase()];

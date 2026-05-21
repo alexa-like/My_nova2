@@ -1,5 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 import { IUser } from "../models/User.js";
+import { IModelEntry } from "../models/BotConfig.js";
 
 // ── Main dashboard ────────────────────────────────────────────────────────────
 
@@ -250,10 +251,12 @@ export function styleMenuKeyboard(current: string): TelegramBot.InlineKeyboardMa
   ];
   return {
     inline_keyboard: [
-      ...styles.map(([label, val]) => [{
-        text: (val === current ? "✅ " : "") + label,
-        callback_data: `settings_style_${val}`,
-      }]),
+      ...styles.map(([label, val]) => [
+        {
+          text: (val === current ? "✅ " : "") + label,
+          callback_data: `settings_style_${val}`,
+        },
+      ]),
       [{ text: "⬅️ Back", callback_data: "settings_menu" }],
     ],
   };
@@ -262,8 +265,18 @@ export function styleMenuKeyboard(current: string): TelegramBot.InlineKeyboardMa
 export function lengthMenuKeyboard(current: string): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      [{ text: (current === "short" ? "✅ " : "") + "📌 Short replies", callback_data: "settings_length_short" }],
-      [{ text: (current === "long" ? "✅ " : "") + "📖 Long replies", callback_data: "settings_length_long" }],
+      [
+        {
+          text: (current === "short" ? "✅ " : "") + "📌 Short replies",
+          callback_data: "settings_length_short",
+        },
+      ],
+      [
+        {
+          text: (current === "long" ? "✅ " : "") + "📖 Long replies",
+          callback_data: "settings_length_long",
+        },
+      ],
       [{ text: "⬅️ Back", callback_data: "settings_menu" }],
     ],
   };
@@ -271,17 +284,23 @@ export function lengthMenuKeyboard(current: string): TelegramBot.InlineKeyboardM
 
 export function langMenuKeyboard(current: string): TelegramBot.InlineKeyboardMarkup {
   const langs: [string, string][] = [
-    ["🇬🇧 English", "en"], ["🇸🇦 Arabic", "ar"],
-    ["🇫🇷 French", "fr"], ["🇪🇸 Spanish", "es"],
-    ["🇩🇪 German", "de"], ["🇨🇳 Chinese", "zh"],
-    ["🇮🇳 Hindi", "hi"], ["🇧🇷 Portuguese", "pt"],
+    ["🇬🇧 English", "en"],
+    ["🇸🇦 Arabic", "ar"],
+    ["🇫🇷 French", "fr"],
+    ["🇪🇸 Spanish", "es"],
+    ["🇩🇪 German", "de"],
+    ["🇨🇳 Chinese", "zh"],
+    ["🇮🇳 Hindi", "hi"],
+    ["🇧🇷 Portuguese", "pt"],
   ];
   return {
     inline_keyboard: [
-      ...langs.map(([label, code]) => [{
-        text: (code === current ? "✅ " : "") + label,
-        callback_data: `settings_lang_${code}`,
-      }]),
+      ...langs.map(([label, code]) => [
+        {
+          text: (code === current ? "✅ " : "") + label,
+          callback_data: `settings_lang_${code}`,
+        },
+      ]),
       [{ text: "⬅️ Back", callback_data: "settings_menu" }],
     ],
   };
@@ -306,12 +325,17 @@ export function wyrKeyboard(idx: number): TelegramBot.InlineKeyboardMarkup {
 
 // ── Repeat / quick-action keyboard ───────────────────────────────────────────
 
-export function repeatKeyboard(action: string, backCb = "main_menu"): TelegramBot.InlineKeyboardMarkup {
+export function repeatKeyboard(
+  action: string,
+  backCb = "main_menu"
+): TelegramBot.InlineKeyboardMarkup {
   return {
-    inline_keyboard: [[
-      { text: "🔄 Again", callback_data: action },
-      { text: "⬅️ Back", callback_data: backCb },
-    ]],
+    inline_keyboard: [
+      [
+        { text: "🔄 Again", callback_data: action },
+        { text: "⬅️ Back", callback_data: backCb },
+      ],
+    ],
   };
 }
 
@@ -325,11 +349,207 @@ export function triviaKeyboard(
   const labels = ["A", "B", "C", "D"];
   return {
     inline_keyboard: [
-      ...options.map((opt, i) => [{
-        text: `${labels[i]}. ${opt}`,
-        callback_data: `game_q${questionIdx}_pick${i}_ans${correctIdx}`,
-      }]),
+      ...options.map((opt, i) => [
+        {
+          text: `${labels[i]}. ${opt}`,
+          callback_data: `game_q${questionIdx}_pick${i}_ans${correctIdx}`,
+        },
+      ]),
       [{ text: "⬅️ Back", callback_data: "games_menu" }],
+    ],
+  };
+}
+
+// ── Owner Panel Keyboards ─────────────────────────────────────────────────────
+
+export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "📊 Full Stats", callback_data: "own_stats" },
+        { text: "👥 Users", callback_data: "own_users" },
+      ],
+      [
+        { text: "💎 Premium", callback_data: "own_premium" },
+        { text: "🎟 Codes", callback_data: "own_codes" },
+      ],
+      [
+        { text: "📢 Broadcast", callback_data: "own_broadcast" },
+        { text: "🏘 Groups", callback_data: "own_groups" },
+      ],
+      [
+        { text: "🧠 Chat Model", callback_data: "own_chat_models" },
+        { text: "🖼 Image Model", callback_data: "own_img_models" },
+      ],
+      [
+        { text: "🎬 Video Model", callback_data: "own_vid_models" },
+        {
+          text: maintenanceOn ? "🔴 Maintenance: ON" : "🟢 Maintenance: OFF",
+          callback_data: "own_maint",
+        },
+      ],
+    ],
+  };
+}
+
+export function backToOwnerKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return { inline_keyboard: [[{ text: "⬅️ Back to Dashboard", callback_data: "own_panel" }]] };
+}
+
+export function ownerUsersKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🔍 Lookup User", callback_data: "own_do_lookup" },
+        { text: "📋 User List", callback_data: "own_userlist_1" },
+      ],
+      [
+        { text: "⛔ Ban User", callback_data: "own_do_ban" },
+        { text: "✅ Unban User", callback_data: "own_do_unban" },
+      ],
+      [
+        { text: "🗑 Delete User", callback_data: "own_do_del_user" },
+        { text: "🧹 Clear Memory", callback_data: "own_do_clear_mem" },
+      ],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+export function ownerPremiumKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "➕ Grant Premium", callback_data: "own_do_grant" },
+        { text: "➖ Revoke Premium", callback_data: "own_do_revoke" },
+      ],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+export function ownerCodesKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "➕ Create Code", callback_data: "own_do_mkcode" },
+        { text: "📋 List Codes", callback_data: "own_list_codes" },
+      ],
+      [{ text: "🔄 Reset Code", callback_data: "own_do_reset_code" }],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+export function ownerBroadcastKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "📣 Broadcast", callback_data: "own_do_bc" },
+        { text: "📢 Announcement", callback_data: "own_do_ann" },
+      ],
+      [{ text: "⏰ Schedule", callback_data: "own_do_sched" }],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+export function ownerGroupsKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "📋 Group List", callback_data: "own_grouplist" },
+        { text: "🗑 Delete Group", callback_data: "own_do_del_grp" },
+      ],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+export function ownerChatModelsKeyboard(
+  models: IModelEntry[],
+  activeId: string
+): TelegramBot.InlineKeyboardMarkup {
+  const modelButtons = models.map((m, i) => [
+    {
+      text: (m.id === activeId ? "✅ " : "") + m.name,
+      callback_data: `own_set_chat_${i}`,
+    },
+    {
+      text: "🗑",
+      callback_data: `own_del_chat_${i}`,
+    },
+  ]);
+
+  return {
+    inline_keyboard: [
+      ...modelButtons,
+      [{ text: "➕ Add New Model", callback_data: "own_add_chat" }],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+export function ownerImageModelsKeyboard(
+  models: IModelEntry[],
+  activeId: string
+): TelegramBot.InlineKeyboardMarkup {
+  const modelButtons = models.map((m, i) => [
+    {
+      text: (m.id === activeId ? "✅ " : "") + m.name,
+      callback_data: `own_set_img_${i}`,
+    },
+    {
+      text: "🗑",
+      callback_data: `own_del_img_${i}`,
+    },
+  ]);
+
+  return {
+    inline_keyboard: [
+      ...modelButtons,
+      [{ text: "➕ Add New Model", callback_data: "own_add_img" }],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+export function ownerVideoModelsKeyboard(
+  models: IModelEntry[],
+  activeId: string
+): TelegramBot.InlineKeyboardMarkup {
+  const modelButtons = models.map((m, i) => [
+    {
+      text: (m.id === activeId ? "✅ " : "") + m.name,
+      callback_data: `own_set_vid_${i}`,
+    },
+    {
+      text: "🗑",
+      callback_data: `own_del_vid_${i}`,
+    },
+  ]);
+
+  return {
+    inline_keyboard: [
+      ...modelButtons,
+      [{ text: "➕ Add New Model", callback_data: "own_add_vid" }],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+export function ownerUserListKeyboard(
+  page: number,
+  totalPages: number
+): TelegramBot.InlineKeyboardMarkup {
+  const nav: TelegramBot.InlineKeyboardButton[] = [];
+  if (page > 1) nav.push({ text: "◀️ Prev", callback_data: `own_userlist_${page - 1}` });
+  if (page < totalPages) nav.push({ text: "Next ▶️", callback_data: `own_userlist_${page + 1}` });
+
+  return {
+    inline_keyboard: [
+      ...(nav.length > 0 ? [nav] : []),
+      [{ text: "⬅️ Back", callback_data: "own_users" }],
     ],
   };
 }

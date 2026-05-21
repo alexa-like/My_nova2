@@ -1,6 +1,5 @@
 /**
  * In-memory store for multi-step interactions.
- * For example: user clicks "Edit Image" button → bot sets pending → user sends photo → bot processes.
  * TTL: 5 minutes. Cleared after use or expiry.
  */
 
@@ -29,9 +28,54 @@ export type PendingPhotoAction =
   | "img_stylize"
   | "img_restore";
 
-export type PendingActionType = PendingTextAction | PendingPhotoAction;
+export type OwnerPendingAction =
+  | "owner_lookup"
+  | "owner_ban"
+  | "owner_unban"
+  | "owner_deleteuser"
+  | "owner_cleardata"
+  | "owner_grantpremium"
+  | "owner_revokepremium"
+  | "owner_broadcast"
+  | "owner_announcement"
+  | "owner_schedule"
+  | "owner_createcode"
+  | "owner_resetcode"
+  | "owner_deletegroup"
+  | "owner_add_chat_model"
+  | "owner_add_image_model"
+  | "owner_add_video_model";
 
-export const PHOTO_ACTIONS = new Set<PendingActionType>(["img_edit", "img_enhance", "img_stylize", "img_restore"]);
+export type PendingActionType =
+  | PendingTextAction
+  | PendingPhotoAction
+  | OwnerPendingAction;
+
+export const PHOTO_ACTIONS = new Set<PendingActionType>([
+  "img_edit",
+  "img_enhance",
+  "img_stylize",
+  "img_restore",
+]);
+
+export const OWNER_PENDING_ACTIONS = new Set<PendingActionType>([
+  "owner_lookup",
+  "owner_ban",
+  "owner_unban",
+  "owner_deleteuser",
+  "owner_cleardata",
+  "owner_grantpremium",
+  "owner_revokepremium",
+  "owner_broadcast",
+  "owner_announcement",
+  "owner_schedule",
+  "owner_createcode",
+  "owner_resetcode",
+  "owner_deletegroup",
+  "owner_add_chat_model",
+  "owner_add_image_model",
+  "owner_add_video_model",
+]);
 
 interface PendingAction {
   type: PendingActionType;
@@ -41,16 +85,23 @@ interface PendingAction {
 
 const store = new Map<number, PendingAction>();
 
-const TTL_MS = 5 * 60 * 1000; // 5 minutes
+const TTL_MS = 5 * 60 * 1000;
 
-export function setPending(userId: number, type: PendingActionType, data?: Record<string, string>): void {
+export function setPending(
+  userId: number,
+  type: PendingActionType,
+  data?: Record<string, string>
+): void {
   store.set(userId, { type, data, expiresAt: Date.now() + TTL_MS });
 }
 
 export function getPending(userId: number): PendingAction | null {
   const p = store.get(userId);
   if (!p) return null;
-  if (Date.now() > p.expiresAt) { store.delete(userId); return null; }
+  if (Date.now() > p.expiresAt) {
+    store.delete(userId);
+    return null;
+  }
   return p;
 }
 

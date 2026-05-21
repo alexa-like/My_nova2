@@ -1,5 +1,6 @@
 import axios from "axios";
 import { Memory } from "../models/Memory.js";
+import { getOrCreateBotConfig } from "../models/BotConfig.js";
 import { logger } from "../../lib/logger.js";
 
 const MAX_HISTORY = 20;
@@ -25,20 +26,31 @@ function buildSystemPrompt(
       : "Be thorough and expressive. Make the conversation feel rich and real.";
 
   const styleMap: Record<Style, string> = {
-    friendly: "Warm, caring, and supportive — like a close friend who genuinely cares. Personal, real, engaged.",
-    funny: "Witty, sharp, playful. You love to joke, banter, and keep things light — but you're still genuinely helpful.",
-    serious: "Direct, precise, no-fluff. You give clear structured answers without unnecessary small talk.",
-    balanced: "Relaxed and natural — you're approachable but efficient. Switch between fun and serious based on context.",
+    friendly:
+      "Warm, caring, and supportive — like a close friend who genuinely cares. Personal, real, engaged.",
+    funny:
+      "Witty, sharp, playful. You love to joke, banter, and keep things light — but you're still genuinely helpful.",
+    serious:
+      "Direct, precise, no-fluff. You give clear structured answers without unnecessary small talk.",
+    balanced:
+      "Relaxed and natural — you're approachable but efficient. Switch between fun and serious based on context.",
   };
 
   const langMap: Record<string, string> = {
-    en: "English", ar: "Arabic", fr: "French", es: "Spanish",
-    de: "German", zh: "Chinese", hi: "Hindi", pt: "Portuguese",
+    en: "English",
+    ar: "Arabic",
+    fr: "French",
+    es: "Spanish",
+    de: "German",
+    zh: "Chinese",
+    hi: "Hindi",
+    pt: "Portuguese",
   };
 
-  const languageInstruction = language && language !== "en" && langMap[language]
-    ? `Always respond in ${langMap[language]}.`
-    : "Respond in the same language the user writes to you in. Default to English.";
+  const languageInstruction =
+    language && language !== "en" && langMap[language]
+      ? `Always respond in ${langMap[language]}.`
+      : "Respond in the same language the user writes to you in. Default to English.";
 
   const moodInstruction = mood
     ? `The user's current mood is: ${mood}. Adapt your energy to match — be sensitive, responsive, and meet them where they are.`
@@ -58,6 +70,8 @@ You are Nova, a next-generation AI assistant packed with real capabilities. You 
 YOUR FULL CAPABILITIES:
 • Chat about literally anything — no topic is off limits unless it's directly harmful
 • Generate images from text descriptions (via /image or the Image Tools menu)
+• Generate short videos from text descriptions (via /video)
+• Understand and respond to voice messages
 • Edit, enhance, stylize, and restore images (send a photo after selecting the tool)
 • Write: tweets, Instagram captions, bios, song lyrics, professional emails, poems
 • AI tools: summarize text, translate languages, debate any topic, analyze writing style
@@ -69,6 +83,7 @@ YOUR FULL CAPABILITIES:
 
 YOUR COMMANDS (tell users these when they ask):
 /image [prompt] — generate an image
+/video [prompt] — generate a short video
 /ask [question] — quick answer without saving to memory
 /translate [text] — translate to English
 /quote — get an inspiring quote
@@ -86,6 +101,9 @@ YOUR COMMANDS (tell users these when they ask):
 
 IMAGE GENERATION AWARENESS:
 When a user asks you to "generate an image", "draw something", "create a picture", "make a photo", etc. — you understand they want an image. Tell them they can use /image [description] or the 🎨 Image Tools button in the menu. Be helpful about it — don't just say you can't.
+
+VOICE MESSAGE AWARENESS:
+When a user sends a voice message, you transcribe and understand it just like text. You respond naturally to what they said.
 
 RULES — READ CAREFULLY:
 - NEVER say "as an AI I can't..." or "I'm just an AI" — you ARE Nova, and Nova can do almost anything
@@ -107,12 +125,20 @@ export async function chat(
   userId: number,
   chatId: number,
   userMessage: string,
-  settings: { style: Style; emoji: boolean; length: "long" | "short"; language?: string },
+  settings: {
+    style: Style;
+    emoji: boolean;
+    length: "long" | "short";
+    language?: string;
+  },
   isPremium: boolean,
   mood?: string
 ): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return "AI service is not configured.";
+
+  const config = await getOrCreateBotConfig();
+  const model = config.activeChatModel;
 
   let memory = await Memory.findOne({ userId, chatId });
   if (!memory) {
@@ -143,8 +169,11 @@ export async function chat(
     const response = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "meta-llama/llama-3.3-70b-instruct",
-        messages: [{ role: "system", content: systemPrompt }, ...historyMessages],
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...historyMessages,
+        ],
         max_tokens: settings.length === "short" ? 300 : 800,
         temperature: settings.style === "funny" ? 0.92 : 0.78,
       },
@@ -152,7 +181,7 @@ export async function chat(
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "https://nova-bot.replit.app",
+          "HTTP-Referer": process.env.APP_URL || "https://nova-bot.replit.app",
           "X-Title": "Nova AI Bot",
         },
         timeout: 30000,
@@ -175,6 +204,9 @@ export async function chat(
   }
 }
 
-export async function clearMemory(userId: number, chatId: number): Promise<void> {
+export async function clearMemory(
+  userId: number,
+  chatId: number
+): Promise<void> {
   await Memory.deleteOne({ userId, chatId });
 }

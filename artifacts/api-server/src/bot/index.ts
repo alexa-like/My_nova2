@@ -1,7 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import { connectDB } from "./services/db.js";
 import { ensureUser, isOwner } from "./middlewares/userMiddleware.js";
-import { handlePrivateMessage, handlePhotoMessage } from "./handlers/privateHandler.js";
+import { handlePrivateMessage, handlePhotoMessage, handleVoiceMessage } from "./handlers/privateHandler.js";
 import { handleGroupMessage } from "./handlers/groupHandler.js";
 import { handleOwnerMessage, sendDailyReport } from "./handlers/ownerHandler.js";
 import { handleInlineQuery } from "./handlers/inlineHandler.js";
@@ -9,10 +9,10 @@ import { handleCallbackQuery } from "./handlers/callbackHandler.js";
 import { GroupSettings } from "./models/GroupSettings.js";
 import { isGroup, isPrivate } from "./utils/helpers.js";
 import { track } from "./services/analytics.js";
+import { getMaintenance, setMaintenance } from "./utils/maintenanceState.js";
 import { logger } from "../lib/logger.js";
 
 let bot: TelegramBot | null = null;
-let maintenanceMode = false;
 
 const OWNER_CMDS = new Set([
   "/owner", "/dashboard", "/stats", "/getusage", "/redeemcd", "/listcodes",
@@ -49,6 +49,7 @@ export async function startBot(): Promise<void> {
       { command: "start", description: "Start Nova" },
       { command: "help", description: "Show all commands" },
       { command: "image", description: "Generate an image" },
+      { command: "video", description: "Generate a short video" },
       { command: "ask", description: "Quick AI answer (no memory)" },
       { command: "translate", description: "Translate text to English" },
       { command: "summarize", description: "Summarize conversation" },
@@ -111,7 +112,6 @@ export async function startBot(): Promise<void> {
     try {
       const user = await ensureUser(msg);
 
-      // Track message event (fire-and-forget, never blocks routing)
       const isCmd = msg.text?.startsWith("/");
       if (isCmd) {
         const cmdName = msg.text!.trim().split(/\s+/)[0];
@@ -121,28 +121,33 @@ export async function startBot(): Promise<void> {
       }
 
       if (isPrivate(msg)) {
-        // Handle photo messages (image tools via button menu)
+        // Voice messages
+        if (msg.voice) {
+          await handleVoiceMessage(bot!, msg, user);
+          return;
+        }
+
+        // Photo messages (image tools via button menu)
         if (msg.photo && !msg.text) {
           await handlePhotoMessage(bot!, msg, user);
           return;
         }
+
         // Private chats: only process text messages beyond this point
         if (!msg.text) return;
-        // Strip @BotUsername suffix Telegram sometimes appends (e.g. /redeemcd@Novabyolabot)
+
         const cmd = msg.text.trim().split(/\s+/)[0].split("@")[0];
         if (isOwner(user) && OWNER_CMDS.has(cmd)) {
           await handleOwnerMessage(
             bot!, msg, user,
-            (val) => { maintenanceMode = val; },
-            () => maintenanceMode
+            (val) => setMaintenance(val),
+            () => getMaintenance()
           );
         } else {
-          await handlePrivateMessage(bot!, msg, user, maintenanceMode);
+          await handlePrivateMessage(bot!, msg, user, getMaintenance());
         }
       } else if (isGroup(msg)) {
-        // Group chats: route all message types so non-text senders are tracked
-        // (groupHandler handles empty text gracefully — no commands or AI fire)
-        await handleGroupMessage(bot!, msg, user, botUsername, maintenanceMode);
+        await handleGroupMessage(bot!, msg, user, botUsername, getMaintenance());
       }
     } catch (err) {
       logger.error({ err }, "Unhandled error in message handler");
@@ -223,15 +228,9 @@ export async function startBot(): Promise<void> {
       return;
     }
 
-    const backoffMs = Math.min(
-      1000 * Math.pow(2, pollingRestartAttempts),
-      5 * 60 * 1000 // max 5 min
-    );
+    const backoffMs = Math.min(1000 * Math.pow(2, pollingRestartAttempts), 5 * 60 * 1000);
     pollingRestartAttempts++;
-    logger.warn(
-      { attempt: pollingRestartAttempts, backoffMs },
-      "Scheduling polling restart"
-    );
+    logger.warn({ attempt: pollingRestartAttempts, backoffMs }, "Scheduling polling restart");
 
     setTimeout(async () => {
       try {
@@ -259,9 +258,6 @@ export async function startBot(): Promise<void> {
   logger.info("Nova is listening for messages");
 }
 
-/**
- * Schedules a daily stats report to the owner at midnight UTC.
- */
 function scheduleDailyReport(botInstance: TelegramBot): void {
   const msUntilMidnight = (): number => {
     const now = new Date();
@@ -273,7 +269,7 @@ function scheduleDailyReport(botInstance: TelegramBot): void {
   const scheduleNext = () => {
     setTimeout(async () => {
       await sendDailyReport(botInstance);
-      scheduleNext(); // schedule next day
+      scheduleNext();
     }, msUntilMidnight());
   };
 

@@ -37,7 +37,7 @@ export function addDays(date: Date, days: number): Date {
 export function startTypingLoop(
   bot: TelegramBot,
   chatId: number,
-  action: "typing" | "upload_photo" = "typing"
+  action: "typing" | "upload_photo" | "upload_video" = "typing"
 ): () => void {
   bot.sendChatAction(chatId, action).catch(() => {});
   const interval = setInterval(() => {
