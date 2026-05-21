@@ -5,10 +5,10 @@ const FREE_LIMIT = 3;
 const PREMIUM_LIMIT = 20;
 
 const PRIMARY_ENDPOINT =
-  "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-3-medium-diffusers";
+  "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0";
 
 const FALLBACK_ENDPOINT =
-  "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0";
+  "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-3-medium-diffusers";
 
 const IMG2IMG_ENDPOINT =
   "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix";
@@ -73,7 +73,7 @@ export async function editImage(imageBuffer: Buffer, prompt: string): Promise<Bu
         inputs: base64Image,
         parameters: {
           prompt,
-          num_inference_steps: 20,
+          num_inference_steps: 15,
           image_guidance_scale: 1.5,
           guidance_scale: 7,
         },

@@ -29,6 +29,24 @@ export function addDays(date: Date, days: number): Date {
 }
 
 /**
+ * Keeps the Telegram "typing" or "upload_photo" indicator alive every 4s
+ * until the returned stop function is called.
+ * Telegram only shows the indicator for ~5s per sendChatAction call, so
+ * long-running AI / image requests need this to avoid appearing frozen.
+ */
+export function startTypingLoop(
+  bot: TelegramBot,
+  chatId: number,
+  action: "typing" | "upload_photo" = "typing"
+): () => void {
+  bot.sendChatAction(chatId, action).catch(() => {});
+  const interval = setInterval(() => {
+    bot.sendChatAction(chatId, action).catch(() => {});
+  }, 4000);
+  return () => clearInterval(interval);
+}
+
+/**
  * Send a message safely — tries Markdown first, falls back to plain text.
  * Prevents crashes when AI returns unbalanced markdown characters.
  */

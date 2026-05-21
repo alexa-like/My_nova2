@@ -3,7 +3,7 @@ import { IUser, User } from "../models/User.js";
 import { GroupSettings } from "../models/GroupSettings.js";
 import { chat } from "../services/ai.js";
 import { isRateLimited, isFloodDetected } from "../utils/rateLimiter.js";
-import { safeSend } from "../utils/helpers.js";
+import { safeSend, startTypingLoop } from "../utils/helpers.js";
 import { logger } from "../../lib/logger.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -891,13 +891,13 @@ export async function handleGroupMessage(
   const cleanText = text.replace(new RegExp(`@${botUsername}`, "gi"), "").trim();
   if (!cleanText) return;
 
-  await bot.sendChatAction(chatId, "typing");
-
+  const stopTyping = startTypingLoop(bot, chatId);
   const reply = await chat(fromId, chatId, cleanText, {
     style: groupSettings.style,
     emoji: groupSettings.emoji,
     length: "short",
   }, user.premium.active, user.mood ?? undefined);
+  stopTyping();
 
   await safeSend(bot, chatId, reply);
 }

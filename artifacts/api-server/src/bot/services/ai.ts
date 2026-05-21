@@ -145,7 +145,7 @@ export async function chat(
       {
         model: "meta-llama/llama-3.3-70b-instruct",
         messages: [{ role: "system", content: systemPrompt }, ...historyMessages],
-        max_tokens: settings.length === "short" ? 400 : 1200,
+        max_tokens: settings.length === "short" ? 300 : 800,
         temperature: settings.style === "funny" ? 0.92 : 0.78,
       },
       {

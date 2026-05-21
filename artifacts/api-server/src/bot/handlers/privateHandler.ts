@@ -4,7 +4,7 @@ import { RedeemCode } from "../models/RedeemCode.js";
 import { chat, clearMemory } from "../services/ai.js";
 import { generateImage, getImageLimit, editImage, downloadTelegramPhoto } from "../services/image.js";
 import { isRateLimited } from "../utils/rateLimiter.js";
-import { formatDate, addDays, getUserName, safeSend } from "../utils/helpers.js";
+import { formatDate, addDays, getUserName, safeSend, startTypingLoop } from "../utils/helpers.js";
 import { parseDuration } from "../models/RedeemCode.js";
 import { getPending, clearPending, setPending, PHOTO_ACTIONS } from "../utils/pendingActions.js";
 import {
@@ -314,42 +314,47 @@ export async function handlePrivateMessage(
   if (text.startsWith("/translate")) {
     const toTranslate = text.replace(/^\/translate\s*/i, "").trim();
     if (!toTranslate) { await bot.sendMessage(chatId, "Usage: /translate <text>\nExample: /translate Bonjour le monde"); return; }
-    await bot.sendChatAction(chatId, "typing");
+    const stopTyping = startTypingLoop(bot, chatId);
     const translationPrompt = `Translate the following text to English. Only respond with the translation, nothing else:\n\n"${toTranslate}"`;
     const reply = await chat(user.userId, chatId + 9999, translationPrompt, { style: "serious", emoji: false, length: "short" }, user.premium.active);
+    stopTyping();
     await bot.sendMessage(chatId, `Translation:\n${reply}`);
     return;
   }
 
   // /summarize — summarize our conversation
   if (text === "/summarize") {
-    await bot.sendChatAction(chatId, "typing");
+    const stopTyping = startTypingLoop(bot, chatId);
     const summarizePrompt = "Please summarize our conversation so far in 3-5 bullet points. Be concise.";
     const reply = await chat(user.userId, chatId, summarizePrompt, { style: "serious", emoji: false, length: "short" }, user.premium.active);
+    stopTyping();
     await bot.sendMessage(chatId, `Conversation Summary:\n\n${reply}`);
     return;
   }
 
   // /quote
   if (text === "/quote") {
-    await bot.sendChatAction(chatId, "typing");
+    const stopTyping = startTypingLoop(bot, chatId);
     const reply = await chat(user.userId, chatId + 1111, "Give me one inspiring or thought-provoking quote. Format: \"Quote\" — Author. No intro, just the quote.", { style: "friendly", emoji: e, length: "short" }, user.premium.active);
+    stopTyping();
     await bot.sendMessage(chatId, `💬 Quote\n\n${reply}`, { reply_markup: repeatKeyboard("quick_quote", "fun_menu") });
     return;
   }
 
   // /fact
   if (text === "/fact") {
-    await bot.sendChatAction(chatId, "typing");
+    const stopTyping = startTypingLoop(bot, chatId);
     const reply = await chat(user.userId, chatId + 2222, "Tell me one surprising, mind-blowing, and true fact. Keep it to 2-3 sentences. Start directly with the fact.", { style: "funny", emoji: e, length: "short" }, user.premium.active);
+    stopTyping();
     await bot.sendMessage(chatId, `🎲 Did You Know?\n\n${reply}`, { reply_markup: repeatKeyboard("quick_fact", "fun_menu") });
     return;
   }
 
   // /tip
   if (text === "/tip") {
-    await bot.sendChatAction(chatId, "typing");
+    const stopTyping = startTypingLoop(bot, chatId);
     const reply = await chat(user.userId, chatId + 3333, "Give me one specific, actionable productivity, health, or life improvement tip. 2-3 sentences. No generic advice.", { style: "balanced", emoji: e, length: "short" }, user.premium.active);
+    stopTyping();
     await bot.sendMessage(chatId, `💡 Tip\n\n${reply}`, { reply_markup: repeatKeyboard("quick_tip", "main_menu") });
     return;
   }
@@ -358,9 +363,9 @@ export async function handlePrivateMessage(
   if (text.startsWith("/ask")) {
     const question = text.replace(/^\/ask\s*/i, "").trim();
     if (!question) { await bot.sendMessage(chatId, "Usage: /ask <question>"); return; }
-    await bot.sendChatAction(chatId, "typing");
-    // Use a unique chat ID so it doesn't affect the main conversation memory
+    const stopTyping = startTypingLoop(bot, chatId);
     const reply = await chat(user.userId, chatId + 5555, question, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
+    stopTyping();
     await safeSend(bot, chatId, reply);
     return;
   }
@@ -403,9 +408,9 @@ export async function handlePrivateMessage(
 
   user.usage.messages += 1;
   await user.save();
-  await bot.sendChatAction(chatId, "typing");
-
+  const stopTyping = startTypingLoop(bot, chatId);
   const reply = await chat(user.userId, chatId, text, user.settings, user.premium.active, user.mood ?? undefined);
+  stopTyping();
   await safeSend(bot, chatId, reply);
 }
 
@@ -420,7 +425,7 @@ async function handlePendingText(
   e: boolean,
   pendingData?: Record<string, string>
 ): Promise<void> {
-  await bot.sendChatAction(chatId, "typing");
+  const stopTyping = startTypingLoop(bot, chatId);
   try {
     switch (actionType) {
       case "ai_ask": {
@@ -571,6 +576,8 @@ async function handlePendingText(
   } catch (err) {
     logger.error({ err, actionType }, "Error handling pending text action");
     await bot.sendMessage(chatId, "Something went wrong, try again later.", { reply_markup: mainMenuKeyboard() });
+  } finally {
+    stopTyping();
   }
 }
 
@@ -621,7 +628,7 @@ export async function handlePhotoMessage(
   clearPending(user.userId);
 
   const statusMsg = await bot.sendMessage(chatId, "Processing your image...");
-  await bot.sendChatAction(chatId, "upload_photo");
+  const stopImgTyping = startTypingLoop(bot, chatId, "upload_photo");
 
   try {
     const imageBuffer = await downloadTelegramPhoto(bot, photo.file_id);
@@ -654,6 +661,7 @@ export async function handlePhotoMessage(
         break;
     }
 
+    stopImgTyping();
     try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
 
     if (!result) {
@@ -673,6 +681,7 @@ export async function handlePhotoMessage(
     });
 
   } catch (err) {
+    stopImgTyping();
     logger.error({ err }, "Photo processing error");
     try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
     await bot.sendMessage(chatId, "Something went wrong. Try again later.", {
@@ -702,9 +711,11 @@ async function handleImageGeneration(
     ? "Generating your image... this may take up to 30 seconds."
     : "Generating your image..."
   );
+  const stopImgTyping = startTypingLoop(bot, chatId, "upload_photo");
 
   try {
     const imageBuffer = await generateImage(prompt);
+    stopImgTyping();
     try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
 
     if (!imageBuffer) {
@@ -716,6 +727,7 @@ async function handleImageGeneration(
     await user.save();
     await bot.sendPhoto(chatId, imageBuffer, { caption: prompt });
   } catch (err) {
+    stopImgTyping();
     logger.error({ err }, "Image generation error");
     try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
     await bot.sendMessage(chatId, "Image generation failed. Please try again.");
