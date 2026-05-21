@@ -170,8 +170,9 @@ export async function handlePrivateMessage(
     return;
   }
 
-  // /redeem <code>
-  if (text.startsWith("/redeem")) {
+  // /redeem <code>  (exact command — do NOT use startsWith to avoid matching /redeemcd)
+  const firstWord = text.trim().split(/\s+/)[0].split("@")[0];
+  if (firstWord === "/redeem") {
     const parts = text.trim().split(/\s+/);
     if (parts.length < 2) { await bot.sendMessage(chatId, "Usage: /redeem CODE"); return; }
     const code = parts[1].toUpperCase();

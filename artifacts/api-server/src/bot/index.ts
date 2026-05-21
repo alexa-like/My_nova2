@@ -128,7 +128,8 @@ export async function startBot(): Promise<void> {
         }
         // Private chats: only process text messages beyond this point
         if (!msg.text) return;
-        const cmd = msg.text.trim().split(/\s+/)[0];
+        // Strip @BotUsername suffix Telegram sometimes appends (e.g. /redeemcd@Novabyolabot)
+        const cmd = msg.text.trim().split(/\s+/)[0].split("@")[0];
         if (isOwner(user) && OWNER_CMDS.has(cmd)) {
           await handleOwnerMessage(
             bot!, msg, user,

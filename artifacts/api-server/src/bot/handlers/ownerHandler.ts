@@ -21,7 +21,8 @@ export async function handleOwnerMessage(
   const text = msg.text || "";
   const e = user.settings.emoji;
   const args = text.trim().split(/\s+/).slice(1);
-  const cmd = text.trim().split(/\s+/)[0];
+  // Strip @BotUsername suffix that Telegram sometimes appends to commands
+  const cmd = text.trim().split(/\s+/)[0].split("@")[0];
 
   // /owner or /dashboard
   if (cmd === "/owner" || cmd === "/dashboard") {
@@ -133,13 +134,21 @@ export async function handleOwnerMessage(
       await bot.sendMessage(chatId, "Invalid duration. Use: 1d, 7d, 30d, 90d, 1m, 1y, lifetime");
       return;
     }
-    if (await RedeemCode.findOne({ code })) {
-      await bot.sendMessage(chatId, "Code already exists.");
-      return;
+    try {
+      if (await RedeemCode.findOne({ code })) {
+        await bot.sendMessage(chatId, `Code "${code}" already exists. Use /listcodes to see all codes or pick a different name.`);
+        return;
+      }
+      const durationDays = parseDuration(duration);
+      const newCode = new RedeemCode({ code, duration, durationDays, createdBy: user.userId });
+      await newCode.save();
+      await bot.sendMessage(chatId,
+        `Code created!\n\nCode: ${code}\nDuration: ${duration} (${durationDays} days)\n\nShare this with the user — they redeem it with:\n/redeem ${code}`
+      );
+    } catch (err: any) {
+      logger.error({ err }, "Failed to create redeem code");
+      await bot.sendMessage(chatId, `Failed to create code: ${err?.message || "Unknown error"}. Check the logs.`);
     }
-    const newCode = new RedeemCode({ code, duration, durationDays: parseDuration(duration), createdBy: user.userId });
-    await newCode.save();
-    await bot.sendMessage(chatId, `Code created!\nCode: ${code}\nDuration: ${duration}`);
     return;
   }
 
