@@ -12,6 +12,9 @@ export function mainMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
         { text: "🎨 Image & Media", callback_data: "img_menu" },
       ],
       [
+        { text: "🌐 Build App/Website", callback_data: "build_menu" },
+      ],
+      [
         { text: "🔍 Web Search", callback_data: "search_btn" },
         { text: "⏰ Reminders", callback_data: "reminders_btn" },
       ],
@@ -25,6 +28,18 @@ export function mainMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
       ],
     ],
   };
+}
+
+export function buildResultKeyboard(repoUrl?: string): TelegramBot.InlineKeyboardMarkup {
+  const buttons: TelegramBot.InlineKeyboardButton[][] = [];
+  if (repoUrl) {
+    buttons.push([{ text: "🔗 Open on GitHub", url: repoUrl }]);
+  }
+  buttons.push([
+    { text: "🌐 Build Another", callback_data: "build_menu" },
+    { text: "⬅️ Menu", callback_data: "main_menu" },
+  ]);
+  return { inline_keyboard: buttons };
 }
 
 export function backToMainKeyboard(): TelegramBot.InlineKeyboardMarkup {

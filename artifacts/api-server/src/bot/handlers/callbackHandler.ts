@@ -626,6 +626,26 @@ export async function handleCallbackQuery(
       return;
     }
 
+    if (data === "build_menu") {
+      const hasGitHub = !!(process.env.GITHUB_TOKEN && process.env.GITHUB_USERNAME);
+      await editMsg(bot, query,
+        `🌐 AI Website & App Builder\n\n` +
+        `Generate complete, working projects from a description.\n\n` +
+        `Usage: /build <describe what you want>\n\n` +
+        `Examples:\n` +
+        `• /build portfolio website for a photographer\n` +
+        `• /build Netflix clone with movie cards\n` +
+        `• /build todo app with dark mode\n` +
+        `• /build React dashboard with live charts\n` +
+        `• /build real-time chat app with Node.js\n\n` +
+        (hasGitHub
+          ? `✅ GitHub connected — your project will be pushed to a live repo automatically!`
+          : `📁 Files will be sent to you directly.\n💡 Set GITHUB_TOKEN + GITHUB_USERNAME for GitHub deployment.`),
+        backToMainKeyboard()
+      );
+      return;
+    }
+
     if (data === "search_btn") {
       setPending(userId, "search_input");
       await editMsg(bot, query,

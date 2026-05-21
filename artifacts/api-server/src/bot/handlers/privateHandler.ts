@@ -23,9 +23,18 @@ import {
   moodPickerKeyboard,
   backToMainKeyboard,
   repeatKeyboard,
+  buildResultKeyboard,
 } from "../utils/keyboards.js";
 import { webSearch, formatSearchResults } from "../services/webSearch.js";
 import { generateMusic } from "../services/music.js";
+import { generateProject, typeLabel } from "../services/projectGenerator.js";
+import {
+  createGitHubRepo,
+  pushAllFiles,
+  repoExists,
+  sanitizeRepoName,
+  uniqueRepoName,
+} from "../services/github.js";
 import { downloadTelegramDocument, extractTextFromDocument } from "../services/document.js";
 import { createReminder, listUserReminders, cancelReminder } from "../services/reminder.js";
 import { parseDurationToMs } from "../models/Reminder.js";
@@ -841,6 +850,30 @@ export async function handlePrivateMessage(
     return;
   }
 
+  // /build <description> — AI project generator + GitHub deployment
+  if (text.startsWith("/build")) {
+    const prompt = text.replace(/^\/build\s*/i, "").trim();
+    if (!prompt) {
+      const hasGitHub = !!(process.env.GITHUB_TOKEN && process.env.GITHUB_USERNAME);
+      await bot.sendMessage(chatId,
+        `🌐 AI Website & App Builder\n\n` +
+        `Usage: /build <describe what you want>\n\n` +
+        `Examples:\n` +
+        `• /build portfolio website for a photographer\n` +
+        `• /build Netflix clone with movie cards\n` +
+        `• /build todo app with dark mode\n` +
+        `• /build React dashboard with live charts\n` +
+        `• /build real-time chat app with Node.js\n\n` +
+        `Nova will generate a complete, working project and ${hasGitHub ? "push it to GitHub with a live repo link 🚀" : "send you all the files directly 📁"}\n\n` +
+        (hasGitHub ? "" : `💡 Set GITHUB_TOKEN + GITHUB_USERNAME secrets for automatic GitHub deployment.`),
+        { reply_markup: backToMainKeyboard() }
+      );
+      return;
+    }
+    await handleBuildRequest(bot, chatId, user, prompt, e);
+    return;
+  }
+
   // /music <description> — generate music via HuggingFace musicgen
   if (text.startsWith("/music")) {
     const prompt = text.replace(/^\/music\s*/i, "").trim();
@@ -1375,6 +1408,183 @@ export async function handlePhotoMessage(
     await bot.sendMessage(chatId, "Something went wrong. Try again later.", {
       reply_markup: imageMenuKeyboard(),
     });
+  }
+}
+
+// ── Website/App builder ───────────────────────────────────────────────────────
+
+async function handleBuildRequest(
+  bot: TelegramBot,
+  chatId: number,
+  user: IUser,
+  prompt: string,
+  e: boolean
+): Promise<void> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    await bot.sendMessage(chatId, "AI service is not configured. Ask the bot owner to set up OPENROUTER_API_KEY.");
+    return;
+  }
+
+  const githubToken = process.env.GITHUB_TOKEN;
+  const githubUsername = process.env.GITHUB_USERNAME;
+  const hasGitHub = !!(githubToken && githubUsername);
+
+  const statusMsg = await bot.sendMessage(chatId,
+    `🔨 Analyzing your request...\n\n"${prompt.substring(0, 120)}${prompt.length > 120 ? "..." : ""}"\n\n` +
+    `Generating a complete, working project. This takes 1-2 minutes.\n` +
+    (hasGitHub ? `GitHub push will follow automatically.` : `Files will be sent to you directly.`)
+  );
+  const stopTyping = startTypingLoop(bot, chatId);
+
+  // ── Step 1: Generate project files ─────────────────────────────────────────
+  let project;
+  try {
+    project = await generateProject(prompt, apiKey);
+  } catch (err: any) {
+    stopTyping();
+    logger.error({ err }, "Project generation failed");
+    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+    await bot.sendMessage(chatId,
+      `❌ Generation failed: ${err.message}\n\nTry being more specific, e.g. "portfolio website for a photographer" or "todo app with dark mode".`,
+      { reply_markup: buildResultKeyboard() }
+    );
+    return;
+  }
+
+  const label = typeLabel(project.type);
+  const fileCount = project.files.length;
+
+  // ── Step 2a: GitHub push ────────────────────────────────────────────────────
+  if (hasGitHub) {
+    try {
+      await bot.editMessageText(
+        `✅ Code generated! (${fileCount} files — ${label})\n📤 Creating GitHub repository...`,
+        { chat_id: chatId, message_id: statusMsg.message_id }
+      );
+    } catch {}
+
+    const rawName = sanitizeRepoName(project.name);
+    let repoName = rawName;
+
+    try {
+      const exists = await repoExists(githubToken!, githubUsername!, rawName);
+      if (exists) repoName = uniqueRepoName(rawName);
+    } catch {}
+
+    let repoInfo: Awaited<ReturnType<typeof createGitHubRepo>>;
+    try {
+      repoInfo = await createGitHubRepo(githubToken!, repoName, project.description);
+    } catch (err: any) {
+      stopTyping();
+      logger.error({ err }, "GitHub repo creation failed");
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      const reason =
+        err?.response?.status === 401
+          ? "GitHub authentication failed. Check your GITHUB_TOKEN secret."
+          : err?.response?.status === 422
+          ? `A repo named "${repoName}" already exists.`
+          : `GitHub error: ${err?.response?.data?.message || err.message}`;
+      await bot.sendMessage(chatId, `⚠️ ${reason}\n\nSending files directly instead...`);
+      await sendProjectFiles(bot, chatId, project, e);
+      return;
+    }
+
+    try {
+      await bot.editMessageText(
+        `✅ Repository created!\n📤 Uploading ${fileCount} files...`,
+        { chat_id: chatId, message_id: statusMsg.message_id }
+      );
+    } catch {}
+
+    let lastDone = 0;
+    try {
+      await pushAllFiles(
+        githubToken!,
+        githubUsername!,
+        repoInfo.name,
+        project.files,
+        async (done, total) => {
+          lastDone = done;
+          try {
+            await bot.editMessageText(
+              `📤 Uploading files... ${done}/${total}`,
+              { chat_id: chatId, message_id: statusMsg.message_id }
+            );
+          } catch {}
+        }
+      );
+    } catch (err) {
+      // Retry remaining files once
+      logger.warn({ err, lastDone }, "Partial upload failure — retrying remaining files");
+      try {
+        await pushAllFiles(githubToken!, githubUsername!, repoInfo.name, project.files.slice(lastDone));
+      } catch {
+        stopTyping();
+        try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+        await bot.sendMessage(chatId,
+          `⚠️ Uploaded ${lastDone}/${fileCount} files. Repo: ${repoInfo.htmlUrl}\n\nSending remaining files directly...`,
+          { reply_markup: buildResultKeyboard(repoInfo.htmlUrl) }
+        );
+        await sendProjectFiles(bot, chatId, project, e, lastDone);
+        return;
+      }
+    }
+
+    stopTyping();
+    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+
+    await bot.sendMessage(chatId,
+      `🚀 Your project is ready!\n\n` +
+      `📦 ${project.name}\n` +
+      `${project.description}\n\n` +
+      `🔗 ${repoInfo.htmlUrl}\n\n` +
+      `${fileCount} files · ${label}\n\n` +
+      `💡 ${project.deploymentTip}`,
+      { reply_markup: buildResultKeyboard(repoInfo.htmlUrl) }
+    );
+    return;
+  }
+
+  // ── Step 2b: No GitHub — send files directly ────────────────────────────────
+  stopTyping();
+  try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+
+  await bot.sendMessage(chatId,
+    `✅ Project generated!\n\n` +
+    `📦 ${project.name}\n` +
+    `${project.description}\n\n` +
+    `${fileCount} files · ${label}\n\n` +
+    `Sending files now 👇\n\n` +
+    `💡 ${project.deploymentTip}\n\n` +
+    `💡 Tip: Set GITHUB_TOKEN + GITHUB_USERNAME secrets to auto-push to GitHub next time.`,
+    { reply_markup: buildResultKeyboard() }
+  );
+  await sendProjectFiles(bot, chatId, project, e);
+}
+
+async function sendProjectFiles(
+  bot: TelegramBot,
+  chatId: number,
+  project: { files: Array<{ path: string; content: string }> },
+  _e: boolean,
+  startFrom = 0
+): Promise<void> {
+  const files = project.files.slice(startFrom);
+  for (const file of files) {
+    try {
+      const buf = Buffer.from(file.content, "utf-8");
+      const filename = file.path.split("/").pop() || file.path;
+      await bot.sendDocument(
+        chatId,
+        buf,
+        { caption: `📄 ${file.path}` },
+        { filename, contentType: "text/plain; charset=utf-8" }
+      );
+      await new Promise((r) => setTimeout(r, 350));
+    } catch (err) {
+      logger.warn({ err, path: file.path }, "Failed to send project file as document");
+    }
   }
 }
 

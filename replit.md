@@ -17,18 +17,21 @@ A production-ready Telegram AI assistant with personality modes, group moderatio
 - API: Express 5
 - DB: MongoDB + Mongoose (user data, memory, premium, redeem codes, group settings)
 - Bot: node-telegram-bot-api (polling mode)
-- AI: OpenRouter (meta-llama/llama-3.3-70b-instruct)
-- Images: Hugging Face Inference API (stable-diffusion-xl)
+- AI: OpenRouter (meta-llama/llama-3.3-70b-instruct, model swappable)
+- Images: Hugging Face Inference API (FLUX Schnell / SDXL)
+- Music: HuggingFace musicgen-small
+- Video: HuggingFace text-to-video-ms-1.7b
+- GitHub: REST API v3 — repo creation + file push for /build
 - Build: esbuild (ESM bundle)
 
 ## Where things live
 
 - `artifacts/api-server/src/bot/` — all bot logic
-  - `models/` — Mongoose schemas: User, Memory, RedeemCode, GroupSettings
-  - `handlers/` — privateHandler, groupHandler, ownerHandler
-  - `services/` — ai.ts (OpenRouter), image.ts (HuggingFace), db.ts (MongoDB)
+  - `models/` — Mongoose schemas: User, Memory, RedeemCode, GroupSettings, BotConfig, Reminder
+  - `handlers/` — privateHandler, groupHandler, ownerHandler, callbackHandler
+  - `services/` — ai.ts, image.ts, music.ts, video.ts, webSearch.ts, github.ts, projectGenerator.ts, reminder.ts, tts.ts, voice.ts
   - `middlewares/` — userMiddleware.ts (upsert + premium expiry)
-  - `utils/` — rateLimiter.ts, helpers.ts
+  - `utils/` — rateLimiter.ts, helpers.ts, keyboards.ts, pendingActions.ts
 - `artifacts/api-server/src/routes/bot.ts` — `/api/bot/status` endpoint
 - `lib/api-spec/openapi.yaml` — API contract source of truth
 
