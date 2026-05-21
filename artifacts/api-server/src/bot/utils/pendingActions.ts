@@ -24,7 +24,8 @@ export type PendingTextAction =
   | "remind_input"
   | "music_input"
   | "search_input"
-  | "sticker_input";
+  | "sticker_input"
+  | "fun_truth_reply";
 
 export type PendingPhotoAction =
   | "img_edit"

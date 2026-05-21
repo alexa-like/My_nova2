@@ -1274,6 +1274,14 @@ async function handlePendingText(
         await handleStickerGeneration(bot, chatId, user, input, e);
         break;
       }
+      case "fun_truth_reply": {
+        const reply = await chat(user.userId, chatId + 8006,
+          `The user was asked a deep truth question and replied: "${input}"\n\nRespond thoughtfully and empathetically, like a wise friend reflecting on their answer. Be genuine, not preachy. 2-3 sentences.`,
+          { style: "balanced", emoji: e, length: "short" }, user.premium.active
+        );
+        await bot.sendMessage(chatId, `💭 ${reply}`, { reply_markup: funMenuKeyboard() });
+        break;
+      }
       default:
         await bot.sendMessage(chatId, "Something went wrong. Try again from the menu.", { reply_markup: mainMenuKeyboard() });
     }

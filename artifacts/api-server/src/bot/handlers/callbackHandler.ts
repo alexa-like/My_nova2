@@ -326,6 +326,7 @@ export async function handleCallbackQuery(
       await editMsg(bot, query, "💭 Coming up with a deep one...");
       const prompt = `Ask ${name} one deep, thought-provoking "truth" question — the kind asked in a late-night honest conversation. Something philosophical, personal, or revealing. Just the question. Make it really good.`;
       const result = await chat(userId, chatId + 8005, prompt, { style: "balanced", emoji: e, length: "short" }, user.premium.active);
+      setPending(userId, "fun_truth_reply");
       await editMsg(bot, query, `💭 Truth Question for You\n\n${result}\n\nTake your time and reply whenever you're ready... 👀`, backToFunKeyboard());
       return;
     }
