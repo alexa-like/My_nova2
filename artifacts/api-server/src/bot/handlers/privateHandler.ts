@@ -201,20 +201,19 @@ export async function handlePrivateMessage(
         `I'm your personal AI assistant — smarter than a chatbot, friendlier than a search engine.\n\n` +
         `Here's what I can do for you:\n` +
         `💬 Chat naturally — just type anything!\n` +
-        `🎨 Generate images — /image a glowing city at night\n` +
-        `🔍 Search the web — /search latest AI news\n` +
-        `⏰ Set reminders — /remind 30m Check the oven\n` +
-        `🎵 Generate music — /music calm lo-fi beats\n` +
-        `📄 Read documents — send me any PDF or text file!\n` +
-        `🎬 Generate videos — /video a sunset timelapse\n` +
-        `🔊 Voice replies — /voice\n\n` +
-        `✨ Tip: You can change my personality with /style and set your language with /lang\n\n` +
-        `Ready? Pick something below or just start talking! 👇`
+        `🎨 Generate images & stickers\n` +
+        `🔍 Search the web with AI synthesis\n` +
+        `⏰ Set personal reminders\n` +
+        `🎵 Generate music\n` +
+        `📄 Read documents — send any PDF, DOCX or TXT!\n` +
+        `🎬 Generate short videos\n` +
+        `🔊 Voice replies\n\n` +
+        `Use the menu below to explore everything 👇`
       );
       await bot.sendMessage(chatId, `What would you like to do first?`, { reply_markup: mainMenuKeyboard() });
     } else {
       await bot.sendMessage(chatId,
-        `Hey ${name}! Welcome back.\n\nPick what you'd like to do:`,
+        `Hey ${name}! Welcome back.`,
         { reply_markup: mainMenuKeyboard() }
       );
     }
@@ -227,16 +226,12 @@ export async function handlePrivateMessage(
     await bot.sendMessage(chatId,
       `Hey ${name}${badge}! Here's everything I can do:\n\n` +
       `💬 Just type anything to chat with me!\n\n` +
-      `🔍 /search <query> — Web search with live results\n` +
       `🎨 /image <prompt> — Generate an image\n` +
       `🎬 /video <prompt> — Generate a short video\n` +
-      `🎵 /music <desc> — Generate music\n` +
-      `🖼️ /sticker <prompt> — Create a sticker image\n` +
       `📄 Send any PDF/TXT/DOCX — I'll read and analyze it!\n\n` +
-      `⏰ /remind <time> <msg> — Set a reminder (e.g. /remind 1h Meeting)\n` +
-      `📋 /reminders — View your upcoming reminders\n` +
-      `📜 /history — View conversation history summary\n\n` +
-      `🔤 /translate <text> — Translate to English\n` +
+      `Everything else is in the menu — tap a button below:\n` +
+      `🔍 Web Search · 🎵 Music · 🖼️ Sticker\n` +
+      `⏰ Reminders · 📜 History · 🤖 AI Tools\n\n` +
       `📝 /summarize — Summarize our conversation\n` +
       `💬 /quote — Inspiring quote\n` +
       `🎲 /fact — Random mind-blowing fact\n` +

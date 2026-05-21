@@ -9,7 +9,11 @@ export function mainMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
     inline_keyboard: [
       [
         { text: "🤖 AI Tools", callback_data: "ai_menu" },
-        { text: "🎨 Image Tools", callback_data: "img_menu" },
+        { text: "🎨 Image & Media", callback_data: "img_menu" },
+      ],
+      [
+        { text: "🔍 Web Search", callback_data: "search_btn" },
+        { text: "⏰ Reminders", callback_data: "reminders_btn" },
       ],
       [
         { text: "😄 Fun", callback_data: "fun_menu" },
@@ -130,6 +134,10 @@ export function aiMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
         { text: "🗣️ Debate Me", callback_data: "ai_debate" },
         { text: "🔬 Analyze Text", callback_data: "ai_analyze" },
       ],
+      [
+        { text: "📜 History", callback_data: "history_btn" },
+        { text: "🔍 Web Search", callback_data: "search_btn" },
+      ],
       [{ text: "⬅️ Back", callback_data: "main_menu" }],
     ],
   };
@@ -151,6 +159,10 @@ export function imageMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
       [
         { text: "🎭 Stylize", callback_data: "img_stylize" },
         { text: "🔧 Restore", callback_data: "img_restore" },
+      ],
+      [
+        { text: "🎵 Generate Music", callback_data: "music_btn" },
+        { text: "🖼️ Create Sticker", callback_data: "sticker_btn" },
       ],
       [{ text: "⬅️ Back", callback_data: "main_menu" }],
     ],

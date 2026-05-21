@@ -3,9 +3,10 @@ import { User } from "../models/User.js";
 import { Memory } from "../models/Memory.js";
 import { GroupSettings } from "../models/GroupSettings.js";
 import { chat } from "../services/ai.js";
-import { formatDate } from "../utils/helpers.js";
+import { formatDate, startTypingLoop } from "../utils/helpers.js";
 import { getImageLimit } from "../services/image.js";
 import { setPending } from "../utils/pendingActions.js";
+import { listUserReminders, cancelReminder } from "../services/reminder.js";
 import { getOrCreateBotConfig } from "../models/BotConfig.js";
 import { sendOwnerPanel } from "./ownerHandler.js";
 import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
@@ -603,6 +604,145 @@ export async function handleCallbackQuery(
       await editMsg(bot, query,
         `🔧 Restore Image\n\nSend me an old or damaged photo — I'll generate a clean, sharp version:`,
         backToImgKeyboard()
+      );
+      return;
+    }
+
+    if (data === "music_btn") {
+      setPending(userId, "music_input");
+      await editMsg(bot, query,
+        `🎵 Generate Music\n\nDescribe the music you want and I'll create it:\n\n• calm lo-fi beats for studying\n• epic cinematic orchestral\n• upbeat jazz piano\n• dark electronic ambient`,
+        backToImgKeyboard()
+      );
+      return;
+    }
+
+    if (data === "sticker_btn") {
+      setPending(userId, "sticker_input");
+      await editMsg(bot, query,
+        `🖼️ Create Sticker\n\nDescribe what you want as a sticker:\n\n• happy cat waving\n• cute anime girl with stars\n• fire dragon emoji style\n• robot dancing`,
+        backToImgKeyboard()
+      );
+      return;
+    }
+
+    if (data === "search_btn") {
+      setPending(userId, "search_input");
+      await editMsg(bot, query,
+        `🔍 Web Search\n\nWhat do you want to search for?\n\nExamples:\n• latest AI news\n• best programming languages 2025\n• how to make pasta carbonara`,
+        backToMainKeyboard()
+      );
+      return;
+    }
+
+    if (data === "history_btn") {
+      const stopTyping = startTypingLoop(bot, chatId);
+      try {
+        const historyPrompt =
+          "Give me a detailed summary of our conversation history so far. List:\n" +
+          "• Topics we've discussed\n" +
+          "• Questions I asked\n" +
+          "• Key things you've told me\n" +
+          "• Any preferences or settings I've mentioned\n\n" +
+          "If there's no significant history yet, say so briefly.";
+        const reply = await chat(userId, chatId, historyPrompt, { style: "serious", emoji: false, length: "long" }, user.premium.active);
+        stopTyping();
+        await bot.sendMessage(chatId, `📜 Conversation History\n\n${reply}`, {
+          reply_markup: { inline_keyboard: [
+            [{ text: "🧹 Clear History", callback_data: "forget_memory" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+          ]},
+        });
+      } catch {
+        stopTyping();
+        await bot.sendMessage(chatId, "Could not retrieve history. Try again.", { reply_markup: backToMainKeyboard() });
+      }
+      return;
+    }
+
+    if (data === "reminders_btn") {
+      const reminders = await listUserReminders(userId);
+      if (reminders.length === 0) {
+        await editMsg(bot, query,
+          `⏰ Reminders\n\nYou have no upcoming reminders.\n\nSet one — type the time and message:\nExample: 30m Call mom`,
+          {
+            inline_keyboard: [
+              [{ text: "➕ Set Reminder", callback_data: "remind_btn" }],
+              [{ text: "⬅️ Back", callback_data: "main_menu" }],
+            ],
+          }
+        );
+        return;
+      }
+      const lines = reminders.map((r, i) => {
+        const id = (r._id as any).toString().slice(-6);
+        const when = formatDate(r.triggerAt);
+        const msg = r.message.substring(0, 50);
+        return `${i + 1}. ⏰ ${when}\n    "${msg}"${r.message.length > 50 ? "…" : ""}\n    ID: ${id}`;
+      });
+      const cancelBtns = reminders.map((r) => ([
+        { text: `❌ Cancel: ${r.message.substring(0, 25)}${r.message.length > 25 ? "…" : ""}`, callback_data: `cancel_rem_${(r._id as any).toString().slice(-6)}` },
+      ]));
+      await editMsg(bot, query,
+        `⏰ Your Reminders (${reminders.length})\n\n${lines.join("\n\n")}`,
+        {
+          inline_keyboard: [
+            ...cancelBtns,
+            [{ text: "➕ Set New Reminder", callback_data: "remind_btn" }],
+            [{ text: "⬅️ Back", callback_data: "main_menu" }],
+          ],
+        }
+      );
+      return;
+    }
+
+    if (data === "remind_btn") {
+      setPending(userId, "remind_input");
+      await editMsg(bot, query,
+        `⏰ Set a Reminder\n\nType the time and your message:\n\nExamples:\n• 30m Take a break\n• 2h Call mom\n• 1d Pay rent\n• 45s Check the oven\n\nFormat: <time> <message>`,
+        backToMainKeyboard()
+      );
+      return;
+    }
+
+    if (data.startsWith("cancel_rem_")) {
+      const shortId = data.replace("cancel_rem_", "");
+      const reminders = await listUserReminders(userId);
+      const target = reminders.find((r) => (r._id as any).toString().slice(-6) === shortId);
+      if (!target) {
+        await answer(bot, query.id, "Reminder not found or already sent.");
+        return;
+      }
+      await cancelReminder((target._id as any).toString(), userId);
+      await answer(bot, query.id, "✅ Reminder cancelled.");
+      const remaining = await listUserReminders(userId);
+      if (remaining.length === 0) {
+        await editMsg(bot, query,
+          `⏰ Reminders\n\nAll reminders cancelled. You have no upcoming reminders.`,
+          {
+            inline_keyboard: [
+              [{ text: "➕ Set Reminder", callback_data: "remind_btn" }],
+              [{ text: "⬅️ Back", callback_data: "main_menu" }],
+            ],
+          }
+        );
+        return;
+      }
+      const lines = remaining.map((r, i) => {
+        const id = (r._id as any).toString().slice(-6);
+        return `${i + 1}. ⏰ ${formatDate(r.triggerAt)}\n    "${r.message.substring(0, 50)}${r.message.length > 50 ? "…" : ""}"\n    ID: ${id}`;
+      });
+      const cancelBtns = remaining.map((r) => ([
+        { text: `❌ Cancel: ${r.message.substring(0, 25)}${r.message.length > 25 ? "…" : ""}`, callback_data: `cancel_rem_${(r._id as any).toString().slice(-6)}` },
+      ]));
+      await editMsg(bot, query,
+        `⏰ Your Reminders (${remaining.length})\n\n${lines.join("\n\n")}`,
+        {
+          inline_keyboard: [
+            ...cancelBtns,
+            [{ text: "➕ Set New Reminder", callback_data: "remind_btn" }],
+            [{ text: "⬅️ Back", callback_data: "main_menu" }],
+          ],
+        }
       );
       return;
     }

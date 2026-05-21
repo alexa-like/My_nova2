@@ -77,35 +77,15 @@ export async function startBot(): Promise<void> {
   // ── Register bot command menus ─────────────────────────────────────────────
   try {
     await bot.setMyCommands([
-      { command: "start", description: "Start Nova" },
-      { command: "help", description: "Show all commands" },
-      { command: "search", description: "Search the web" },
+      { command: "start", description: "Open Nova menu" },
+      { command: "help", description: "Show help" },
       { command: "image", description: "Generate an image" },
       { command: "video", description: "Generate a short video" },
-      { command: "music", description: "Generate music" },
-      { command: "sticker", description: "Create a sticker image" },
-      { command: "ask", description: "Quick AI answer (no memory)" },
-      { command: "history", description: "View conversation history" },
-      { command: "remind", description: "Set a reminder (e.g. /remind 1h Call mom)" },
-      { command: "reminders", description: "View upcoming reminders" },
-      { command: "translate", description: "Translate text to English" },
-      { command: "summarize", description: "Summarize conversation" },
-      { command: "quote", description: "Get an inspiring quote" },
-      { command: "fact", description: "Random fun fact" },
-      { command: "tip", description: "Productivity tip" },
-      { command: "mood", description: "Set your current mood" },
-      { command: "feedback", description: "Send feedback to owner" },
       { command: "profile", description: "View your profile" },
-      { command: "settings", description: "View your settings" },
-      { command: "model", description: "Switch your AI chat model" },
-      { command: "voice", description: "Configure voice reply settings" },
+      { command: "settings", description: "Your settings" },
       { command: "premium", description: "Check premium status" },
       { command: "redeem", description: "Redeem a premium code" },
       { command: "forget", description: "Clear conversation memory" },
-      { command: "style", description: "Change personality style" },
-      { command: "length", description: "Change reply length" },
-      { command: "emoji", description: "Toggle emojis on/off" },
-      { command: "lang", description: "Set language" },
     ], { scope: { type: "all_private_chats" } });
 
     await bot.setMyCommands([
