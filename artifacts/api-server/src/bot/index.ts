@@ -51,7 +51,12 @@ export async function startBot(): Promise<void> {
     return;
   }
 
-  await connectDB();
+  try {
+    await connectDB();
+  } catch (err) {
+    logger.error({ err }, "Failed to connect to MongoDB — bot cannot start without a database");
+    return;
+  }
 
   bot = new TelegramBot(token, {
     polling: {
@@ -156,7 +161,7 @@ export async function startBot(): Promise<void> {
       { command: "music", description: "Generate music (mention bot)" },
       { command: "sticker", description: "Generate a sticker (mention bot)" },
       { command: "search", description: "Search the web (mention bot)" },
-      { command: "build", description: "Build an app or website (mention bot)" },
+      { command: "unwarn", description: "Remove one warning from a user (reply)" },
     ], { scope: { type: "all_group_chats" } });
 
     logger.info("Bot command menus registered");
@@ -212,6 +217,12 @@ export async function startBot(): Promise<void> {
           await handlePrivateMessage(bot!, msg, user, getMaintenance());
         }
       } else if (isGroup(msg)) {
+        // Security: owner-only commands silently blocked in group chats — DM the bot to use them
+        if (msg.text) {
+          const grpCmd = msg.text.trim().split(/\s+/)[0].split("@")[0].toLowerCase();
+          if (OWNER_CMDS.has(grpCmd)) return;
+        }
+
         // Captcha: muted users use inline keyboard buttons, not text
         // (text answers still supported as fallback but muted users can't type)
         if (msg.text) {
@@ -467,6 +478,13 @@ export async function startBot(): Promise<void> {
 
     if (pollingRestartAttempts >= MAX_RESTART_ATTEMPTS) {
       logger.error("Max polling restart attempts reached — giving up");
+      const ownerId = process.env.OWNER_ID ? parseInt(process.env.OWNER_ID, 10) : null;
+      if (ownerId && bot) {
+        bot.sendMessage(ownerId,
+          "⚠️ Nova polling has crashed and could not auto-recover after " +
+          MAX_RESTART_ATTEMPTS + " attempts. Please restart the server."
+        ).catch(() => {});
+      }
       return;
     }
 

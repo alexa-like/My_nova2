@@ -54,7 +54,8 @@ async function cacheUsernameIfNew(bot: TelegramBot, username: string): Promise<v
   try {
     const clean = username.replace(/^@/, "");
     if (!clean) return;
-    const existing = await User.findOne({ username: new RegExp(`^${clean}$`, "i") });
+    const safeClean = clean.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const existing = await User.findOne({ username: new RegExp(`^${safeClean}$`, "i") });
     if (existing?.userId) return; // Already have their ID — nothing to do
     const info = await bot.getChat(`@${clean}`) as any;
     if (info?.id && typeof info.id === "number" && info.id > 0) {
@@ -117,9 +118,10 @@ async function resolveTarget(
   async function resolveUsername(username: string): Promise<{ userId: number; displayName: string } | null> {
     const clean = username.replace(/^@/, "").trim();
     if (!clean) return null;
+    const safeUsername = clean.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     // a) Our DB — populated from every message we've ever seen + passive caching
-    const dbUser = await User.findOne({ username: new RegExp(`^${clean}$`, "i") });
+    const dbUser = await User.findOne({ username: new RegExp(`^${safeUsername}$`, "i") });
     if (dbUser) return { userId: dbUser.userId, displayName: `@${clean}` };
 
     // b) Current group admin list
@@ -295,8 +297,9 @@ export async function handleGroupMessage(
       "/unmute — Unmute user\n" +
       "/kick — Kick user\n" +
       "/warn [reason] — Warn user\n" +
+      "/unwarn — Remove one warning\n" +
       "/warnings — Check warnings\n" +
-      "/clearwarn — Clear warnings\n" +
+      "/clearwarn — Clear all warnings\n" +
       "/note <text> — Add note to user (reply)\n" +
       "/notes — View user notes (reply)\n" +
       "/clearnotes — Clear user notes (reply)\n" +
@@ -347,7 +350,7 @@ export async function handleGroupMessage(
   // ── Admin-only commands ───────────────────────────────────────────────────
 
   const adminCmds = new Set([
-    "/ban", "/unban", "/mute", "/unmute", "/warn", "/warnings",
+    "/ban", "/unban", "/mute", "/unmute", "/warn", "/unwarn", "/warnings",
     "/clearwarn", "/kick", "/pin", "/unpin", "/delete", "/purge",
     "/promote", "/demote", "/ai", "/lock", "/unlock", "/welcome",
     "/setrules", "/style", "/slowmode", "/antilink", "/antiflood",
@@ -765,7 +768,7 @@ export async function handleGroupMessage(
     }
 
     // Commands that need a target user ─────────────────────────────────────────
-    const needsTarget = new Set(["/ban","/unban","/mute","/unmute","/warn","/warnings","/clearwarn","/kick","/promote","/demote"]);
+    const needsTarget = new Set(["/ban","/unban","/mute","/unmute","/warn","/unwarn","/warnings","/clearwarn","/kick","/promote","/demote"]);
     if (!needsTarget.has(cmd)) return;
 
     const target = await resolveTarget(bot, chatId, msg, args);
@@ -926,6 +929,20 @@ export async function handleGroupMessage(
       const dbUser = await User.findOne({ userId: target.userId });
       if (dbUser) { dbUser.warnings = 0; await dbUser.save(); }
       await bot.sendMessage(chatId, `Warnings cleared for ${name}.`);
+      return;
+    }
+
+    if (cmd === "/unwarn") {
+      let dbUser = await User.findOne({ userId: target.userId });
+      if (!dbUser || dbUser.warnings <= 0) {
+        await bot.sendMessage(chatId, `${name} has no warnings to remove.`);
+        return;
+      }
+      dbUser.warnings = Math.max(0, dbUser.warnings - 1);
+      await dbUser.save();
+      await bot.sendMessage(chatId,
+        `One warning removed for ${name}.\nWarnings: ${dbUser.warnings}/${groupSettings.warnLimit}`
+      );
       return;
     }
 
@@ -1126,48 +1143,12 @@ export async function handleGroupMessage(
     return;
   }
 
-  // /build command when bot is mentioned
-  if (cleanText.toLowerCase().startsWith("/build")) {
-    const prompt = cleanText.replace(/^\/build\s*/i, "").trim();
-    if (!prompt) {
-      await bot.sendMessage(chatId,
-        `Tell me what to build!\nExample: @${botUsername} /build portfolio website for a photographer`,
-        { reply_to_message_id: msg.message_id }
-      );
-      return;
-    }
-    if (!process.env.OPENROUTER_API_KEY) {
-      await bot.sendMessage(chatId, "AI service not configured.", { reply_to_message_id: msg.message_id });
-      return;
-    }
-    const statusMsg = await bot.sendMessage(chatId,
-      `🔨 Generating: "${prompt.slice(0, 60)}"...\nThis takes 1-2 minutes. Files will be sent directly.`
+  // /build is private-only — redirect group users to DM
+  if (cleanText.toLowerCase().startsWith("/build") || cleanText.toLowerCase().startsWith("/deploy")) {
+    await bot.sendMessage(chatId,
+      "The /build and /deploy commands are only available in private chat. DM me to use them.",
+      { reply_to_message_id: msg.message_id }
     );
-    const stopBuildTyping = startTypingLoop(bot, chatId);
-    try {
-      const { generateProject, typeLabel: tl } = await import("../services/projectGenerator.js");
-      const project = await generateProject(prompt, process.env.OPENROUTER_API_KEY);
-      stopBuildTyping();
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
-      await bot.sendMessage(chatId,
-        `✅ ${project.name}\n${project.description}\n\n${project.files.length} files · ${tl(project.type)}\n\nSending files...`
-      );
-      for (const file of project.files) {
-        try {
-          const buf = Buffer.from(file.content, "utf-8");
-          await bot.sendDocument(chatId, buf,
-            { caption: `📄 ${file.path}` },
-            { filename: file.path.split("/").pop() || file.path, contentType: "text/plain; charset=utf-8" }
-          );
-          await new Promise((r) => setTimeout(r, 350));
-        } catch {}
-      }
-    } catch (err: any) {
-      stopBuildTyping();
-      logger.error({ err }, "Group build error");
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
-      await bot.sendMessage(chatId, `Build failed: ${err.message || "Try a more specific description."}`);
-    }
     return;
   }
 
