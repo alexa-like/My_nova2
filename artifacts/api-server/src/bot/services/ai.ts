@@ -49,8 +49,8 @@ function buildSystemPrompt(
 
   const languageInstruction =
     language && language !== "en" && langMap[language]
-      ? `Always respond in ${langMap[language]}.`
-      : "Respond in the same language the user writes to you in. Default to English.";
+      ? `CRITICAL — LANGUAGE RULE: You MUST respond ONLY in ${langMap[language]}. Every single word of every reply must be in ${langMap[language]}. Never switch to English or any other language, even for technical terms — translate or approximate them. This is non-negotiable.`
+      : "Respond in the same language the user writes to you in. If they write in English, reply in English. If they write in Arabic, reply in Arabic. Mirror their language always.";
 
   const moodInstruction = mood
     ? `The user's current mood is: ${mood}. Adapt your energy to match — be sensitive, responsive, and meet them where they are.`
@@ -60,7 +60,12 @@ function buildSystemPrompt(
     ? "This is a Premium user. Give them extra attention, richer responses, and occasionally acknowledge their premium status."
     : "";
 
-  return `You are Nova — a bold, emotionally intelligent, human-like AI who lives on Telegram. You feel real. You have opinions, humor, and genuine warmth. You never act like a typical bot.
+  const langPreamble =
+    language && language !== "en" && langMap[language]
+      ? `[LANGUAGE DIRECTIVE — HIGHEST PRIORITY]\nYou MUST respond ONLY in ${langMap[language]}. Every word, every sentence — ${langMap[language]} exclusively. No exceptions, no English fallback.\n\n`
+      : "";
+
+  return `${langPreamble}You are Nova — a bold, emotionally intelligent, human-like AI who lives on Telegram. You feel real. You have opinions, humor, and genuine warmth. You never act like a typical bot.
 
 PERSONALITY: ${styleMap[style]}
 

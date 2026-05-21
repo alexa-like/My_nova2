@@ -9,6 +9,7 @@ import { parseDuration } from "../models/RedeemCode.js";
 import { setPending } from "../utils/pendingActions.js";
 import { logger } from "../../lib/logger.js";
 import { ownerMainKeyboard, backToOwnerKeyboard } from "../utils/keyboards.js";
+import { getDailySummary, getTopCommands, getActiveUsers } from "../services/analytics.js";
 
 // In-memory scheduled broadcasts
 const scheduledBroadcasts = new Map<string, NodeJS.Timeout>();
@@ -118,6 +119,45 @@ export async function handleOwnerMessage(
       `📈 Usage Statistics\n\nTotal messages sent: ${stats.totalMessages}\nTotal images generated: ${stats.totalImages}`,
       { reply_markup: backToOwnerKeyboard() }
     );
+    return;
+  }
+
+  if (cmd === "/analytics") {
+    const days = parseInt(args[0] || "7") || 7;
+    const [summary, topCmds, activeDay, activeWeek] = await Promise.all([
+      getDailySummary(days),
+      getTopCommands(8),
+      getActiveUsers(86400000),
+      getActiveUsers(604800000),
+    ]);
+
+    const rows = (summary as any).results as Array<{ _id: { event: string; day: string }; count: number }>;
+
+    const byEvent: Record<string, number> = {};
+    for (const r of rows) {
+      byEvent[r._id.event] = (byEvent[r._id.event] || 0) + r.count;
+    }
+
+    const eventLines = Object.entries(byEvent)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([ev, ct]) => `  ${ev}: ${ct}`)
+      .join("\n");
+
+    const cmdLines = (topCmds as Array<{ _id: string; count: number }>)
+      .map((c, i) => `  ${i + 1}. ${c._id || "unknown"}: ${c.count}`)
+      .join("\n");
+
+    const msg =
+      `📊 Analytics — last ${days} days\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `👤 Active users (24h): ${activeDay}\n` +
+      `👥 Active users (7d): ${activeWeek}\n\n` +
+      `📌 Events breakdown:\n${eventLines || "  No data"}\n\n` +
+      `🔢 Top commands:\n${cmdLines || "  No data"}\n\n` +
+      `Tip: /analytics 30 for 30-day view`;
+
+    await bot.sendMessage(chatId, msg, { reply_markup: backToOwnerKeyboard() });
     return;
   }
 

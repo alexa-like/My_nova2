@@ -19,6 +19,7 @@ export interface IGroupSettings extends Document {
   slowmode: number;
   captchaEnabled: boolean;
   autoDeleteServiceMessages: boolean;
+  wordFilter: string[];
 }
 
 const GroupSettingsSchema = new Schema<IGroupSettings>(
@@ -45,6 +46,7 @@ const GroupSettingsSchema = new Schema<IGroupSettings>(
     slowmode: { type: Number, default: 0 },
     captchaEnabled: { type: Boolean, default: false },
     autoDeleteServiceMessages: { type: Boolean, default: false },
+    wordFilter: [{ type: String }],
   },
   { timestamps: true }
 );

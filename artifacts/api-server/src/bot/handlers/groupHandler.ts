@@ -244,6 +244,20 @@ export async function handleGroupMessage(
     }
   }
 
+  // ── Word filter middleware ────────────────────────────────────────────────
+  if (groupSettings.wordFilter?.length && !senderIsAdmin && !cmd.startsWith("/")) {
+    const lowerText = text.toLowerCase();
+    const hit = groupSettings.wordFilter.find(w => lowerText.includes(w.toLowerCase()));
+    if (hit) {
+      try {
+        await bot.deleteMessage(chatId, msg.message_id);
+        const warn = await bot.sendMessage(chatId, `⚠️ ${user.firstName || "User"}: that word is not allowed in this group.`);
+        setTimeout(() => bot.deleteMessage(chatId, warn.message_id).catch(() => {}), 5000);
+      } catch {}
+      return;
+    }
+  }
+
   // ── Locked group middleware ───────────────────────────────────────────────
   if (groupSettings.locked && !senderIsAdmin && !cmd.startsWith("/")) {
     try { await bot.deleteMessage(chatId, msg.message_id); } catch {}
@@ -289,7 +303,10 @@ export async function handleGroupMessage(
       "/purge <n> — Delete last N msgs\n" +
       "/delete — Delete replied msg\n" +
       "/pin / /unpin — Pin/unpin message\n" +
-      "/promote / /demote — Promote/demote admin\n\n" +
+      "/promote / /demote — Promote/demote admin\n" +
+      "/addword <word> — Add word to filter\n" +
+      "/removeword <word> — Remove word from filter\n" +
+      "/wordlist — Show filtered words\n\n" +
       "Tip: reply to a user's message before typing a moderation command — it's the most reliable method."
     );
     return;
@@ -336,6 +353,7 @@ export async function handleGroupMessage(
     "/setrules", "/style", "/slowmode", "/antilink", "/antiflood",
     "/setlimit", "/note", "/notes", "/clearnotes", "/messageall",
     "/setgoodbye", "/poll", "/captcha", "/autodelete",
+    "/addword", "/removeword", "/wordlist",
   ]);
 
   if (!adminCmds.has(cmd)) {
@@ -423,6 +441,46 @@ export async function handleGroupMessage(
         logger.error({ err: err?.message }, "Poll creation failed");
         await bot.sendMessage(chatId, "Failed to create poll. Make sure I have permission to send messages in this group.");
       }
+      return;
+    }
+
+    // /addword <word> — add a word to the group filter
+    if (cmd === "/addword") {
+      const word = args[0]?.toLowerCase().trim();
+      if (!word) { await bot.sendMessage(chatId, "Usage: /addword <word>"); return; }
+      if (!groupSettings.wordFilter) groupSettings.wordFilter = [];
+      if (groupSettings.wordFilter.includes(word)) {
+        await bot.sendMessage(chatId, `"${word}" is already in the word filter.`);
+        return;
+      }
+      groupSettings.wordFilter.push(word);
+      await groupSettings.save();
+      await bot.sendMessage(chatId, `✅ Added "${word}" to the word filter. Messages containing it will be auto-deleted.`);
+      return;
+    }
+
+    // /removeword <word> — remove a word from the group filter
+    if (cmd === "/removeword") {
+      const word = args[0]?.toLowerCase().trim();
+      if (!word) { await bot.sendMessage(chatId, "Usage: /removeword <word>"); return; }
+      if (!groupSettings.wordFilter?.includes(word)) {
+        await bot.sendMessage(chatId, `"${word}" is not in the word filter.`);
+        return;
+      }
+      groupSettings.wordFilter = groupSettings.wordFilter.filter(w => w !== word);
+      await groupSettings.save();
+      await bot.sendMessage(chatId, `✅ Removed "${word}" from the word filter.`);
+      return;
+    }
+
+    // /wordlist — show all filtered words
+    if (cmd === "/wordlist") {
+      if (!groupSettings.wordFilter?.length) {
+        await bot.sendMessage(chatId, "No words in the filter. Use /addword <word> to add one.");
+        return;
+      }
+      const list = groupSettings.wordFilter.map((w, i) => `${i + 1}. ${w}`).join("\n");
+      await bot.sendMessage(chatId, `🚫 Filtered words (${groupSettings.wordFilter.length}):\n\n${list}\n\nUse /removeword <word> to remove.`);
       return;
     }
 
@@ -542,6 +600,7 @@ export async function handleGroupMessage(
       let deleted = 0;
       for (let i = msg.message_id; i > msg.message_id - count - 1 && i > 0; i--) {
         try { await bot.deleteMessage(chatId, i); deleted++; } catch {}
+        await new Promise(r => setTimeout(r, 50)); // avoid Telegram rate limit (20 deletes/s)
       }
       const notice = await bot.sendMessage(chatId, `Purged ${deleted} message(s).`);
       setTimeout(() => bot.deleteMessage(chatId, notice.message_id).catch(() => {}), 3000);

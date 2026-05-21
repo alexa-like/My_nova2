@@ -10,6 +10,7 @@ import { analyzeImage } from "../services/imageAnalysis.js";
 import { isRateLimited } from "../utils/rateLimiter.js";
 import { formatDate, addDays, getUserName, safeSend, startTypingLoop } from "../utils/helpers.js";
 import { parseDuration } from "../models/RedeemCode.js";
+import { Memory } from "../models/Memory.js";
 import { getPending, clearPending, setPending, PHOTO_ACTIONS, OWNER_PENDING_ACTIONS } from "../utils/pendingActions.js";
 import { handleOwnerPendingText } from "./ownerHandler.js";
 import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
@@ -156,7 +157,29 @@ export async function handlePrivateMessage(
   const text = msg.text || "";
 
   if (user.banned) {
-    await bot.sendMessage(chatId, "You have been banned from using Nova.");
+    if (text.startsWith("/appeal")) {
+      const appealMsg = text.replace(/^\/appeal\s*/i, "").trim();
+      if (!appealMsg) {
+        await bot.sendMessage(chatId, "You are banned from Nova.\n\nTo appeal, use:\n/appeal <your reason>\n\nExample: /appeal I was banned by mistake, please review.");
+        return;
+      }
+      const ownerId = process.env.OWNER_ID ? parseInt(process.env.OWNER_ID) : null;
+      const userName = user.username ? `@${user.username}` : user.firstName || String(user.userId);
+      if (ownerId) {
+        try {
+          await bot.sendMessage(ownerId,
+            `📨 Ban Appeal\n\nUser: ${userName} (ID: ${user.userId})\n\nMessage:\n${appealMsg}\n\nReply /unban ${user.userId} to lift the ban.`
+          );
+          await bot.sendMessage(chatId, "Your appeal has been sent to the owner. Please wait for a review.");
+        } catch {
+          await bot.sendMessage(chatId, "Could not send your appeal. Please try again later.");
+        }
+      } else {
+        await bot.sendMessage(chatId, "Appeals are not configured at this time.");
+      }
+      return;
+    }
+    await bot.sendMessage(chatId, "You have been banned from using Nova.\n\nTo appeal, send: /appeal <your reason>");
     return;
   }
 
@@ -773,6 +796,67 @@ export async function handlePrivateMessage(
       return;
     }
     await handleStickerGeneration(bot, chatId, user, prompt, e);
+    return;
+  }
+
+  // /poll Question | Option 1 | Option 2 — create a poll in private chat
+  if (text.startsWith("/poll")) {
+    const rawText = text.replace(/^\/poll\s*/i, "").trim();
+    if (!rawText || !rawText.includes("|")) {
+      await bot.sendMessage(chatId,
+        `${e ? "📊 " : ""}Usage: /poll Question | Option 1 | Option 2\n\nExample:\n/poll Favorite season? | Spring | Summer | Autumn | Winter`
+      );
+      return;
+    }
+    const parts = rawText.split("|").map(p => p.trim()).filter(Boolean);
+    const question = parts[0];
+    const options = parts.slice(1);
+    if (options.length < 2) {
+      await bot.sendMessage(chatId, "A poll needs at least 2 options.\nExample: /poll Question | Option A | Option B");
+      return;
+    }
+    if (options.length > 10) {
+      await bot.sendMessage(chatId, "Maximum 10 options per poll.");
+      return;
+    }
+    try {
+      await (bot as any).sendPoll(chatId, question, options, { is_anonymous: false });
+    } catch {
+      await bot.sendMessage(chatId, "Failed to create poll. Please try again.");
+    }
+    return;
+  }
+
+  // /export — download your conversation history as a text file
+  if (text.startsWith("/export")) {
+    const memory = await Memory.findOne({ userId: user.userId, chatId });
+    if (!memory || memory.messages.length === 0) {
+      await bot.sendMessage(chatId, `${e ? "📭 " : ""}No conversation history to export yet.`);
+      return;
+    }
+    const lines: string[] = [
+      `Nova AI — Conversation Export`,
+      `User: ${user.firstName || user.username || String(user.userId)}`,
+      `Exported: ${new Date().toUTCString()}`,
+      `Messages: ${memory.messages.length}`,
+      `${"─".repeat(40)}`,
+      "",
+    ];
+    for (const m of memory.messages) {
+      const role = m.role === "user" ? "You" : "Nova";
+      const ts = m.ts ? new Date(m.ts).toLocaleString() : "";
+      lines.push(`[${role}]${ts ? ` (${ts})` : ""}`);
+      lines.push(m.content);
+      lines.push("");
+    }
+    const content = lines.join("\n");
+    const buf = Buffer.from(content, "utf-8");
+    const filename = `nova-chat-${user.userId}-${Date.now()}.txt`;
+    try {
+      await bot.sendDocument(chatId, buf, { caption: `${e ? "📄 " : ""}Your conversation export (${memory.messages.length} messages)` }, { filename, contentType: "text/plain" });
+    } catch {
+      await bot.sendMessage(chatId, "Failed to generate export. Please try again.");
+    }
     return;
   }
 

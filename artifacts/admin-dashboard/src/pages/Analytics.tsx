@@ -35,7 +35,7 @@ export default function Analytics() {
 
   const chartData = (() => {
     if (!data) return [];
-    const byDay: Record<string, Record<string, number>> = {};
+    const byDay: Record<string, Record<string, number | string>> = {};
     for (const row of data.summary.results) {
       const { day, event } = row._id;
       if (!byDay[day]) byDay[day] = { day };
