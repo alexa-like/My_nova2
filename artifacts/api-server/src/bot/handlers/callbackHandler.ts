@@ -415,6 +415,38 @@ export async function handleCallbackQuery(
       return;
     }
 
+    if (data === "forget_memory") {
+      const { clearMemory } = await import("../services/ai.js");
+      await clearMemory(userId, query.message!.chat.id);
+      await editMsg(bot, query,
+        `🧹 Memory cleared! I've forgotten our conversation history. Fresh start.`,
+        backToMainKeyboard()
+      );
+      return;
+    }
+
+    if (data === "list_reminders") {
+      const { listUserReminders } = await import("../services/reminder.js");
+      const { formatDate } = await import("../utils/helpers.js");
+      const reminders = await listUserReminders(userId);
+      if (reminders.length === 0) {
+        await editMsg(bot, query,
+          `📋 No upcoming reminders.\n\nSet one with: /remind 30m Your message`,
+          backToMainKeyboard()
+        );
+        return;
+      }
+      const lines = reminders.map((r: any, i: number) => {
+        const id = r._id.toString().slice(-6);
+        return `${i + 1}. ⏰ ${formatDate(r.triggerAt)}\n   "${r.message.substring(0, 60)}"\n   ID: ${id}`;
+      });
+      await editMsg(bot, query,
+        `📋 Your Reminders (${reminders.length})\n\n${lines.join("\n\n")}\n\nCancel: /remind cancel <ID>`,
+        backToMainKeyboard()
+      );
+      return;
+    }
+
     if (data === "ai_summarize") {
       setPending(userId, "ai_summarize_input");
       await editMsg(bot, query,
@@ -909,6 +941,12 @@ export async function handleCallbackQuery(
       setMaintenance(!getMaintenance());
       const now = getMaintenance();
       await answer(bot, query.id, now ? "🔴 Maintenance ON" : "🟢 Maintenance OFF");
+      await sendOwnerPanel(bot, chatId, getMaintenance, query.message!.message_id);
+      return;
+    }
+
+    if (data === "owner_panel") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
       await sendOwnerPanel(bot, chatId, getMaintenance, query.message!.message_id);
       return;
     }
@@ -1424,6 +1462,57 @@ export async function handleCallbackQuery(
           `Could not generate preview for ${voice.name}. The model may be loading — try again in a moment.`
         );
       }
+      return;
+    }
+
+    // ── Premium Emoji Toggle (owner only) ────────────────────────────────
+
+    if (data === "owner_premoji_on" || data === "owner_premoji_off") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const enable = data === "owner_premoji_on";
+      try {
+        const { getOrCreateBotConfig } = await import("../models/BotConfig.js");
+        const { setPremiumEmojiEnabled } = await import("../utils/premiumEmoji.js");
+        const config = await getOrCreateBotConfig();
+        config.premiumEmojiEnabled = enable;
+        await config.save();
+        setPremiumEmojiEnabled(enable);
+        await answer(bot, query.id, enable ? "✨ Premium emoji ON" : "Premium emoji OFF");
+        await editMsg(bot, query,
+          `✨ Premium Emoji Mode\n━━━━━━━━━━━━━━━━━━━\n` +
+          `Status: ${enable ? "✅ ENABLED" : "⛔ DISABLED"}\n\n` +
+          (enable
+            ? "Nova will now replace basic emoji in AI responses with animated Telegram premium emoji using HTML mode."
+            : "Nova will use standard emoji in responses."),
+          { inline_keyboard: [
+            [{ text: enable ? "⛔ Turn OFF" : "✅ Turn ON", callback_data: enable ? "owner_premoji_off" : "owner_premoji_on" }],
+            [{ text: "⬅️ Back to Owner Panel", callback_data: "owner_panel" }],
+          ]}
+        );
+      } catch (err) {
+        logger.error({ err }, "Failed to toggle premium emoji");
+        await answer(bot, query.id, "Failed to toggle. Try again.");
+      }
+      return;
+    }
+
+    if (data === "owner_premoji_status") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const { isPremiumEmojiEnabled } = await import("../utils/premiumEmoji.js");
+      const enabled = isPremiumEmojiEnabled();
+      await editMsg(bot, query,
+        `✨ Premium Emoji Mode\n━━━━━━━━━━━━━━━━━━━\n` +
+        `Status: ${enabled ? "✅ ENABLED" : "⛔ DISABLED"}\n\n` +
+        `When enabled: Nova replaces standard emoji (🔥❤️✨💫🎉👍🚀⭐ etc.) with animated Telegram premium emoji in AI responses.\n\n` +
+        `Note: Users need Telegram Premium to see them animated; others see the fallback emoji.`,
+        { inline_keyboard: [
+          [
+            { text: "✅ Enable", callback_data: "owner_premoji_on" },
+            { text: "⛔ Disable", callback_data: "owner_premoji_off" },
+          ],
+          [{ text: "⬅️ Back to Owner Panel", callback_data: "owner_panel" }],
+        ]}
+      );
       return;
     }
 

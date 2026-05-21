@@ -261,21 +261,23 @@ export async function handleGroupMessage(
       "Info:\n" +
       "/rules — Show group rules\n" +
       "/report — Report a message (reply to it)\n\n" +
-      "Admin — Group:\n" +
+      "Admin — Group Settings:\n" +
       "/welcome <text> — Set welcome msg ({name} {group})\n" +
       "/setgoodbye <text> — Set goodbye msg ({name} {group})\n" +
-      "/poll Q | Opt1 | Opt2 — Create a poll\n" +
       "/setrules <text> — Set rules\n" +
       "/lock / /unlock — Lock or unlock group\n" +
       "/slowmode <sec> — Set slow mode (0 = off)\n" +
       "/antilink on|off — Delete messages with links\n" +
       "/antiflood on|off [limit] — Mute flood spammers\n" +
-      "/setlimit <n> — Warn limit before auto-ban\n\n" +
+      "/captcha on|off — Math captcha for new members\n" +
+      "/autodelete on|off — Auto-delete join/leave messages\n" +
+      "/setlimit <n> — Warn limit before auto-ban\n" +
+      "/poll Q | Opt1 | Opt2 — Create a poll\n" +
       "/messageall <text> — DM all group members privately\n\n" +
       "Admin — Moderation:\n" +
       "/ban — Ban user\n" +
       "/unban — Unban user\n" +
-      "/mute [1m|1h|1d] — Mute user\n" +
+      "/mute [1m|1h|1d] — Mute user (timed optional)\n" +
       "/unmute — Unmute user\n" +
       "/kick — Kick user\n" +
       "/warn [reason] — Warn user\n" +
@@ -333,7 +335,7 @@ export async function handleGroupMessage(
     "/promote", "/demote", "/ai", "/lock", "/unlock", "/welcome",
     "/setrules", "/style", "/slowmode", "/antilink", "/antiflood",
     "/setlimit", "/note", "/notes", "/clearnotes", "/messageall",
-    "/setgoodbye", "/poll",
+    "/setgoodbye", "/poll", "/captcha", "/autodelete",
   ]);
 
   if (!adminCmds.has(cmd)) {
@@ -658,6 +660,48 @@ export async function handleGroupMessage(
           `Done! Delivered: ${sent} / Failed: ${failed}`
         );
       }
+      return;
+    }
+
+    // /captcha on|off — math captcha for new group members
+    if (cmd === "/captcha") {
+      const val = args[0]?.toLowerCase();
+      if (val !== "on" && val !== "off") {
+        await bot.sendMessage(chatId,
+          `Captcha is currently ${groupSettings.captchaEnabled ? "ON" : "OFF"}.\n` +
+          "Usage: /captcha on|off\n\n" +
+          "When ON: new members must solve a math problem to verify they're human."
+        );
+        return;
+      }
+      groupSettings.captchaEnabled = val === "on";
+      await groupSettings.save();
+      await bot.sendMessage(chatId,
+        val === "on"
+          ? "✅ Captcha is now ON. New members will receive a math challenge and be muted until they solve it."
+          : "❌ Captcha is now OFF. New members will no longer receive a verification challenge."
+      );
+      return;
+    }
+
+    // /autodelete on|off — auto-delete service messages (join/leave)
+    if (cmd === "/autodelete") {
+      const val = args[0]?.toLowerCase();
+      if (val !== "on" && val !== "off") {
+        await bot.sendMessage(chatId,
+          `Auto-delete service messages is currently ${groupSettings.autoDeleteServiceMessages ? "ON" : "OFF"}.\n` +
+          "Usage: /autodelete on|off\n\n" +
+          "When ON: join/leave notifications are automatically deleted."
+        );
+        return;
+      }
+      groupSettings.autoDeleteServiceMessages = val === "on";
+      await groupSettings.save();
+      await bot.sendMessage(chatId,
+        val === "on"
+          ? "✅ Auto-delete is ON. Join/leave service messages will be automatically deleted."
+          : "❌ Auto-delete is OFF. Service messages will be kept."
+      );
       return;
     }
 

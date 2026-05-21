@@ -17,6 +17,8 @@ export interface IGroupSettings extends Document {
   floodLimit: number;
   warnLimit: number;
   slowmode: number;
+  captchaEnabled: boolean;
+  autoDeleteServiceMessages: boolean;
 }
 
 const GroupSettingsSchema = new Schema<IGroupSettings>(
@@ -41,6 +43,8 @@ const GroupSettingsSchema = new Schema<IGroupSettings>(
     floodLimit: { type: Number, default: 5 },
     warnLimit: { type: Number, default: 3 },
     slowmode: { type: Number, default: 0 },
+    captchaEnabled: { type: Boolean, default: false },
+    autoDeleteServiceMessages: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

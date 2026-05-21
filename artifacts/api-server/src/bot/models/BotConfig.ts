@@ -29,6 +29,7 @@ export interface IBotConfig extends Document {
   voiceModels: IModelEntry[];
   asrModels: IModelEntry[];
   providerSettings: IProviderSettings;
+  premiumEmojiEnabled: boolean;
 }
 
 const ModelEntrySchema = new Schema<IModelEntry>(
@@ -72,6 +73,7 @@ const BotConfigSchema = new Schema<IBotConfig>(
     voiceModels: { type: [ModelEntrySchema], default: [] },
     asrModels:   { type: [ModelEntrySchema], default: [] },
     providerSettings: { type: ProviderSettingsSchema, default: () => ({}) },
+    premiumEmojiEnabled: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

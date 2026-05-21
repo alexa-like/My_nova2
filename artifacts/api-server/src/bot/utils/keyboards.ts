@@ -397,7 +397,10 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
           callback_data: "own_maint",
         },
       ],
-      [{ text: "⚡ Provider Control", callback_data: "prov_main" }],
+      [
+        { text: "⚡ Provider Control", callback_data: "prov_main" },
+        { text: "✨ Premium Emoji", callback_data: "owner_premoji_status" },
+      ],
     ],
   };
 }

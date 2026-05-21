@@ -1,7 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import { connectDB } from "./services/db.js";
 import { ensureUser, isOwner } from "./middlewares/userMiddleware.js";
-import { handlePrivateMessage, handlePhotoMessage, handleVoiceMessage } from "./handlers/privateHandler.js";
+import { handlePrivateMessage, handlePhotoMessage, handleVoiceMessage, handleDocumentMessage } from "./handlers/privateHandler.js";
 import { handleGroupMessage } from "./handlers/groupHandler.js";
 import { handleOwnerMessage, sendDailyReport } from "./handlers/ownerHandler.js";
 import { handleInlineQuery } from "./handlers/inlineHandler.js";
@@ -10,7 +10,29 @@ import { GroupSettings } from "./models/GroupSettings.js";
 import { isGroup, isPrivate } from "./utils/helpers.js";
 import { track } from "./services/analytics.js";
 import { getMaintenance, setMaintenance } from "./utils/maintenanceState.js";
+import { loadPendingReminders } from "./services/reminder.js";
+import { setPremiumEmojiEnabled } from "./utils/premiumEmoji.js";
 import { logger } from "../lib/logger.js";
+
+// ── In-memory captcha store ─────────────────────────────────────────────────
+interface CaptchaChallenge {
+  answer: number;
+  messageId: number;
+  expiresAt: number;
+}
+const captchaStore = new Map<string, CaptchaChallenge>(); // key: `chatId:userId`
+
+function generateCaptcha(): { question: string; answer: number } {
+  const a = Math.floor(Math.random() * 10) + 1;
+  const b = Math.floor(Math.random() * 10) + 1;
+  const ops = [
+    { q: `${a} + ${b}`, ans: a + b },
+    { q: `${a + b} - ${b}`, ans: a },
+    { q: `${a} × ${b}`, ans: a * b },
+  ];
+  const chosen = ops[Math.floor(Math.random() * ops.length)];
+  return { question: chosen.q, answer: chosen.ans };
+}
 
 let bot: TelegramBot | null = null;
 
@@ -43,14 +65,29 @@ export async function startBot(): Promise<void> {
   const botUsername = botInfo.username || "NovaBot";
   logger.info({ username: botUsername, id: botInfo.id }, "Nova bot started");
 
+  loadPendingReminders(bot).catch((err) => logger.warn({ err }, "Failed to load reminders"));
+
+  // Load premium emoji state from config
+  try {
+    const { getOrCreateBotConfig } = await import("./models/BotConfig.js");
+    const cfg = await getOrCreateBotConfig();
+    setPremiumEmojiEnabled(cfg.premiumEmojiEnabled ?? false);
+  } catch { /* non-fatal */ }
+
   // ── Register bot command menus ─────────────────────────────────────────────
   try {
     await bot.setMyCommands([
       { command: "start", description: "Start Nova" },
       { command: "help", description: "Show all commands" },
+      { command: "search", description: "Search the web" },
       { command: "image", description: "Generate an image" },
       { command: "video", description: "Generate a short video" },
+      { command: "music", description: "Generate music" },
+      { command: "sticker", description: "Create a sticker image" },
       { command: "ask", description: "Quick AI answer (no memory)" },
+      { command: "history", description: "View conversation history" },
+      { command: "remind", description: "Set a reminder (e.g. /remind 1h Call mom)" },
+      { command: "reminders", description: "View upcoming reminders" },
       { command: "translate", description: "Translate text to English" },
       { command: "summarize", description: "Summarize conversation" },
       { command: "quote", description: "Get an inspiring quote" },
@@ -77,7 +114,7 @@ export async function startBot(): Promise<void> {
       { command: "report", description: "Report a message (reply to it)" },
       { command: "ban", description: "Ban a user" },
       { command: "unban", description: "Unban a user" },
-      { command: "mute", description: "Mute a user" },
+      { command: "mute", description: "Mute a user [duration: 10m 2h 1d]" },
       { command: "unmute", description: "Unmute a user" },
       { command: "kick", description: "Kick a user" },
       { command: "warn", description: "Warn a user" },
@@ -90,6 +127,8 @@ export async function startBot(): Promise<void> {
       { command: "lock", description: "Lock group (admins only)" },
       { command: "unlock", description: "Unlock group" },
       { command: "slowmode", description: "Set slow mode" },
+      { command: "captcha", description: "Toggle captcha for new members" },
+      { command: "autodelete", description: "Auto-delete service messages" },
       { command: "image", description: "Generate an image (mention bot)" },
       { command: "ask", description: "Quick AI answer (mention bot)" },
       { command: "translate", description: "Translate text (mention bot)" },
@@ -139,6 +178,12 @@ export async function startBot(): Promise<void> {
           return;
         }
 
+        // Document messages — PDF, TXT, DOCX, code files etc.
+        if (msg.document) {
+          await handleDocumentMessage(bot!, msg, user);
+          return;
+        }
+
         // Private chats: only process text messages beyond this point
         if (!msg.text) return;
 
@@ -153,6 +198,42 @@ export async function startBot(): Promise<void> {
           await handlePrivateMessage(bot!, msg, user, getMaintenance());
         }
       } else if (isGroup(msg)) {
+        // Check captcha answer in group messages
+        if (msg.text) {
+          const captchaKey = `${msg.chat.id}:${msg.from!.id}`;
+          const challenge = captchaStore.get(captchaKey);
+          if (challenge) {
+            if (Date.now() > challenge.expiresAt) {
+              captchaStore.delete(captchaKey);
+              try {
+                await bot!.banChatMember(msg.chat.id, msg.from!.id);
+                await bot!.unbanChatMember(msg.chat.id, msg.from!.id);
+              } catch {}
+            } else {
+              const answer = parseInt(msg.text.trim());
+              if (!isNaN(answer) && answer === challenge.answer) {
+                captchaStore.delete(captchaKey);
+                try {
+                  await bot!.restrictChatMember(msg.chat.id, msg.from!.id, {
+                    permissions: {
+                      can_send_messages: true,
+                      can_send_other_messages: true,
+                      can_add_web_page_previews: true,
+                      can_send_polls: true,
+                    },
+                  });
+                  await bot!.deleteMessage(msg.chat.id, msg.message_id).catch(() => {});
+                  try { await bot!.deleteMessage(msg.chat.id, challenge.messageId); } catch {}
+                  const name = msg.from!.first_name || msg.from!.username || "User";
+                  await bot!.sendMessage(msg.chat.id, `✅ Welcome, ${name}! You've been verified.`);
+                } catch {}
+              } else {
+                await bot!.deleteMessage(msg.chat.id, msg.message_id).catch(() => {});
+              }
+              return;
+            }
+          }
+        }
         await handleGroupMessage(bot!, msg, user, botUsername, getMaintenance());
       }
     } catch (err) {
@@ -160,19 +241,65 @@ export async function startBot(): Promise<void> {
     }
   });
 
-  // ── New member welcome ─────────────────────────────────────────────────────
+  // ── New member welcome + captcha ───────────────────────────────────────────
   bot.on("new_chat_members", async (msg) => {
     if (!msg.new_chat_members) return;
     try {
       const groupSettings = await GroupSettings.findOne({ chatId: msg.chat.id });
-      if (!groupSettings?.welcomeMessage) return;
+
       for (const member of msg.new_chat_members) {
         if (member.is_bot) continue;
+        const chatId = msg.chat.id;
         const name = member.first_name || member.username || "Friend";
-        const welcome = groupSettings.welcomeMessage
-          .replace(/\{name\}/g, name)
-          .replace(/\{group\}/g, msg.chat.title || "this group");
-        await bot!.sendMessage(msg.chat.id, welcome);
+        const groupName = msg.chat.title || "this group";
+
+        // Auto-delete the service "user joined" message
+        if (groupSettings?.autoDeleteServiceMessages) {
+          try { await bot!.deleteMessage(chatId, msg.message_id); } catch {}
+        }
+
+        // Captcha verification
+        if (groupSettings?.captchaEnabled) {
+          const captcha = generateCaptcha();
+          const captchaKey = `${chatId}:${member.id}`;
+          try {
+            await bot!.restrictChatMember(chatId, member.id, {
+              permissions: { can_send_messages: false },
+            });
+          } catch {}
+          const challengeMsg = await bot!.sendMessage(chatId,
+            `👋 Welcome, ${name}!\n\n` +
+            `To verify you're human, please answer this math question:\n\n` +
+            `🔢 What is: ${captcha.question} = ?\n\n` +
+            `Reply with just the number. You have 2 minutes.`
+          );
+          captchaStore.set(captchaKey, {
+            answer: captcha.answer,
+            messageId: challengeMsg.message_id,
+            expiresAt: Date.now() + 2 * 60 * 1000,
+          });
+          setTimeout(async () => {
+            const remaining = captchaStore.get(captchaKey);
+            if (remaining) {
+              captchaStore.delete(captchaKey);
+              try {
+                await bot!.deleteMessage(chatId, challengeMsg.message_id);
+                await bot!.banChatMember(chatId, member.id);
+                await bot!.unbanChatMember(chatId, member.id);
+                await bot!.sendMessage(chatId, `⏰ ${name} was removed for not completing the captcha.`);
+              } catch {}
+            }
+          }, 2 * 60 * 1000);
+          continue;
+        }
+
+        // Welcome message (only if no captcha)
+        if (groupSettings?.welcomeMessage) {
+          const welcome = groupSettings.welcomeMessage
+            .replace(/\{name\}/g, name)
+            .replace(/\{group\}/g, groupName);
+          await bot!.sendMessage(chatId, welcome);
+        }
       }
     } catch (err) {
       logger.error({ err }, "Error in new_chat_members handler");
@@ -186,6 +313,12 @@ export async function startBot(): Promise<void> {
       const member = msg.left_chat_member;
       if (member.is_bot) return;
       const groupSettings = await GroupSettings.findOne({ chatId: msg.chat.id });
+
+      // Auto-delete service "user left" message
+      if (groupSettings?.autoDeleteServiceMessages) {
+        try { await bot!.deleteMessage(msg.chat.id, msg.message_id); } catch {}
+      }
+
       if (!groupSettings?.goodbyeMessage) return;
       const name = member.first_name || member.username || "Friend";
       const goodbye = groupSettings.goodbyeMessage

@@ -20,7 +20,11 @@ export type PendingTextAction =
   | "write_bio"
   | "write_poem"
   | "write_email"
-  | "write_lyrics";
+  | "write_lyrics"
+  | "remind_input"
+  | "music_input"
+  | "search_input"
+  | "sticker_input";
 
 export type PendingPhotoAction =
   | "img_edit"

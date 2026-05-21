@@ -23,7 +23,31 @@ import {
   backToMainKeyboard,
   repeatKeyboard,
 } from "../utils/keyboards.js";
+import { webSearch, formatSearchResults } from "../services/webSearch.js";
+import { generateMusic } from "../services/music.js";
+import { downloadTelegramDocument, extractTextFromDocument } from "../services/document.js";
+import { createReminder, listUserReminders, cancelReminder } from "../services/reminder.js";
+import { parseDurationToMs } from "../models/Reminder.js";
+import { isPremiumEmojiEnabled, applyPremiumEmojiSafe } from "../utils/premiumEmoji.js";
 import { logger } from "../../lib/logger.js";
+
+async function sendAIReply(
+  bot: TelegramBot,
+  chatId: number,
+  text: string,
+  extra: TelegramBot.SendMessageOptions = {}
+): Promise<void> {
+  if (isPremiumEmojiEnabled()) {
+    try {
+      const htmlText = applyPremiumEmojiSafe(text);
+      await bot.sendMessage(chatId, htmlText, { parse_mode: "HTML", ...extra });
+      return;
+    } catch {
+      // HTML parse failed — fall through to safeSend
+    }
+  }
+  await safeSend(bot, chatId, text, extra);
+}
 
 // ── Image intent detection ────────────────────────────────────────────────────
 
@@ -168,12 +192,32 @@ export async function handlePrivateMessage(
     return;
   }
 
-  // /start — show interactive dashboard
+  // /start — show interactive dashboard with onboarding for new users
   if (text === "/start" || text.startsWith("/start ")) {
-    await bot.sendMessage(chatId,
-      `Hey ${name}! I'm Nova, your AI assistant.\n\nPick what you'd like to do:`,
-      { reply_markup: mainMenuKeyboard() }
-    );
+    const isNew = Date.now() - user.firstSeen.getTime() < 30000;
+    if (isNew) {
+      await bot.sendMessage(chatId,
+        `👋 Welcome to Nova, ${name}!\n\n` +
+        `I'm your personal AI assistant — smarter than a chatbot, friendlier than a search engine.\n\n` +
+        `Here's what I can do for you:\n` +
+        `💬 Chat naturally — just type anything!\n` +
+        `🎨 Generate images — /image a glowing city at night\n` +
+        `🔍 Search the web — /search latest AI news\n` +
+        `⏰ Set reminders — /remind 30m Check the oven\n` +
+        `🎵 Generate music — /music calm lo-fi beats\n` +
+        `📄 Read documents — send me any PDF or text file!\n` +
+        `🎬 Generate videos — /video a sunset timelapse\n` +
+        `🔊 Voice replies — /voice\n\n` +
+        `✨ Tip: You can change my personality with /style and set your language with /lang\n\n` +
+        `Ready? Pick something below or just start talking! 👇`
+      );
+      await bot.sendMessage(chatId, `What would you like to do first?`, { reply_markup: mainMenuKeyboard() });
+    } else {
+      await bot.sendMessage(chatId,
+        `Hey ${name}! Welcome back.\n\nPick what you'd like to do:`,
+        { reply_markup: mainMenuKeyboard() }
+      );
+    }
     return;
   }
 
@@ -183,7 +227,15 @@ export async function handlePrivateMessage(
     await bot.sendMessage(chatId,
       `Hey ${name}${badge}! Here's everything I can do:\n\n` +
       `💬 Just type anything to chat with me!\n\n` +
+      `🔍 /search <query> — Web search with live results\n` +
       `🎨 /image <prompt> — Generate an image\n` +
+      `🎬 /video <prompt> — Generate a short video\n` +
+      `🎵 /music <desc> — Generate music\n` +
+      `🖼️ /sticker <prompt> — Create a sticker image\n` +
+      `📄 Send any PDF/TXT/DOCX — I'll read and analyze it!\n\n` +
+      `⏰ /remind <time> <msg> — Set a reminder (e.g. /remind 1h Meeting)\n` +
+      `📋 /reminders — View your upcoming reminders\n` +
+      `📜 /history — View conversation history summary\n\n` +
       `🔤 /translate <text> — Translate to English\n` +
       `📝 /summarize — Summarize our conversation\n` +
       `💬 /quote — Inspiring quote\n` +
@@ -550,6 +602,185 @@ export async function handlePrivateMessage(
     return;
   }
 
+  // /search <query> — web search with AI synthesis
+  if (text.startsWith("/search")) {
+    const query = text.replace(/^\/search\s*/i, "").trim();
+    if (!query) {
+      await bot.sendMessage(chatId,
+        "Usage: /search <query>\nExample: /search latest AI news"
+      );
+      return;
+    }
+    const statusMsg = await bot.sendMessage(chatId, "🔍 Searching the web...");
+    const stopTyping = startTypingLoop(bot, chatId);
+    try {
+      const results = await webSearch(query);
+      const raw = formatSearchResults(query, results);
+      if (results.length === 0) {
+        stopTyping();
+        try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+        await bot.sendMessage(chatId, `No results found for: "${query}"\n\nTry rephrasing your search.`);
+        return;
+      }
+      const aiPrompt = `Based on these web search results for "${query}":\n\n${raw}\n\nSummarize the key findings in a helpful, natural response. Be concise and direct. Mention the source context.`;
+      const aiReply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
+      stopTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await safeSend(bot, chatId, `🔍 Web Search: ${query}\n\n${aiReply}\n\n──────\n${results.slice(0, 2).map(r => r.url).filter(Boolean).join("\n")}`);
+    } catch (err) {
+      stopTyping();
+      logger.error({ err }, "Search error");
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Search failed. Please try again.");
+    }
+    return;
+  }
+
+  // /history — show conversation history summary
+  if (text === "/history") {
+    const stopTyping = startTypingLoop(bot, chatId);
+    try {
+      const historyPrompt =
+        "Give me a detailed summary of our conversation history so far. List:\n" +
+        "• Topics we've discussed\n" +
+        "• Questions I asked\n" +
+        "• Key things you've told me\n" +
+        "• Any preferences or settings I've mentioned\n\n" +
+        "If there's no significant history yet, say so briefly.";
+      const reply = await chat(user.userId, chatId, historyPrompt, { style: "serious", emoji: false, length: "long" }, user.premium.active);
+      stopTyping();
+      await safeSend(bot, chatId, `📜 Conversation History\n\n${reply}`, {
+        reply_markup: { inline_keyboard: [[{ text: "🧹 Clear History", callback_data: "forget_memory" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] }
+      });
+    } catch {
+      stopTyping();
+      await bot.sendMessage(chatId, "Could not retrieve history. Try again.");
+    }
+    return;
+  }
+
+  // /remind <time> <message> or /remind cancel <id>
+  if (text.startsWith("/remind")) {
+    const parts = text.replace(/^\/remind\s*/i, "").trim();
+    if (!parts) {
+      await bot.sendMessage(chatId,
+        "⏰ Reminder Usage:\n\n" +
+        "/remind 30m Take a break\n" +
+        "/remind 2h Call mom\n" +
+        "/remind 1d Pay rent\n\n" +
+        "Use /reminders to see your upcoming reminders."
+      );
+      return;
+    }
+    if (parts.toLowerCase().startsWith("cancel")) {
+      const id = parts.split(/\s+/)[1];
+      if (!id) {
+        await bot.sendMessage(chatId, "Usage: /remind cancel <reminder_id>\nUse /reminders to see IDs.");
+        return;
+      }
+      const cancelled = await cancelReminder(id, user.userId);
+      await bot.sendMessage(chatId, cancelled ? "✅ Reminder cancelled." : "Reminder not found or already sent.");
+      return;
+    }
+    const tokens = parts.split(/\s+/);
+    const durationStr = tokens[0];
+    const reminderMsg = tokens.slice(1).join(" ");
+    if (!reminderMsg) {
+      await bot.sendMessage(chatId,
+        "Please include a reminder message.\nExample: /remind 1h Check the laundry"
+      );
+      return;
+    }
+    const delayMs = parseDurationToMs(durationStr);
+    if (!delayMs || delayMs < 10000) {
+      await bot.sendMessage(chatId,
+        "Invalid time format. Use:\n• 30s (seconds)\n• 10m (minutes)\n• 2h (hours)\n• 1d (days)\n\nExample: /remind 30m Take a break"
+      );
+      return;
+    }
+    const triggerAt = new Date(Date.now() + delayMs);
+    await createReminder(bot, user.userId, chatId, reminderMsg, triggerAt);
+    const timeLabel =
+      delayMs < 60000 ? `${Math.round(delayMs / 1000)}s` :
+      delayMs < 3600000 ? `${Math.round(delayMs / 60000)}m` :
+      delayMs < 86400000 ? `${(delayMs / 3600000).toFixed(1)}h` :
+      `${(delayMs / 86400000).toFixed(1)}d`;
+    await bot.sendMessage(chatId,
+      `⏰ Reminder set!\n\n"${reminderMsg}"\n\nI'll remind you in ${timeLabel} (${formatDate(triggerAt)})`,
+      { reply_markup: { inline_keyboard: [[{ text: "📋 My Reminders", callback_data: "list_reminders" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+    );
+    return;
+  }
+
+  // /reminders — list upcoming reminders
+  if (text === "/reminders") {
+    const reminders = await listUserReminders(user.userId);
+    if (reminders.length === 0) {
+      await bot.sendMessage(chatId,
+        "You have no upcoming reminders.\n\nSet one with: /remind 30m Your message",
+        { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+      );
+      return;
+    }
+    const lines = reminders.map((r, i) => {
+      const id = (r._id as any).toString().slice(-6);
+      return `${i + 1}. ⏰ ${formatDate(r.triggerAt)}\n   "${r.message.substring(0, 60)}"\n   ID: ${id}`;
+    });
+    await bot.sendMessage(chatId,
+      `📋 Your Reminders (${reminders.length})\n\n${lines.join("\n\n")}\n\nCancel one: /remind cancel <ID>`
+    );
+    return;
+  }
+
+  // /music <description> — generate music via HuggingFace musicgen
+  if (text.startsWith("/music")) {
+    const prompt = text.replace(/^\/music\s*/i, "").trim();
+    if (!prompt) {
+      await bot.sendMessage(chatId,
+        "🎵 Usage: /music <description>\n\nExamples:\n• /music calm lo-fi beats for studying\n• /music epic cinematic orchestral\n• /music upbeat jazz piano"
+      );
+      return;
+    }
+    if (!process.env.HUGGINGFACE_API_TOKEN) {
+      await bot.sendMessage(chatId, "Music generation is not configured yet.");
+      return;
+    }
+    const sentMsg = await bot.sendMessage(chatId, "🎵 Generating your music... This takes 30-60 seconds. Hang tight!");
+    const stopTyping = startTypingLoop(bot, chatId);
+    try {
+      const audioBuffer = await generateMusic(prompt);
+      stopTyping();
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      if (!audioBuffer) {
+        await bot.sendMessage(chatId,
+          "Music generation failed. The model may be warming up — try again in a minute.",
+          { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+        );
+        return;
+      }
+      await bot.sendAudio(chatId, audioBuffer, { title: prompt.substring(0, 60), performer: "Nova AI" });
+    } catch (err) {
+      stopTyping();
+      logger.error({ err }, "Music generation error");
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Music generation failed. Please try again later.");
+    }
+    return;
+  }
+
+  // /sticker <prompt> — create a sticker-ready image
+  if (text.startsWith("/sticker")) {
+    const prompt = text.replace(/^\/sticker\s*/i, "").trim();
+    if (!prompt) {
+      await bot.sendMessage(chatId,
+        "🖼️ Usage: /sticker <description>\n\nExamples:\n• /sticker happy cat waving\n• /sticker cute anime girl with stars\n• /sticker fire dragon emoji style"
+      );
+      return;
+    }
+    await handleStickerGeneration(bot, chatId, user, prompt, e);
+    return;
+  }
+
   // Ignore unknown slash commands
   if (text.startsWith("/")) return;
 
@@ -567,7 +798,7 @@ export async function handlePrivateMessage(
   const stopTyping = startTypingLoop(bot, chatId);
   const reply = await chat(user.userId, chatId, text, user.settings, user.premium.active, user.mood ?? undefined, user.preferredChatModel ?? undefined);
   stopTyping();
-  await safeSend(bot, chatId, reply);
+  await sendAIReply(bot, chatId, reply);
 
   // Voice reply — fire-and-forget so it doesn't block the text response
   if (user.settings?.voiceEnabled && process.env.HUGGINGFACE_API_TOKEN) {
@@ -733,6 +964,55 @@ async function handlePendingText(
           { style: "serious", emoji: false, length: "short" }, user.premium.active
         );
         await safeSend(bot, chatId, `🔬 Text Analysis\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
+        break;
+      }
+      case "search_input": {
+        const results = await webSearch(input);
+        const raw = formatSearchResults(input, results);
+        if (results.length === 0) {
+          await bot.sendMessage(chatId, `No results found for: "${input}"`, { reply_markup: aiMenuKeyboard() });
+          break;
+        }
+        const aiPrompt = `Based on these web search results for "${input}":\n\n${raw}\n\nSummarize the key findings in a helpful, natural response.`;
+        const reply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
+        await safeSend(bot, chatId, `🔍 Web Search: ${input}\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
+        break;
+      }
+      case "remind_input": {
+        const tokens = input.split(/\s+/);
+        const durationStr = tokens[0];
+        const reminderMsg = tokens.slice(1).join(" ");
+        if (!reminderMsg) {
+          await bot.sendMessage(chatId, "Please include a message after the time.\nExample: 1h Call mom");
+          break;
+        }
+        const delayMs = parseDurationToMs(durationStr);
+        if (!delayMs || delayMs < 10000) {
+          await bot.sendMessage(chatId, "Invalid time. Use formats like: 30m, 2h, 1d");
+          break;
+        }
+        const triggerAt = new Date(Date.now() + delayMs);
+        await createReminder(bot, user.userId, chatId, reminderMsg, triggerAt);
+        await bot.sendMessage(chatId, `⏰ Reminder set! I'll remind you at ${formatDate(triggerAt)}: "${reminderMsg}"`);
+        break;
+      }
+      case "music_input": {
+        if (!process.env.HUGGINGFACE_API_TOKEN) {
+          await bot.sendMessage(chatId, "Music generation is not configured.");
+          break;
+        }
+        const sentMsg = await bot.sendMessage(chatId, "🎵 Generating your music... hang tight!");
+        const audioBuffer = await generateMusic(input);
+        try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+        if (!audioBuffer) {
+          await bot.sendMessage(chatId, "Music generation failed. Try again in a minute.");
+          break;
+        }
+        await bot.sendAudio(chatId, audioBuffer, { title: input.substring(0, 60), performer: "Nova AI" });
+        break;
+      }
+      case "sticker_input": {
+        await handleStickerGeneration(bot, chatId, user, input, e);
         break;
       }
       default:
@@ -904,6 +1184,115 @@ export async function handlePhotoMessage(
     await bot.sendMessage(chatId, "Something went wrong. Try again later.", {
       reply_markup: imageMenuKeyboard(),
     });
+  }
+}
+
+// ── Sticker generation ────────────────────────────────────────────────────────
+
+async function handleStickerGeneration(
+  bot: TelegramBot,
+  chatId: number,
+  user: IUser,
+  prompt: string,
+  e: boolean
+): Promise<void> {
+  const isPrem = user.premium.active;
+  const limit = getImageLimit(isPrem);
+  if (user.usage.images >= limit) {
+    await bot.sendMessage(chatId, `Daily image limit reached (${limit}/day).`);
+    return;
+  }
+  const sentMsg = await bot.sendMessage(chatId, "🖼️ Creating your sticker image...");
+  const stopTyping = startTypingLoop(bot, chatId, "upload_photo");
+  try {
+    const stickerPrompt = `${prompt}, sticker art style, clean white or transparent background, bold outlines, cute and expressive, high contrast, simple design`;
+    const imageBuffer = await generateImage(stickerPrompt);
+    stopTyping();
+    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+    if (!imageBuffer) {
+      await bot.sendMessage(chatId, "Sticker generation failed. Try again in 30 seconds.");
+      return;
+    }
+    user.usage.images += 1;
+    await user.save();
+    await bot.sendPhoto(chatId, imageBuffer, {
+      caption: `🖼️ Sticker: ${prompt.substring(0, 80)}\n\n💡 Tip: Save this image and add it as a sticker in Telegram Settings → Stickers!`,
+    });
+  } catch (err) {
+    stopTyping();
+    logger.error({ err }, "Sticker generation error");
+    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+    await bot.sendMessage(chatId, "Sticker generation failed. Please try again.");
+  }
+}
+
+// ── Document message handler (exported — called from index.ts) ────────────────
+
+export async function handleDocumentMessage(
+  bot: TelegramBot,
+  msg: TelegramBot.Message,
+  user: IUser
+): Promise<void> {
+  const chatId = msg.chat.id;
+  if (user.banned) return;
+
+  if (getMaintenance()) {
+    await bot.sendMessage(chatId, "Nova is currently under maintenance.");
+    return;
+  }
+
+  const doc = msg.document;
+  if (!doc) return;
+
+  const fileName = doc.file_name || "document";
+  const mimeType = doc.mime_type || "";
+  const e = user.settings.emoji;
+
+  const statusMsg = await bot.sendMessage(chatId,
+    e ? `📄 Reading "${fileName}"...` : `Processing document: ${fileName}`
+  );
+  const stopTyping = startTypingLoop(bot, chatId);
+
+  try {
+    const buffer = await downloadTelegramDocument(bot, doc.file_id);
+    if (!buffer) {
+      stopTyping();
+      await bot.editMessageText("Failed to download the document. Please try again.", {
+        chat_id: chatId, message_id: statusMsg.message_id,
+      });
+      return;
+    }
+
+    const text = await extractTextFromDocument(buffer, mimeType, fileName);
+    if (!text || text.trim().length < 20) {
+      stopTyping();
+      await bot.editMessageText(
+        "Could not extract text from this file. Supported formats: PDF, TXT, DOCX, MD, CSV, and most code files.",
+        { chat_id: chatId, message_id: statusMsg.message_id }
+      );
+      return;
+    }
+
+    const userQuestion = msg.caption?.trim();
+    const docPrompt = userQuestion
+      ? `The user sent a document "${fileName}" with this content:\n\n${text}\n\nUser's question: ${userQuestion}\n\nAnswer their question based on the document content.`
+      : `The user sent a document "${fileName}". Analyze and summarize it:\n\n${text}\n\nProvide:\n• A brief summary (2-3 sentences)\n• Key points (bullet list)\n• Important numbers, dates, or names mentioned\n• Any action items or conclusions`;
+
+    const reply = await chat(
+      user.userId, chatId + 6666, docPrompt,
+      { style: user.settings.style, emoji: e, length: "long" },
+      user.premium.active
+    );
+    stopTyping();
+    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+    await safeSend(bot, chatId, `📄 Document: ${fileName}\n\n${reply}`, {
+      reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] }
+    });
+  } catch (err) {
+    stopTyping();
+    logger.error({ err }, "Document handler error");
+    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+    await bot.sendMessage(chatId, "Something went wrong reading the document. Please try again.");
   }
 }
 
