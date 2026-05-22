@@ -472,13 +472,6 @@ export async function handlePrivateMessage(
     return;
   }
 
-  // /voice — voice settings (feature removed)
-  if (text === "/voice") {
-    await bot.sendMessage(chatId, "Voice replies are no longer available.",
-      { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
-    return;
-  }
-
   // /model — AI model selection
   if (text === "/model" || text === "/models") {
     const config = await (await import("../models/BotConfig.js")).getOrCreateBotConfig();
