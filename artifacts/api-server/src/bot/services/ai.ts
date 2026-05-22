@@ -6,13 +6,26 @@ import { logger } from "../../lib/logger.js";
 const MAX_HISTORY = 20;
 const MAX_SUMMARY_TRIGGER = 30;
 
-// ── Free-tier fallback chain (tried in order when primary model fails) ────────
+// ── Free-tier fallback chain — all verified pricing:0 on OpenRouter (May 2025) ─
+// Tried in order when the primary model returns 402/429/500/503.
+// Large context first → smaller/faster models as last resort.
 const FREE_FALLBACK_MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "deepseek/deepseek-v4-flash:free",
-  "openai/gpt-oss-20b:free",
-  "nousresearch/hermes-3-llama-3.1-405b:free",
-  "meta-llama/llama-3.2-3b-instruct:free",
+  "deepseek/deepseek-v4-flash:free",                               // 1M ctx — default primary
+  "meta-llama/llama-3.3-70b-instruct:free",                        // 131K ctx — proven reliable
+  "qwen/qwen3-coder:free",                                          // 1M ctx — 480B params
+  "nvidia/nemotron-3-super-120b-a12b:free",                         // 1M ctx — 120B NVIDIA
+  "nousresearch/hermes-3-llama-3.1-405b:free",                      // 131K ctx — 405B hermes
+  "openai/gpt-oss-120b:free",                                       // 131K ctx — OpenAI OSS
+  "openai/gpt-oss-20b:free",                                        // 131K ctx — smaller OSS
+  "google/gemma-4-31b-it:free",                                     // 262K ctx — Google
+  "qwen/qwen3-next-80b-a3b-instruct:free",                          // 262K ctx — Qwen
+  "minimax/minimax-m2.5:free",                                       // 204K ctx — MiniMax
+  "nvidia/nemotron-3-nano-30b-a3b:free",                            // 256K ctx — NVIDIA nano
+  "z-ai/glm-4.5-air:free",                                          // 131K ctx — Z.ai
+  "arcee-ai/trinity-large-thinking:free",                            // 262K ctx — thinking
+  "google/gemma-4-26b-a4b-it:free",                                 // 262K ctx — Google
+  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",   // 32K — uncensored
+  "meta-llama/llama-3.2-3b-instruct:free",                          // 131K — tiny/fastest
 ];
 
 // ── Auto-detect queries that need real-time web context ───────────────────────

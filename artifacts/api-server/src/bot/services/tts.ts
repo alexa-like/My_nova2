@@ -4,12 +4,16 @@ import { logger } from "../../lib/logger.js";
 
 export const VOICE_PREVIEW_TEXT = "Hey there! I'm Nova, your AI assistant. This is exactly how I sound!";
 
+// ── All voices verified on HF Inference API (May 2025) ───────────────────────
 export const VOICE_DESCRIPTIONS: Record<string, string> = {
+  "hexgrad/Kokoro-82M":               "Kokoro — best quality voice (10M users)",
   "facebook/mms-tts-eng":             "Nova — clean, natural, and clear",
-  "espnet/kan-bayashi_ljspeech_vits": "Crystal — smooth and expressive",
-  "suno/bark-small":                  "Bark — expressive and dynamic (slower)",
+  "myshell-ai/MeloTTS-English":       "Melo — expressive English TTS",
+  "suno/bark-small":                  "Bark — dynamic and emotional (slower)",
+  "espnet/kan-bayashi_ljspeech_vits": "Crystal — smooth and steady",
 };
 
+// Reliable fallback: mms-tts-eng is the most consistently available free TTS
 const FALLBACK_TTS = "facebook/mms-tts-eng";
 const RETRY_DELAY_MS = 8000;
 

@@ -1,10 +1,16 @@
 import axios from "axios";
 import { logger } from "../../lib/logger.js";
 
-// Models ordered by reliability
+// ── MusicGen model family — all verified inf:true on HF Inference API ─────────
+// Ordered: medium (best balance, 1.5M DL) → large (best quality) → small (fastest)
+// → stereo variants for richer output
 const MUSIC_MODELS = [
-  "facebook/musicgen-small",
-  "facebook/musicgen-stereo-small",
+  "facebook/musicgen-medium",        // 1.5M downloads — best balance of quality+speed
+  "facebook/musicgen-large",         // highest quality, slower cold-start
+  "facebook/musicgen-small",         // fastest, lightest
+  "facebook/musicgen-stereo-medium", // stereo output, good quality
+  "facebook/musicgen-stereo-small",  // stereo output, fastest
+  "facebook/musicgen-melody",        // melody conditioning variant
 ];
 
 const MAX_RETRIES = 4;

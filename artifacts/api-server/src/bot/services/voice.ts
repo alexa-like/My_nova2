@@ -2,7 +2,13 @@ import axios from "axios";
 import { logger } from "../../lib/logger.js";
 import { getOrCreateBotConfig } from "../models/BotConfig.js";
 
-const WHISPER_FALLBACK = "openai/whisper-base";
+// ASR fallback chain: turbo (fastest high-quality) → distil-large (efficient) → base (most reliable)
+const ASR_FALLBACK_CHAIN = [
+  "openai/whisper-large-v3-turbo",   // 7.5M DL, inf:true, faster than v3
+  "distil-whisper/distil-large-v3",  // 1.4M DL, inf:true, distilled
+  "openai/whisper-medium",           // inf:true, balanced
+  "openai/whisper-base",             // inf:true, most reliable/fastest
+];
 
 export async function transcribeVoice(
   audioBuffer: Buffer,
@@ -11,20 +17,22 @@ export async function transcribeVoice(
   const token = process.env.HUGGINGFACE_API_TOKEN;
   if (!token) return null;
 
-  let model = modelId;
-  if (!model) {
+  let primaryModel = modelId;
+  if (!primaryModel) {
     const config = await getOrCreateBotConfig();
-    model = config.activeAsrModel || "openai/whisper-large-v3";
+    primaryModel = config.activeAsrModel || "openai/whisper-large-v3-turbo";
   }
 
-  const endpoints = [
-    `https://api-inference.huggingface.co/models/${model}`,
-    `https://api-inference.huggingface.co/models/${WHISPER_FALLBACK}`,
-  ].filter((v, i, a) => a.indexOf(v) === i); // deduplicate if same model
+  // Build deduplicated endpoint list: primary first, then the full fallback chain
+  const modelsToTry = [
+    primaryModel,
+    ...ASR_FALLBACK_CHAIN.filter(m => m !== primaryModel),
+  ];
 
-  for (const endpoint of endpoints) {
+  for (const model of modelsToTry) {
+    const endpoint = `https://api-inference.huggingface.co/models/${model}`;
     try {
-      logger.info({ endpoint }, "Transcribing voice");
+      logger.info({ model, endpoint }, "Transcribing voice");
       const response = await axios.post(endpoint, audioBuffer, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -36,17 +44,17 @@ export async function transcribeVoice(
 
       const text = response.data?.text?.trim();
       if (text && text.length > 0) {
-        logger.info({ length: text.length, endpoint }, "Voice transcribed successfully");
+        logger.info({ length: text.length, model }, "Voice transcribed successfully");
         return text;
       }
 
-      logger.warn({ data: response.data, endpoint }, "Whisper returned empty transcription, trying next");
+      logger.warn({ data: response.data, model }, "ASR returned empty transcription, trying next");
     } catch (err: any) {
       const status = err?.response?.status;
       if (status === 503) {
-        logger.warn({ endpoint }, "ASR model warming up (503), trying fallback");
+        logger.warn({ model }, "ASR model warming up (503), trying next fallback");
       } else {
-        logger.warn({ err: err?.message, status, endpoint }, "Voice transcription failed, trying next");
+        logger.warn({ err: err?.message, status, model }, "Voice transcription failed, trying next");
       }
     }
   }

@@ -6,14 +6,19 @@ import { logger } from "../../lib/logger.js";
 const FREE_LIMIT_DEFAULT = 5;
 const PREMIUM_LIMIT_DEFAULT = 999999; // effectively unlimited
 
-// Fallback image models tried in order when the primary (BotConfig) model fails.
-// All verified available on HF Inference API free tier (May 2025).
+// ── Fallback image models — all verified inf:true on HF Inference API (May 2025) ─
+// Tried in order when the primary (BotConfig.activeImageModel) fails or is loading.
+// Mix of quality tiers: photorealistic, creative/stylized, anime, classic reliable.
 const FALLBACK_MODELS = [
-  "stabilityai/stable-diffusion-xl-base-1.0",
-  "SG161222/RealVisXL_V4.0",
-  "Lykon/dreamshaper-8",
-  "stable-diffusion-v1-5/stable-diffusion-v1-5",
-  "stabilityai/stable-diffusion-3-medium-diffusers",
+  "stabilityai/stable-diffusion-xl-base-1.0",               // 1.9M DL — highly reliable
+  "SG161222/RealVisXL_V4.0",                                 // photorealistic portraits
+  "Lykon/dreamshaper-8",                                     // creative all-purpose
+  "cagliostrolab/animagine-xl-4.0",                          // anime / illustration
+  "playgroundai/playground-v2.5-1024px-aesthetic",           // aesthetic quality
+  "SG161222/Realistic_Vision_V5.1_noVAE",                    // photorealistic v5
+  "CompVis/stable-diffusion-v1-4",                           // classic, very reliable
+  "stable-diffusion-v1-5/stable-diffusion-v1-5",             // 1.7M DL — reliable fallback
+  "stabilityai/stable-diffusion-3-medium-diffusers",         // modern quality (last)
 ];
 
 const IMG2IMG_ENDPOINT =

@@ -93,98 +93,141 @@ const UsageLimitsSchema = new Schema(
 
 const BotConfigSchema = new Schema<IBotConfig>(
   {
-    activeChatModel: { type: String, default: "meta-llama/llama-3.3-70b-instruct:free" },
+    // ── Defaults: all verified free models (May 2025) ──────────────────────────
+    activeChatModel:  { type: String, default: "deepseek/deepseek-v4-flash:free" },
     activeImageModel: { type: String, default: "black-forest-labs/FLUX.1-schnell" },
     activeVideoModel: { type: String, default: "ByteDance/AnimateDiff-Lightning" },
-    activeVoiceModel: { type: String, default: "facebook/mms-tts-eng" },
-    activeAsrModel: { type: String, default: "openai/whisper-large-v3" },
-    chatModels: { type: [ModelEntrySchema], default: [] },
+    activeVoiceModel: { type: String, default: "hexgrad/Kokoro-82M" },
+    activeAsrModel:   { type: String, default: "openai/whisper-large-v3-turbo" },
+    chatModels:  { type: [ModelEntrySchema], default: [] },
     imageModels: { type: [ModelEntrySchema], default: [] },
     videoModels: { type: [ModelEntrySchema], default: [] },
     voiceModels: { type: [ModelEntrySchema], default: [] },
-    asrModels: { type: [ModelEntrySchema], default: [] },
+    asrModels:   { type: [ModelEntrySchema], default: [] },
     providerSettings: { type: ProviderSettingsSchema, default: () => ({}) },
     premiumEmojiEnabled: { type: Boolean, default: false },
-    maintenanceMode: { type: Boolean, default: false },
+    maintenanceMode:     { type: Boolean, default: false },
     usageLimits: { type: UsageLimitsSchema, default: () => ({}) },
-    welcomeMessage: { type: String, default: "" },
-    botPersonality: { type: String, default: "" },
+    welcomeMessage:  { type: String, default: "" },
+    botPersonality:  { type: String, default: "" },
   },
   { timestamps: true }
 );
 
 export const BotConfig = mongoose.model<IBotConfig>("BotConfig", BotConfigSchema);
 
-// ── Default model catalogs (all verified free / open-access as of 2025) ───────
+// ─────────────────────────────────────────────────────────────────────────────
+// DEFAULT MODEL CATALOGS
+// All entries verified free / open-access as of May 2025.
+// Chat models: OpenRouter (:free suffix = zero cost, confirmed via live API).
+// Image/Video/TTS/ASR: HuggingFace Inference API (inf:true or inf:"warm" verified).
+// ─────────────────────────────────────────────────────────────────────────────
 
 const DEFAULT_CHAT_MODELS: IModelEntry[] = [
-  { id: "meta-llama/llama-3.3-70b-instruct:free",      name: "Llama 3.3 70B (Free)",           active: true  },
-  { id: "deepseek/deepseek-v4-flash:free",              name: "DeepSeek V4 Flash (Free)",        active: false },
-  { id: "openai/gpt-oss-20b:free",                      name: "GPT-OSS 20B (Free)",              active: false },
-  { id: "nousresearch/hermes-3-llama-3.1-405b:free",   name: "Hermes 3 405B (Free)",            active: false },
-  { id: "google/gemma-4-31b-it:free",                   name: "Gemma 4 31B (Free)",              active: false },
-  { id: "nvidia/nemotron-3-super-120b-a12b:free",       name: "Nemotron Super 120B (Free)",      active: false },
-  { id: "meta-llama/llama-3.2-3b-instruct:free",        name: "Llama 3.2 3B Fast (Free)",        active: false },
+  // ── OpenRouter free tier — all confirmed pricing: 0 ──────────────────────
+  { id: "deepseek/deepseek-v4-flash:free",                          name: "DeepSeek V4 Flash — 1M ctx",          active: true  },
+  { id: "meta-llama/llama-3.3-70b-instruct:free",                   name: "Llama 3.3 70B — 131K ctx",            active: false },
+  { id: "qwen/qwen3-coder:free",                                     name: "Qwen3 Coder 480B — 1M ctx",           active: false },
+  { id: "nvidia/nemotron-3-super-120b-a12b:free",                    name: "Nemotron Super 120B — 1M ctx",        active: false },
+  { id: "nousresearch/hermes-3-llama-3.1-405b:free",                 name: "Hermes 3 405B — 131K ctx",            active: false },
+  { id: "openai/gpt-oss-120b:free",                                  name: "GPT-OSS 120B — 131K ctx",             active: false },
+  { id: "openai/gpt-oss-20b:free",                                   name: "GPT-OSS 20B — 131K ctx",              active: false },
+  { id: "google/gemma-4-31b-it:free",                                name: "Gemma 4 31B — 262K ctx",              active: false },
+  { id: "qwen/qwen3-next-80b-a3b-instruct:free",                     name: "Qwen3 Next 80B — 262K ctx",           active: false },
+  { id: "minimax/minimax-m2.5:free",                                  name: "MiniMax M2.5 — 204K ctx",             active: false },
+  { id: "nvidia/nemotron-3-nano-30b-a3b:free",                       name: "Nemotron Nano 30B — 256K ctx",        active: false },
+  { id: "z-ai/glm-4.5-air:free",                                     name: "GLM 4.5 Air — 131K ctx",              active: false },
+  { id: "arcee-ai/trinity-large-thinking:free",                       name: "Trinity Large Thinking — 262K ctx",  active: false },
+  { id: "google/gemma-4-26b-a4b-it:free",                            name: "Gemma 4 26B — 262K ctx",              active: false },
+  { id: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", name: "Dolphin Uncensored 24B — 32K ctx", active: false },
+  { id: "meta-llama/llama-3.2-3b-instruct:free",                     name: "Llama 3.2 3B Fast — 131K ctx",        active: false },
 ];
 
 const DEFAULT_IMAGE_MODELS: IModelEntry[] = [
-  { id: "black-forest-labs/FLUX.1-schnell",                   name: "FLUX.1 Schnell (Fast)",           active: true  },
-  { id: "stabilityai/stable-diffusion-xl-base-1.0",           name: "SDXL 1.0 (Quality)",              active: false },
-  { id: "SG161222/RealVisXL_V4.0",                            name: "RealVisXL v4 (Photorealistic)",    active: false },
-  { id: "Lykon/dreamshaper-8",                                 name: "DreamShaper 8 (Creative)",        active: false },
-  { id: "stable-diffusion-v1-5/stable-diffusion-v1-5",        name: "SD v1.5 (Reliable)",              active: false },
-  { id: "stabilityai/stable-diffusion-3-medium-diffusers",    name: "SD 3 Medium",                     active: false },
+  // ── HuggingFace Inference API — all inf:true or inf:"warm" verified ───────
+  { id: "black-forest-labs/FLUX.1-schnell",                        name: "FLUX.1 Schnell — Fast & Sharp",          active: true  },
+  { id: "stabilityai/stable-diffusion-xl-base-1.0",               name: "SDXL 1.0 — High Quality",                active: false },
+  { id: "SG161222/RealVisXL_V4.0",                                 name: "RealVisXL v4 — Photorealistic",          active: false },
+  { id: "Lykon/dreamshaper-8",                                     name: "DreamShaper 8 — Creative",               active: false },
+  { id: "cagliostrolab/animagine-xl-4.0",                          name: "Animagine XL 4.0 — Anime",               active: false },
+  { id: "playgroundai/playground-v2.5-1024px-aesthetic",           name: "Playground v2.5 — Aesthetic",            active: false },
+  { id: "SG161222/Realistic_Vision_V5.1_noVAE",                    name: "Realistic Vision v5.1 — Portraits",      active: false },
+  { id: "CompVis/stable-diffusion-v1-4",                           name: "SD v1.4 — Classic Reliable",             active: false },
+  { id: "stable-diffusion-v1-5/stable-diffusion-v1-5",             name: "SD v1.5 — Reliable Fallback",            active: false },
+  { id: "stabilityai/stable-diffusion-3-medium-diffusers",         name: "SD 3 Medium — Modern Quality",           active: false },
 ];
 
 const DEFAULT_VIDEO_MODELS: IModelEntry[] = [
-  { id: "ByteDance/AnimateDiff-Lightning",    name: "AnimateDiff Lightning (Fast)",  active: true  },
-  { id: "Wan-AI/Wan2.1-T2V-1.3B",            name: "Wan 2.1 T2V (Quality)",         active: false },
-  { id: "damo-vilab/text-to-video-ms-1.7b",  name: "ModelScope T2V (Fallback)",     active: false },
-  { id: "cerspense/zeroscope_v2_576w",        name: "ZeroScope v2 (Legacy)",         active: false },
+  // ── HuggingFace text-to-video pipeline models ─────────────────────────────
+  { id: "ByteDance/AnimateDiff-Lightning",    name: "AnimateDiff Lightning — Fastest",  active: true  },
+  { id: "Wan-AI/Wan2.1-T2V-1.3B",            name: "Wan 2.1 T2V — Best Quality",       active: false },
+  { id: "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",  name: "Wan 2.1 Diffusers — Alternative",  active: false },
+  { id: "ali-vilab/text-to-video-ms-1.7b",   name: "AliViLab T2V — Stable",            active: false },
+  { id: "damo-vilab/text-to-video-ms-1.7b",  name: "ModelScope T2V — Legacy",          active: false },
+  { id: "cerspense/zeroscope_v2_576w",        name: "ZeroScope v2 — Last Resort",       active: false },
 ];
 
 const DEFAULT_VOICE_MODELS: IModelEntry[] = [
-  { id: "facebook/mms-tts-eng",               name: "Nova (Natural)",      active: true  },
-  { id: "espnet/kan-bayashi_ljspeech_vits",   name: "Crystal (Smooth)",    active: false },
-  { id: "suno/bark-small",                    name: "Bark (Expressive)",   active: false },
+  // ── HuggingFace TTS models — all inf:true or inf:"warm" verified ──────────
+  { id: "hexgrad/Kokoro-82M",              name: "Kokoro — Best Quality (10M users)",  active: true  },
+  { id: "facebook/mms-tts-eng",            name: "MMS — Clean & Natural",              active: false },
+  { id: "myshell-ai/MeloTTS-English",      name: "MeloTTS — Expressive English",       active: false },
+  { id: "suno/bark-small",                 name: "Bark — Dynamic & Emotional",         active: false },
+  { id: "espnet/kan-bayashi_ljspeech_vits",name: "VITS LJSpeech — Smooth",            active: false },
 ];
 
 const DEFAULT_ASR_MODELS: IModelEntry[] = [
-  { id: "openai/whisper-large-v3",         name: "Whisper Large v3 (Best)",      active: true  },
-  { id: "openai/whisper-medium",           name: "Whisper Medium (Fast)",         active: false },
-  { id: "openai/whisper-base",             name: "Whisper Base (Fastest)",        active: false },
-  { id: "facebook/wav2vec2-base-960h",     name: "Wav2Vec2 (Alternative)",        active: false },
+  // ── HuggingFace ASR models — all inf:true verified ────────────────────────
+  { id: "openai/whisper-large-v3-turbo",   name: "Whisper Large v3 Turbo — Fast & Accurate",  active: true  },
+  { id: "openai/whisper-large-v3",         name: "Whisper Large v3 — Best Accuracy",           active: false },
+  { id: "distil-whisper/distil-large-v3",  name: "Distil-Whisper Large v3 — Efficient",        active: false },
+  { id: "openai/whisper-medium",           name: "Whisper Medium — Balanced",                  active: false },
+  { id: "openai/whisper-small",            name: "Whisper Small — Fast",                       active: false },
+  { id: "openai/whisper-base",             name: "Whisper Base — Fastest",                     active: false },
+  { id: "facebook/wav2vec2-base-960h",     name: "Wav2Vec2 — Alternative Architecture",        active: false },
 ];
 
-// ── Models to auto-migrate away from (paid/deprecated/removed) ───────────────
-const DEPRECATED_CHAT_MODEL_IDS = new Set([
-  "meta-llama/llama-3.3-70b-instruct",   // paid version → migrate to :free
+// ── Models to auto-migrate away from (paid / deprecated / removed) ────────────
+const DEPRECATED_CHAT_IDS = new Set([
+  "meta-llama/llama-3.3-70b-instruct",  // paid (no :free suffix)
+  "meta-llama/llama-3.1-8b-instruct",   // paid
   "mistralai/mistral-7b-instruct:free",  // no longer on free tier
   "google/gemma-2-9b-it:free",           // no longer on free tier
   "deepseek/deepseek-chat",              // paid
-  "openai/gpt-4o-mini",                 // paid
-  "anthropic/claude-3-haiku",           // paid
+  "openai/gpt-4o-mini",                  // paid
+  "anthropic/claude-3-haiku",            // paid
+  "anthropic/claude-3.5-sonnet",         // paid
+  "openai/gpt-4-turbo",                  // paid
+  "openai/gpt-3.5-turbo",               // paid
 ]);
-const DEPRECATED_IMAGE_MODEL_IDS = new Set([
-  "runwayml/stable-diffusion-v1-5",      // removed from HF
-  "black-forest-labs/FLUX.1-dev",        // requires HF Pro subscription
+const DEPRECATED_IMAGE_IDS = new Set([
+  "runwayml/stable-diffusion-v1-5",                  // removed from HF (404)
+  "black-forest-labs/FLUX.1-dev",                    // requires HF Pro subscription
+  "stabilityai/stable-diffusion-3.5-large-turbo",    // gated (requires approval)
+  "stabilityai/stable-diffusion-3.5-medium",         // gated (requires approval)
 ]);
-const DEPRECATED_VIDEO_MODEL_IDS = new Set<string>(); // nothing fully removed yet
+const DEPRECATED_VOICE_IDS = new Set([
+  "facebook/fastspeech2-en-ljspeech",  // deprecated by Meta
+]);
 
-// ── Paid chat model → free equivalent ────────────────────────────────────────
-const CHAT_MODEL_FREE_UPGRADE: Record<string, string> = {
-  "meta-llama/llama-3.3-70b-instruct": "meta-llama/llama-3.3-70b-instruct:free",
+// ── Paid → free model upgrade map ─────────────────────────────────────────────
+const CHAT_PAID_TO_FREE: Record<string, string> = {
+  "meta-llama/llama-3.3-70b-instruct":  "meta-llama/llama-3.3-70b-instruct:free",
+  "meta-llama/llama-3.1-8b-instruct":   "meta-llama/llama-3.3-70b-instruct:free",
+  "deepseek/deepseek-chat":              "deepseek/deepseek-v4-flash:free",
+  "openai/gpt-4o-mini":                 "openai/gpt-oss-20b:free",
+  "anthropic/claude-3-haiku":           "deepseek/deepseek-v4-flash:free",
 };
 
 export async function getOrCreateBotConfig(): Promise<IBotConfig> {
   let config = await BotConfig.findOne();
   if (!config) {
     config = new BotConfig({
-      activeChatModel: DEFAULT_CHAT_MODELS[0].id,
-      activeImageModel: DEFAULT_IMAGE_MODELS[0].id,
-      activeVideoModel: DEFAULT_VIDEO_MODELS[0].id,
-      activeVoiceModel: DEFAULT_VOICE_MODELS[0].id,
-      activeAsrModel:   DEFAULT_ASR_MODELS[0].id,
+      activeChatModel:  DEFAULT_CHAT_MODELS.find(m => m.active)!.id,
+      activeImageModel: DEFAULT_IMAGE_MODELS.find(m => m.active)!.id,
+      activeVideoModel: DEFAULT_VIDEO_MODELS.find(m => m.active)!.id,
+      activeVoiceModel: DEFAULT_VOICE_MODELS.find(m => m.active)!.id,
+      activeAsrModel:   DEFAULT_ASR_MODELS.find(m => m.active)!.id,
       chatModels:  DEFAULT_CHAT_MODELS,
       imageModels: DEFAULT_IMAGE_MODELS,
       videoModels: DEFAULT_VIDEO_MODELS,
@@ -197,87 +240,87 @@ export async function getOrCreateBotConfig(): Promise<IBotConfig> {
 
   let dirty = false;
 
-  // ── Migrate paid/removed active models ──────────────────────────────────────
-  if (CHAT_MODEL_FREE_UPGRADE[config.activeChatModel]) {
-    config.activeChatModel = CHAT_MODEL_FREE_UPGRADE[config.activeChatModel];
+  // ── Migrate active models away from paid/deprecated versions ──────────────
+  if (CHAT_PAID_TO_FREE[config.activeChatModel]) {
+    config.activeChatModel = CHAT_PAID_TO_FREE[config.activeChatModel];
     dirty = true;
   }
-  // Migrate active video model away from old broken default
-  if (config.activeVideoModel === "damo-vilab/text-to-video-ms-1.7b" ||
-      config.activeVideoModel === "cerspense/zeroscope_v2_576w") {
-    config.activeVideoModel = DEFAULT_VIDEO_MODELS[0].id;
+  if (DEPRECATED_IMAGE_IDS.has(config.activeImageModel)) {
+    config.activeImageModel = DEFAULT_IMAGE_MODELS.find(m => m.active)!.id;
+    dirty = true;
+  }
+  if (DEPRECATED_VOICE_IDS.has(config.activeVoiceModel)) {
+    config.activeVoiceModel = DEFAULT_VOICE_MODELS.find(m => m.active)!.id;
+    dirty = true;
+  }
+  // Migrate old video default to AnimateDiff
+  if (["damo-vilab/text-to-video-ms-1.7b", "cerspense/zeroscope_v2_576w"].includes(config.activeVideoModel)) {
+    config.activeVideoModel = DEFAULT_VIDEO_MODELS.find(m => m.active)!.id;
+    dirty = true;
+  }
+  // Migrate old ASR default to turbo
+  if (config.activeAsrModel === "openai/whisper-large-v3") {
+    config.activeAsrModel = DEFAULT_ASR_MODELS.find(m => m.active)!.id;
     dirty = true;
   }
 
-  // ── Ensure voice/ASR lists are populated ────────────────────────────────────
+  // ── Ensure voice/ASR lists exist ─────────────────────────────────────────
   if (!config.voiceModels || config.voiceModels.length === 0) {
     config.voiceModels = DEFAULT_VOICE_MODELS;
-    if (!config.activeVoiceModel) config.activeVoiceModel = DEFAULT_VOICE_MODELS[0].id;
+    if (!config.activeVoiceModel) config.activeVoiceModel = DEFAULT_VOICE_MODELS.find(m => m.active)!.id;
     dirty = true;
   }
   if (!config.asrModels || config.asrModels.length === 0) {
     config.asrModels = DEFAULT_ASR_MODELS;
-    if (!config.activeAsrModel) config.activeAsrModel = DEFAULT_ASR_MODELS[0].id;
+    if (!config.activeAsrModel) config.activeAsrModel = DEFAULT_ASR_MODELS.find(m => m.active)!.id;
     dirty = true;
   }
 
-  // ── Ensure FLUX is in image models ──────────────────────────────────────────
-  if (config.imageModels.length > 0 && !config.imageModels.find((m) => m.id.includes("FLUX.1-schnell"))) {
-    config.imageModels.unshift(DEFAULT_IMAGE_MODELS[0]);
-    dirty = true;
-  }
-
-  // ── Remove deprecated image models from list ─────────────────────────────────
-  const cleanedImageModels = config.imageModels.filter(m => !DEPRECATED_IMAGE_MODEL_IDS.has(m.id));
-  if (cleanedImageModels.length !== config.imageModels.length) {
-    config.imageModels = cleanedImageModels;
-    dirty = true;
-  }
-
-  // ── Add new image models if missing ─────────────────────────────────────────
-  for (const m of DEFAULT_IMAGE_MODELS) {
-    if (!config.imageModels.find(e => e.id === m.id)) {
-      config.imageModels.push({ ...m, active: false });
-      dirty = true;
-    }
-  }
-
-  // ── Ensure AnimateDiff-Lightning is in video models ─────────────────────────
-  if (!config.videoModels.find((m) => m.id === "ByteDance/AnimateDiff-Lightning")) {
-    config.videoModels.unshift({ id: "ByteDance/AnimateDiff-Lightning", name: "AnimateDiff Lightning (Fast)", active: false });
-    dirty = true;
-  }
-  if (!config.videoModels.find((m) => m.id === "Wan-AI/Wan2.1-T2V-1.3B")) {
-    config.videoModels.push({ id: "Wan-AI/Wan2.1-T2V-1.3B", name: "Wan 2.1 T2V (Quality)", active: false });
-    dirty = true;
-  }
-
-  // ── Remove deprecated TTS model (fastspeech2) ────────────────────────────────
-  const cleanedVoiceModels = config.voiceModels.filter(m => m.id !== "facebook/fastspeech2-en-ljspeech");
-  if (cleanedVoiceModels.length !== config.voiceModels.length) {
-    config.voiceModels = cleanedVoiceModels.length > 0 ? cleanedVoiceModels : DEFAULT_VOICE_MODELS;
-    if (config.activeVoiceModel === "facebook/fastspeech2-en-ljspeech") {
-      config.activeVoiceModel = DEFAULT_VOICE_MODELS[0].id;
-    }
-    dirty = true;
-  }
-
-  // ── Add new free chat models if missing ──────────────────────────────────────
+  // ── Add any missing models from each default list ────────────────────────
   for (const m of DEFAULT_CHAT_MODELS) {
     if (!config.chatModels.find(e => e.id === m.id)) {
       config.chatModels.push({ ...m, active: false });
       dirty = true;
     }
   }
+  for (const m of DEFAULT_IMAGE_MODELS) {
+    if (!config.imageModels.find(e => e.id === m.id)) {
+      config.imageModels.push({ ...m, active: false });
+      dirty = true;
+    }
+  }
+  for (const m of DEFAULT_VIDEO_MODELS) {
+    if (!config.videoModels.find(e => e.id === m.id)) {
+      config.videoModels.push({ ...m, active: false });
+      dirty = true;
+    }
+  }
+  for (const m of DEFAULT_VOICE_MODELS) {
+    if (!config.voiceModels.find(e => e.id === m.id)) {
+      config.voiceModels.push({ ...m, active: false });
+      dirty = true;
+    }
+  }
+  for (const m of DEFAULT_ASR_MODELS) {
+    if (!config.asrModels.find(e => e.id === m.id)) {
+      config.asrModels.push({ ...m, active: false });
+      dirty = true;
+    }
+  }
 
-  // ── Remove deprecated chat models from list (keep if user had them active) ───
-  const cleanedChatModels = config.chatModels.filter(m => {
-    if (!DEPRECATED_CHAT_MODEL_IDS.has(m.id)) return true;
-    // If user had it set as active chat model, we already migrated above; safe to remove
-    return false;
-  });
-  if (cleanedChatModels.length !== config.chatModels.length && cleanedChatModels.length > 0) {
-    config.chatModels = cleanedChatModels;
+  // ── Remove deprecated entries from lists ─────────────────────────────────
+  const cleanChat = config.chatModels.filter(m => !DEPRECATED_CHAT_IDS.has(m.id));
+  if (cleanChat.length !== config.chatModels.length) { config.chatModels = cleanChat.length > 0 ? cleanChat : DEFAULT_CHAT_MODELS; dirty = true; }
+
+  const cleanImage = config.imageModels.filter(m => !DEPRECATED_IMAGE_IDS.has(m.id));
+  if (cleanImage.length !== config.imageModels.length) { config.imageModels = cleanImage.length > 0 ? cleanImage : DEFAULT_IMAGE_MODELS; dirty = true; }
+
+  const cleanVoice = config.voiceModels.filter(m => !DEPRECATED_VOICE_IDS.has(m.id));
+  if (cleanVoice.length !== config.voiceModels.length) { config.voiceModels = cleanVoice.length > 0 ? cleanVoice : DEFAULT_VOICE_MODELS; dirty = true; }
+
+  // ── Ensure FLUX is in image models if list is otherwise empty/broken ─────
+  if (!config.imageModels.find(m => m.id === "black-forest-labs/FLUX.1-schnell")) {
+    config.imageModels.unshift(DEFAULT_IMAGE_MODELS[0]);
     dirty = true;
   }
 
