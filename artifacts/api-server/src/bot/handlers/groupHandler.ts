@@ -225,7 +225,7 @@ export async function handleGroupMessage(
 
   // ── Anti-link middleware ──────────────────────────────────────────────────
   if (groupSettings.antilink && !senderIsAdmin) {
-    const hasLink = /https?:\/\/|t\.me\/|@[a-z]/i.test(text) ||
+    const hasLink = /https?:\/\/|t\.me\//i.test(text) ||
       msg.entities?.some(e => e.type === "url" || e.type === "text_link");
     if (hasLink && !cmd.startsWith("/")) {
       try {
@@ -986,6 +986,7 @@ export async function handleGroupMessage(
           can_restrict_members: true,
           can_pin_messages: true,
           can_invite_users: true,
+          can_change_info: true,
           can_manage_chat: true,
         });
         await bot.sendMessage(chatId, `${name} has been promoted to admin.`);

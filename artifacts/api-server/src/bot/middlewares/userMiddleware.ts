@@ -1,5 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 import { User, IUser } from "../models/User.js";
+import { getOrCreateBotConfig } from "../models/BotConfig.js";
 
 export async function ensureUser(msg: TelegramBot.Message): Promise<IUser> {
   const from = msg.from!;
@@ -39,12 +40,19 @@ export async function ensureUser(msg: TelegramBot.Message): Promise<IUser> {
     user.isOwner = currentIsOwner;
   }
 
-  // Reset daily usage if needed
+  // Reset all daily usage counters if the configured reset interval has passed
   const lastReset = user.usage.lastReset;
-  const daysSince = (now.getTime() - lastReset.getTime()) / (1000 * 60 * 60 * 24);
-  if (daysSince >= 1) {
+  let resetIntervalMs = 24 * 60 * 60 * 1000; // default 24h
+  try {
+    const cfg = await getOrCreateBotConfig();
+    resetIntervalMs = (cfg.usageLimits.resetIntervalHours || 24) * 60 * 60 * 1000;
+  } catch {}
+  if (now.getTime() - lastReset.getTime() >= resetIntervalMs) {
     user.usage.messages  = 0;
     user.usage.images    = 0;
+    user.usage.builds    = 0;
+    user.usage.videos    = 0;
+    user.usage.music     = 0;
     user.usage.lastReset = now;
     dirty = true;
   }

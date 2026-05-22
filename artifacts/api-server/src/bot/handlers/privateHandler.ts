@@ -14,6 +14,7 @@ import { Memory } from "../models/Memory.js";
 import { getPending, clearPending, setPending, PHOTO_ACTIONS, OWNER_PENDING_ACTIONS } from "../utils/pendingActions.js";
 import { handleOwnerPendingText } from "./ownerHandler.js";
 import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
+import { getOrCreateBotConfig } from "../models/BotConfig.js";
 import {
   mainMenuKeyboard,
   funMenuKeyboard,
@@ -400,6 +401,19 @@ export async function handleVoiceMessage(
       return;
     }
 
+    // Per-day message limit check for voice → AI chat
+    const voiceMsgCfg = await getOrCreateBotConfig();
+    const voiceMsgLimit = user.premium.active ? voiceMsgCfg.usageLimits.premiumMessages : voiceMsgCfg.usageLimits.freeMessages;
+    if (voiceMsgLimit >= 0 && user.usage.messages >= voiceMsgLimit) {
+      stopTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await bot.sendMessage(chatId,
+        `Daily message limit reached (${voiceMsgLimit}/day). Resets tomorrow.` +
+        (user.premium.active ? "" : " Upgrade to /premium for more messages.")
+      );
+      return;
+    }
+
     user.usage.messages += 1;
     await user.save();
 
@@ -592,7 +606,9 @@ export async function handlePrivateMessage(
       `Voice replies: ${user.settings.voiceEnabled ? "On" : "Off"}\n\n` +
       `── Usage ──\n` +
       `Messages today: ${user.usage.messages}\n` +
-      `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}\n` +
+      `Images today: ${user.usage.images}/${await getImageLimit(user.premium.active)}\n` +
+      `Videos today: ${user.usage.videos ?? 0}\n` +
+      `Music today: ${user.usage.music ?? 0}\n` +
       `Total builds: ${builds}\n` +
       `Groups: ${user.groups.length}\n` +
       `Warnings: ${user.warnings}`,
@@ -654,12 +670,15 @@ export async function handlePrivateMessage(
   // /premium
   if (text === "/premium") {
     const backKb = { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] };
+    const premLimCfg = await getOrCreateBotConfig();
+    const premImgLimitDisplay = premLimCfg.usageLimits.premiumImages < 0 ? "Unlimited" : String(premLimCfg.usageLimits.premiumImages);
+    const freeImgLimitDisplay = String(premLimCfg.usageLimits.freeImages);
     if (user.premium.active) {
       await bot.sendMessage(chatId,
         `✨ You are a Premium member!\n\n` +
         `Expires: ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}\n\n` +
         `Perks:\n` +
-        `• ${getImageLimit(true)} images per day\n` +
+        `• ${premImgLimitDisplay} images per day\n` +
         `• Longer AI context\n` +
         `• Richer responses`,
         { reply_markup: backKb }
@@ -668,7 +687,7 @@ export async function handlePrivateMessage(
       await bot.sendMessage(chatId,
         `You are on the Free plan.\n\n` +
         `Free limits:\n` +
-        `• ${getImageLimit(false)} images per day\n` +
+        `• ${freeImgLimitDisplay} images per day\n` +
         `• Standard AI responses\n\n` +
         `Get Premium with a redeem code:\n/redeem CODE`,
         { reply_markup: backKb }
@@ -710,9 +729,14 @@ export async function handlePrivateMessage(
     const premiumLine = user.premium.active
       ? `✨ Premium${user.premium.expiresAt ? ` (expires ${formatDate(user.premium.expiresAt)})` : ""}`
       : "Free";
-    const imageLimit = getImageLimit(user.premium.active);
+    const imageLimit = await getImageLimit(user.premium.active);
     const daysSinceJoin = Math.floor((Date.now() - user.firstSeen.getTime()) / 86400000);
     const builds = user.usage.builds ?? 0;
+    const statsCfg = await getOrCreateBotConfig();
+    const videoLimit = user.premium.active ? statsCfg.usageLimits.premiumVideos : statsCfg.usageLimits.freeVideos;
+    const musicLimit = user.premium.active ? statsCfg.usageLimits.premiumMusic : statsCfg.usageLimits.freeMusic;
+    const videoLimitStr = videoLimit < 0 ? "∞" : String(videoLimit);
+    const musicLimitStr = musicLimit < 0 ? "∞" : String(musicLimit);
     await bot.sendMessage(chatId,
       `📊 Your Stats\n\n` +
       `👤 ${name}\n` +
@@ -721,7 +745,9 @@ export async function handlePrivateMessage(
       `💎 Plan: ${premiumLine}\n\n` +
       `── Today ──\n` +
       `💬 Messages: ${user.usage.messages}\n` +
-      `🖼️ Images: ${user.usage.images}/${imageLimit}\n\n` +
+      `🖼️ Images: ${user.usage.images}/${imageLimit >= 999999 ? "∞" : imageLimit}\n` +
+      `🎬 Videos: ${user.usage.videos ?? 0}/${videoLimitStr}\n` +
+      `🎵 Music: ${user.usage.music ?? 0}/${musicLimitStr}\n\n` +
       `── All Time ──\n` +
       `🔨 Builds: ${builds}\n` +
       `👥 Groups: ${user.groups.length}\n` +
@@ -1361,6 +1387,17 @@ export async function handlePrivateMessage(
 
   // ── Plain text → AI chat ─────────────────────────────────────────────────
 
+  // Per-day message limit check
+  const msgLimCfg = await getOrCreateBotConfig();
+  const msgLimit = user.premium.active ? msgLimCfg.usageLimits.premiumMessages : msgLimCfg.usageLimits.freeMessages;
+  if (msgLimit >= 0 && user.usage.messages >= msgLimit) {
+    await bot.sendMessage(chatId,
+      `Daily message limit reached (${msgLimit}/day). Resets tomorrow.` +
+      (user.premium.active ? "" : " Upgrade to /premium for more messages.")
+    );
+    return;
+  }
+
   user.usage.messages += 1;
   await user.save();
   const stopTyping = startTypingLoop(bot, chatId);
@@ -1760,9 +1797,10 @@ export async function handlePhotoMessage(
     return;
   }
 
-  if (user.usage.images >= getImageLimit(user.premium.active)) {
+  const photoImgLimit = await getImageLimit(user.premium.active);
+  if (user.usage.images >= photoImgLimit) {
     await bot.sendMessage(chatId,
-      `Daily image limit reached (${getImageLimit(user.premium.active)}/day).` +
+      `Daily image limit reached (${photoImgLimit >= 999999 ? "∞" : photoImgLimit}/day).` +
       (user.premium.active ? "" : " Upgrade with /redeem CODE.")
     );
     clearPending(user.userId);
@@ -1870,6 +1908,17 @@ async function handleBuildRequest(
     await bot.sendMessage(chatId,
       `📁 You've reached the free project limit (${FREE_PROJECT_LIMIT} projects).\n\nDelete a project to make room, or upgrade to Premium for unlimited projects.`,
       { reply_markup: { inline_keyboard: [[{ text: "📁 My Projects", callback_data: "my_projects" }, { text: "💎 Go Premium", callback_data: "settings_premium" }]] } }
+    );
+    return;
+  }
+
+  // Daily build limit check
+  const buildLimCfg = await getOrCreateBotConfig();
+  const buildLimit = user.premium.active ? buildLimCfg.usageLimits.premiumBuilds : buildLimCfg.usageLimits.freeBuilds;
+  if (buildLimit >= 0 && (user.usage.builds ?? 0) >= buildLimit) {
+    await bot.sendMessage(chatId,
+      `Daily build limit reached (${buildLimit}/day). Resets tomorrow.` +
+      (user.premium.active ? "" : " Upgrade to /premium for more daily builds.")
     );
     return;
   }
@@ -2221,6 +2270,16 @@ async function handleVideoGeneration(
     await bot.sendMessage(chatId, e ? "🎬 Video generation isn't configured yet. Ask the owner to set up a HuggingFace API token!" : "Video generation is not configured yet.");
     return;
   }
+  // Per-day video limit check
+  const vidLimCfg = await getOrCreateBotConfig();
+  const videoLimit = user.premium.active ? vidLimCfg.usageLimits.premiumVideos : vidLimCfg.usageLimits.freeVideos;
+  if (videoLimit >= 0 && (user.usage.videos ?? 0) >= videoLimit) {
+    await bot.sendMessage(chatId,
+      `Daily video limit reached (${videoLimit}/day).` +
+      (user.premium.active ? "" : " Upgrade to /premium for more videos.")
+    );
+    return;
+  }
   const sentMsg = await bot.sendMessage(chatId,
     e ? "🎬 Starting video generation...\n\nThis takes 2-5 minutes. I'll update you as it progresses!" : "🎬 Generating video..."
   );
@@ -2239,6 +2298,8 @@ async function handleVideoGeneration(
       );
       return;
     }
+    user.usage.videos = (user.usage.videos ?? 0) + 1;
+    await user.save();
     await bot.sendVideo(chatId, videoBuffer, {
       caption: `🎬 ${prompt.substring(0, 800)}`,
       reply_markup: { inline_keyboard: [[{ text: "🎬 Generate Another", callback_data: "video_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] },
@@ -2267,6 +2328,16 @@ async function handleMusicGeneration(
     await bot.sendMessage(chatId, e ? "🎵 Music generation isn't configured yet. Ask the owner to set it up!" : "Music generation is not configured yet.");
     return;
   }
+  // Per-day music limit check
+  const musLimCfg = await getOrCreateBotConfig();
+  const musicLimit = user.premium.active ? musLimCfg.usageLimits.premiumMusic : musLimCfg.usageLimits.freeMusic;
+  if (musicLimit >= 0 && (user.usage.music ?? 0) >= musicLimit) {
+    await bot.sendMessage(chatId,
+      `Daily music limit reached (${musicLimit}/day).` +
+      (user.premium.active ? "" : " Upgrade to /premium for more music generations.")
+    );
+    return;
+  }
   const sentMsg = await bot.sendMessage(chatId,
     e ? "🎵 Generating your music... This takes 30-90 seconds. Hang tight!" : "🎵 Generating music..."
   );
@@ -2285,6 +2356,8 @@ async function handleMusicGeneration(
       );
       return;
     }
+    user.usage.music = (user.usage.music ?? 0) + 1;
+    await user.save();
     await bot.sendAudio(chatId, audioBuffer, { title: prompt.substring(0, 60), performer: "Nova AI" });
     await bot.sendMessage(chatId,
       e ? "🎵 Here's your music! Want a different style?" : "Music generated! Want another?",
@@ -2310,7 +2383,7 @@ async function handleStickerGeneration(
   e: boolean
 ): Promise<void> {
   const isPrem = user.premium.active;
-  const limit = getImageLimit(isPrem);
+  const limit = await getImageLimit(isPrem);
   if (user.usage.images >= limit) {
     await bot.sendMessage(chatId, `Daily image limit reached (${limit}/day).`);
     return;
@@ -2420,7 +2493,7 @@ async function handleImageGeneration(
   e: boolean
 ): Promise<void> {
   const isPrem = user.premium.active;
-  const limit = getImageLimit(isPrem);
+  const limit = await getImageLimit(isPrem);
 
   if (user.usage.images >= limit) {
     await bot.sendMessage(chatId,

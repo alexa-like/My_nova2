@@ -2,8 +2,9 @@ import axios from "axios";
 import { getOrCreateBotConfig } from "../models/BotConfig.js";
 import { logger } from "../../lib/logger.js";
 
-const FREE_LIMIT = 3;
-const PREMIUM_LIMIT = 20;
+// Fallback limits when BotConfig is unavailable
+const FREE_LIMIT_DEFAULT = 5;
+const PREMIUM_LIMIT_DEFAULT = 999999; // effectively unlimited
 
 const FALLBACK_ENDPOINT =
   "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-3-medium-diffusers";
@@ -175,8 +176,14 @@ export async function downloadTelegramPhoto(
   }
 }
 
-export function getImageLimit(isPremium: boolean): number {
-  return isPremium ? PREMIUM_LIMIT : FREE_LIMIT;
+export async function getImageLimit(isPremium: boolean): Promise<number> {
+  try {
+    const config = await getOrCreateBotConfig();
+    const n = isPremium ? config.usageLimits.premiumImages : config.usageLimits.freeImages;
+    return n < 0 ? 999999 : n; // -1 = unlimited
+  } catch {
+    return isPremium ? PREMIUM_LIMIT_DEFAULT : FREE_LIMIT_DEFAULT;
+  }
 }
 
 const STYLE_PRESETS: Record<string, string> = {
