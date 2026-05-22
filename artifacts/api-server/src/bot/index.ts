@@ -12,6 +12,7 @@ import { track } from "./services/analytics.js";
 import { getMaintenance, setMaintenance } from "./utils/maintenanceState.js";
 import { loadPendingReminders } from "./services/reminder.js";
 import { setPremiumEmojiEnabled } from "./utils/premiumEmoji.js";
+import { disconnectDB } from "./services/db.js";
 import { logger } from "../lib/logger.js";
 
 // ── In-memory captcha store ─────────────────────────────────────────────────
@@ -27,6 +28,14 @@ interface CaptchaChallenge {
   attempts: number;       // wrong answer count — max 3 before removal
 }
 const captchaStore = new Map<string, CaptchaChallenge>(); // key: `chatId:userId`
+
+// Evict expired captchas every 10 minutes (safety net if per-item timer misfires)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, ch] of captchaStore.entries()) {
+    if (now > ch.expiresAt) captchaStore.delete(key);
+  }
+}, 10 * 60 * 1000);
 
 function generateCaptcha(): { question: string; answer: number } {
   const a = Math.floor(Math.random() * 10) + 1;
@@ -598,6 +607,20 @@ export async function startBot(): Promise<void> {
     logger.error({ err }, "Telegram bot error");
     await track("error", undefined, undefined, { type: "bot_error", message: String(err) });
   });
+
+  // ── Graceful shutdown on SIGTERM / SIGINT ─────────────────────────────────
+  const gracefulShutdown = async (signal: string) => {
+    logger.info({ signal }, "Graceful shutdown initiated");
+    try {
+      if (bot) await bot.stopPolling();
+    } catch (err) {
+      logger.warn({ err }, "Error stopping polling during shutdown");
+    }
+    await disconnectDB();
+    process.exit(0);
+  };
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  process.on("SIGINT",  () => gracefulShutdown("SIGINT"));
 
   // ── Daily report scheduler ─────────────────────────────────────────────────
   scheduleDailyReport(bot);

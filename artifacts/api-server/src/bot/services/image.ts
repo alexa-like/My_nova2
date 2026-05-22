@@ -22,42 +22,52 @@ export async function generateImage(prompt: string): Promise<Buffer | null> {
   const endpoints = [primaryEndpoint, FALLBACK_ENDPOINT];
 
   for (const url of endpoints) {
-    try {
-      logger.info({ url }, "Attempting image generation");
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        logger.info({ url, attempt }, "Attempting image generation");
 
-      const response = await axios.post(
-        url,
-        { inputs: prompt },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-            Accept: "image/png",
-          },
-          responseType: "arraybuffer",
-          timeout: 90000,
+        const response = await axios.post(
+          url,
+          { inputs: prompt },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+              Accept: "image/png",
+              "X-Wait-For-Model": "true",
+            },
+            responseType: "arraybuffer",
+            timeout: 120000,
+          }
+        );
+
+        const contentType = (response.headers["content-type"] as string) || "";
+        if (
+          contentType.includes("image") ||
+          (response.data as Buffer)?.byteLength > 1000
+        ) {
+          logger.info({ url }, "Image generated successfully");
+          return Buffer.from(response.data);
         }
-      );
 
-      const contentType = (response.headers["content-type"] as string) || "";
-      if (
-        contentType.includes("image") ||
-        (response.data as Buffer)?.byteLength > 1000
-      ) {
-        logger.info({ url }, "Image generated successfully");
-        return Buffer.from(response.data);
+        logger.warn(
+          { url, contentType },
+          "Response was not an image, trying fallback"
+        );
+        break;
+      } catch (err: any) {
+        const status = err?.response?.status;
+        if (status === 503 && attempt === 1) {
+          logger.warn({ url }, "Image model loading (503) — retrying with wait");
+          await new Promise((r) => setTimeout(r, 8000));
+          continue;
+        }
+        logger.warn(
+          { url, status },
+          "Image generation failed for endpoint, trying next"
+        );
+        break;
       }
-
-      logger.warn(
-        { url, contentType },
-        "Response was not an image, trying fallback"
-      );
-    } catch (err: any) {
-      const status = err?.response?.status;
-      logger.warn(
-        { url, status },
-        "Image generation failed for endpoint, trying next"
-      );
     }
   }
 

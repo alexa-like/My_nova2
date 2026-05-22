@@ -3,6 +3,14 @@ import { logger } from "./lib/logger.js";
 import { startBot } from "./bot/index.js";
 import { startKeepAlive } from "./bot/services/keepAlive.js";
 
+// ── Global safety net — log unhandled errors instead of crashing silently ────
+process.on("uncaughtException", (err) => {
+  logger.error({ err }, "Uncaught exception");
+});
+process.on("unhandledRejection", (reason) => {
+  logger.error({ reason }, "Unhandled promise rejection");
+});
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {

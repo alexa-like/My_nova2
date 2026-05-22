@@ -49,6 +49,7 @@ export async function textToSpeech(
             headers: {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
+              "X-Wait-For-Model": "true",
             },
             responseType: "arraybuffer",
             timeout: 90000,

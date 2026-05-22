@@ -58,6 +58,14 @@ function setBuildCooldown(userId: number): void {
   buildCooldownMap.set(userId, Date.now());
 }
 
+// Evict stale cooldown entries every 10 minutes to prevent unbounded memory growth
+setInterval(() => {
+  const cutoff = Date.now() - BUILD_COOLDOWN_MS;
+  for (const [uid, ts] of buildCooldownMap.entries()) {
+    if (ts < cutoff) buildCooldownMap.delete(uid);
+  }
+}, 10 * 60 * 1000);
+
 // ── Resolve GitHub credentials: user's stored > env vars ─────────────────────
 
 async function resolveGitHubCreds(

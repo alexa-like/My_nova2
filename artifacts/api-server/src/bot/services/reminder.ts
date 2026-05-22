@@ -4,6 +4,10 @@ import { logger } from "../../lib/logger.js";
 
 const activeTimers = new Map<string, NodeJS.Timeout>();
 
+// Node.js setTimeout max is ~24.8 days (2^31-1 ms).
+// For longer delays we schedule a re-check at the safe cap and reschedule.
+const MAX_SAFE_TIMEOUT_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+
 export async function scheduleReminder(
   bot: TelegramBot,
   reminder: IReminder
@@ -17,6 +21,19 @@ export async function scheduleReminder(
   }
 
   if (activeTimers.has(id)) clearTimeout(activeTimers.get(id)!);
+
+  if (delay > MAX_SAFE_TIMEOUT_MS) {
+    // Schedule a re-check after MAX_SAFE_TIMEOUT_MS — will recurse until due
+    const timer = setTimeout(() => {
+      activeTimers.delete(id);
+      scheduleReminder(bot, reminder).catch((err) =>
+        logger.warn({ err, id }, "Error rescheduling long reminder")
+      );
+    }, MAX_SAFE_TIMEOUT_MS);
+    activeTimers.set(id, timer);
+    logger.info({ id, delayMs: delay, recheckMs: MAX_SAFE_TIMEOUT_MS, userId: reminder.userId }, "Long reminder — scheduled recheck");
+    return;
+  }
 
   const timer = setTimeout(async () => {
     activeTimers.delete(id);
