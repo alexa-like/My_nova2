@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import { clearCredentials } from "@/lib/api";
 import {
   LayoutDashboard, Users, Megaphone, Key, BarChart2,
-  ScrollText, LogOut, Bot, Settings, Globe
+  ScrollText, LogOut, Bot, Settings, Globe, MessageSquare
 } from "lucide-react";
 
 const nav = [
@@ -14,6 +14,7 @@ const nav = [
   { href: "/analytics", label: "Analytics", icon: BarChart2 },
   { href: "/logs", label: "Logs", icon: ScrollText },
   { href: "/config", label: "Bot Config", icon: Settings },
+  { href: "/feedback", label: "Feedback", icon: MessageSquare },
 ];
 
 interface LayoutProps {

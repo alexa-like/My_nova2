@@ -11,6 +11,7 @@ import Analytics from "@/pages/Analytics";
 import Logs from "@/pages/Logs";
 import BotConfig from "@/pages/BotConfig";
 import Groups from "@/pages/Groups";
+import Feedback from "@/pages/Feedback";
 
 function NotFound() {
   return (
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/analytics" component={Analytics} />
           <Route path="/logs" component={Logs} />
           <Route path="/config" component={BotConfig} />
+          <Route path="/feedback" component={Feedback} />
           <Route component={NotFound} />
         </Switch>
       </Layout>

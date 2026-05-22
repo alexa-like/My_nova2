@@ -452,6 +452,65 @@ export async function handleOwnerMessage(
     );
     return;
   }
+
+  if (cmd === "/searchuser") {
+    const query = args[0]?.replace(/^@/, "").trim();
+    if (!query) {
+      await bot.sendMessage(chatId, "Usage: /searchuser <@username or name>\n\nExample: /searchuser @john or /searchuser John");
+      return;
+    }
+    const u = await User.findOne({
+      $or: [
+        { username: { $regex: `^${query}$`, $options: "i" } },
+        { firstName: { $regex: query, $options: "i" } },
+      ],
+    });
+    if (!u) {
+      await bot.sendMessage(chatId, `No user found matching "${query}".\n\nTip: Use /lookup <user_id> for exact ID lookup.`, { reply_markup: backToOwnerKeyboard() });
+      return;
+    }
+    await bot.sendMessage(chatId,
+      `👤 Search Result\n\n` +
+      `ID: ${u.userId}\nName: ${u.firstName || "N/A"}\nUsername: ${u.username ? "@" + u.username : "N/A"}\n` +
+      `Premium: ${u.premium.active ? `Yes (${u.premium.plan || "?"})` : "No"}\nBanned: ${u.banned ? "Yes" : "No"}\n` +
+      `Warnings: ${u.warnings}\nMessages: ${u.usage.messages}  |  Images: ${u.usage.images}\n` +
+      `First seen: ${formatDate(u.firstSeen)}\nLast seen: ${formatDate(u.lastSeen)}`,
+      { reply_markup: backToOwnerKeyboard() }
+    );
+    return;
+  }
+
+  if (cmd === "/listscheduled") {
+    if (scheduledBroadcasts.size === 0) {
+      await bot.sendMessage(chatId, "No scheduled broadcasts pending.", { reply_markup: backToOwnerKeyboard() });
+      return;
+    }
+    const list = Array.from(scheduledBroadcasts.keys())
+      .map((id, i) => `${i + 1}. ID: ${id}`)
+      .join("\n");
+    await bot.sendMessage(chatId,
+      `📋 Scheduled Broadcasts (${scheduledBroadcasts.size})\n\n${list}\n\nTo cancel one:\n/cancelschedule <id>`,
+      { reply_markup: backToOwnerKeyboard() }
+    );
+    return;
+  }
+
+  if (cmd === "/cancelschedule") {
+    const schedId = args[0];
+    if (!schedId) {
+      await bot.sendMessage(chatId, "Usage: /cancelschedule <id>\n\nGet IDs with /listscheduled", { reply_markup: backToOwnerKeyboard() });
+      return;
+    }
+    const timer = scheduledBroadcasts.get(schedId);
+    if (!timer) {
+      await bot.sendMessage(chatId, `Schedule "${schedId}" not found or already sent.`, { reply_markup: backToOwnerKeyboard() });
+      return;
+    }
+    clearTimeout(timer);
+    scheduledBroadcasts.delete(schedId);
+    await bot.sendMessage(chatId, `✅ Scheduled broadcast cancelled.`, { reply_markup: backToOwnerKeyboard() });
+    return;
+  }
 }
 
 // ── Handle owner pending text inputs (from inline button flows) ───────────────
@@ -879,6 +938,55 @@ export async function handleOwnerPendingText(
         config.videoModels.push({ id: modelId, name: modelName, active: false });
         await config.save();
         await bot.sendMessage(chatId, `✅ Video model "${modelName}" added.`, { reply_markup: backToOwnerKeyboard() });
+        break;
+      }
+
+      case "owner_searchuser": {
+        const query = input.trim().replace(/^@/, "");
+        if (!query) { await bot.sendMessage(chatId, "Please send a @username or display name.", { reply_markup: backToOwnerKeyboard() }); return; }
+        const u = await User.findOne({
+          $or: [
+            { username: { $regex: `^${query}$`, $options: "i" } },
+            { firstName: { $regex: query, $options: "i" } },
+          ],
+        });
+        if (!u) {
+          await bot.sendMessage(chatId, `No user found matching "${query}".`, { reply_markup: backToOwnerKeyboard() });
+          return;
+        }
+        await bot.sendMessage(chatId,
+          `👤 Search Result\n\nID: ${u.userId}\nName: ${u.firstName || "N/A"}\nUsername: ${u.username ? "@" + u.username : "N/A"}\n` +
+          `Premium: ${u.premium.active ? "Yes" : "No"}\nBanned: ${u.banned ? "Yes" : "No"}\nWarnings: ${u.warnings}\n` +
+          `Messages: ${u.usage.messages}  |  Images: ${u.usage.images}\nLast seen: ${formatDate(u.lastSeen)}`,
+          { reply_markup: backToOwnerKeyboard() }
+        );
+        break;
+      }
+
+      case "owner_dm_step1": {
+        const targetId = parseInt(input.trim());
+        if (isNaN(targetId)) { await bot.sendMessage(chatId, "Invalid user ID. Please send a numeric Telegram user ID.", { reply_markup: backToOwnerKeyboard() }); return; }
+        const u = await User.findOne({ userId: targetId });
+        if (!u) { await bot.sendMessage(chatId, `User ${targetId} not found in database.`, { reply_markup: backToOwnerKeyboard() }); return; }
+        setPending(userId, "owner_dm_step2", { targetId: String(targetId), targetName: u.firstName || u.username || String(targetId) });
+        await bot.sendMessage(chatId,
+          `📩 DM to ${u.firstName || u.username || targetId} (ID: ${targetId})\n\nNow send the message you want to deliver:`,
+          { reply_markup: backToOwnerKeyboard() }
+        );
+        break;
+      }
+
+      case "owner_dm_step2": {
+        const targetId = parseInt(pendingData?.targetId || "");
+        const targetName = pendingData?.targetName || "User";
+        const msg = input.trim();
+        if (isNaN(targetId) || !msg) { await bot.sendMessage(chatId, "Something went wrong. Start over from the owner panel.", { reply_markup: backToOwnerKeyboard() }); return; }
+        try {
+          await bot.sendMessage(targetId, `📨 Message from Admin:\n\n${msg}`);
+          await bot.sendMessage(chatId, `✅ Message delivered to ${targetName} (${targetId}).`, { reply_markup: backToOwnerKeyboard() });
+        } catch {
+          await bot.sendMessage(chatId, `❌ Failed to send — user may have blocked the bot.`, { reply_markup: backToOwnerKeyboard() });
+        }
         break;
       }
 

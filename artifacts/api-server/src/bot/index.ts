@@ -57,6 +57,10 @@ const OWNER_CMDS = new Set([
   "/deletegroup", "/deleteuser", "/broadcast", "/announcement", "/schedule",
   "/grantpremium", "/revokepremium", "/banuser", "/unbanuser",
   "/clearuserdata", "/maintenance",
+  // Previously missing from gate (commands existed but were unreachable):
+  "/analytics", "/dm", "/messageuser", "/botinfo",
+  // New commands:
+  "/searchuser", "/listscheduled", "/cancelschedule",
 ]);
 
 export async function startBot(): Promise<void> {

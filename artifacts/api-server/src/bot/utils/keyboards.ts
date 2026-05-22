@@ -518,6 +518,14 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
         { text: "⚡ Provider Control", callback_data: "prov_main" },
         { text: "✨ Premium Emoji", callback_data: "owner_premoji_status" },
       ],
+      [
+        { text: "🔍 Search User", callback_data: "own_searchuser" },
+        { text: "📩 DM User", callback_data: "own_dm_btn" },
+      ],
+      [
+        { text: "📋 Scheduled", callback_data: "own_scheduled" },
+        { text: "📨 Inbox", callback_data: "own_feedback" },
+      ],
     ],
   };
 }

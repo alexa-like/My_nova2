@@ -437,6 +437,10 @@ export async function handlePrivateMessage(
           await bot.sendMessage(ownerId,
             `📨 Ban Appeal\n\nUser: ${userName} (ID: ${user.userId})\n\nMessage:\n${appealMsg}\n\nReply /unban ${user.userId} to lift the ban.`
           );
+          try {
+            const { Feedback } = await import("../models/Feedback.js");
+            await new Feedback({ userId: user.userId, username: user.username, firstName: user.firstName, message: appealMsg, type: "appeal" }).save();
+          } catch {}
           await bot.sendMessage(chatId, "Your appeal has been sent to the owner. Please wait for a review.");
         } catch {
           await bot.sendMessage(chatId, "Could not send your appeal. Please try again later.");
@@ -934,6 +938,10 @@ export async function handlePrivateMessage(
         );
         user.feedbackCount = (user.feedbackCount || 0) + 1;
         await user.save();
+        try {
+          const { Feedback } = await import("../models/Feedback.js");
+          await new Feedback({ userId: user.userId, username: user.username, firstName: user.firstName, message: feedbackText, type: "feedback" }).save();
+        } catch {}
         await bot.sendMessage(chatId, "Thank you! Your feedback has been sent to the Nova team.");
       } catch {
         await bot.sendMessage(chatId, "Could not send feedback right now. Please try again later.");

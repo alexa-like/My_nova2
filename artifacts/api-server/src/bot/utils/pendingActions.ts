@@ -66,7 +66,11 @@ export type OwnerPendingAction =
   // Legacy single-step (kept for backwards compat)
   | "owner_add_chat_model"
   | "owner_add_image_model"
-  | "owner_add_video_model";
+  | "owner_add_video_model"
+  // Search & DM
+  | "owner_searchuser"
+  | "owner_dm_step1"
+  | "owner_dm_step2";
 
 export type PendingActionType =
   | PendingTextAction
@@ -107,6 +111,9 @@ export const OWNER_PENDING_ACTIONS = new Set<PendingActionType>([
   "owner_add_chat_model",
   "owner_add_image_model",
   "owner_add_video_model",
+  "owner_searchuser",
+  "owner_dm_step1",
+  "owner_dm_step2",
 ]);
 
 interface PendingAction {

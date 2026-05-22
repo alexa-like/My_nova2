@@ -62,6 +62,17 @@ export interface Code { _id: string; code: string; duration: string; used: boole
 
 export interface LogEntry { _id: string; event: string; userId?: number; chatId?: number; meta?: Record<string, unknown>; ts: string }
 
+export interface FeedbackEntry {
+  _id: string;
+  userId: number;
+  username?: string;
+  firstName?: string;
+  message: string;
+  type: "feedback" | "appeal";
+  read: boolean;
+  createdAt: string;
+}
+
 export interface AnalyticsData {
   summary: { results: Array<{ _id: { event: string; day: string }; count: number }> };
   topCommands: Array<{ _id: string; count: number }>;
@@ -162,4 +173,13 @@ export const api = {
     apiFetch("/api/admin/maintenance", { method: "POST", body: JSON.stringify({ enabled }) }),
   togglePremiumEmoji: (enabled: boolean): Promise<void> =>
     apiFetch("/api/admin/premium-emoji", { method: "POST", body: JSON.stringify({ enabled }) }),
+
+  getFeedback: (params?: { type?: string; limit?: number }): Promise<{ items: FeedbackEntry[]; unread: number }> => {
+    const q = new URLSearchParams();
+    if (params?.type) q.set("type", params.type);
+    if (params?.limit) q.set("limit", String(params.limit));
+    return apiFetch(`/api/admin/feedback?${q}`);
+  },
+  markFeedbackRead: (id: string): Promise<void> =>
+    apiFetch(`/api/admin/feedback/${id}/read`, { method: "PATCH" }),
 };

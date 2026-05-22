@@ -1547,6 +1547,66 @@ export async function handleCallbackQuery(
       return;
     }
 
+    if (data === "own_searchuser") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_searchuser");
+      await editMsg(bot, query,
+        `🔍 Search User\n\nSend a @username or display name to look them up.\n\nExample: @john or John`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_dm_btn") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_dm_step1");
+      await editMsg(bot, query,
+        `📩 DM a User\n\nStep 1 of 2 — Send the user's Telegram ID:\n\nExample: 123456789`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_scheduled") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      await editMsg(bot, query,
+        `📋 Scheduled Broadcasts\n\nManage pending scheduled messages:\n\n` +
+        `/listscheduled — List all pending with IDs\n` +
+        `/cancelschedule <id> — Cancel by ID\n` +
+        `/schedule <minutes> <message> — Create new\n\n` +
+        `Note: schedules are held in memory and clear on server restart.`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_feedback") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const { Feedback } = await import("../models/Feedback.js");
+      const [recent, unread] = await Promise.all([
+        Feedback.find().sort({ createdAt: -1 }).limit(5),
+        Feedback.countDocuments({ read: false }),
+      ]);
+      if (recent.length === 0) {
+        await editMsg(bot, query,
+          `📨 Feedback Inbox\n\nNo feedback received yet.\n\nUsers can send:\n/feedback <message> — General feedback\n/appeal <reason> — Ban appeal`,
+          backToOwnerKeyboard()
+        );
+        return;
+      }
+      const lines = recent.map((f, i) => {
+        const label = f.type === "appeal" ? "🔴 Appeal" : "💬 Feedback";
+        const name = f.username ? `@${f.username}` : (f.firstName || String(f.userId));
+        const preview = f.message.length > 60 ? f.message.slice(0, 60) + "..." : f.message;
+        return `${i + 1}. ${label} — ${name}\n${preview}`;
+      }).join("\n\n");
+      await editMsg(bot, query,
+        `📨 Feedback Inbox — ${unread} unread\n\n${lines}\n\nView all at the admin dashboard.`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
     if (data === "owner_panel") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
       await sendOwnerPanel(bot, chatId, getMaintenance, query.message!.message_id);

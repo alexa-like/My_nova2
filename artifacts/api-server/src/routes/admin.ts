@@ -366,4 +366,33 @@ router.post("/admin/premium-emoji", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Failed to toggle premium emoji" }); }
 });
 
+// ── GET /api/admin/feedback ───────────────────────────────────────────────────
+router.get("/admin/feedback", async (req, res) => {
+  try {
+    const { Feedback } = await import("../bot/models/Feedback.js");
+    const type = req.query.type as string | undefined;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const filter: Record<string, unknown> = type ? { type } : {};
+    const [items, unread] = await Promise.all([
+      Feedback.find(filter).sort({ createdAt: -1 }).limit(limit),
+      Feedback.countDocuments({ read: false }),
+    ]);
+    res.json({ items, unread });
+  } catch (err) {
+    logger.error({ err }, "Admin feedback error");
+    res.status(500).json({ error: "Failed to load feedback" });
+  }
+});
+
+// ── PATCH /api/admin/feedback/:id/read ───────────────────────────────────────
+router.patch("/admin/feedback/:id/read", async (req, res) => {
+  try {
+    const { Feedback } = await import("../bot/models/Feedback.js");
+    await Feedback.findByIdAndUpdate(req.params.id, { read: true });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to mark as read" });
+  }
+});
+
 export default router;
