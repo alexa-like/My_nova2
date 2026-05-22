@@ -898,9 +898,16 @@ export async function handleGroupMessage(
         await bot.restrictChatMember(chatId, target.userId, {
           permissions: {
             can_send_messages: true,
+            can_send_audios: true,
+            can_send_documents: true,
+            can_send_photos: true,
+            can_send_videos: true,
+            can_send_video_notes: true,
+            can_send_voice_notes: true,
             can_send_other_messages: true,
             can_add_web_page_previews: true,
             can_send_polls: true,
+            can_invite_users: true,
           },
         });
         await tryDM(bot, target.userId, `You have been unmuted in ${msg.chat.title || "a group"}. You can send messages again.`);

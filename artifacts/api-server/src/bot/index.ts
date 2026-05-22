@@ -464,28 +464,39 @@ export async function startBot(): Promise<void> {
             // ── Correct answer ───────────────────────────────────────────────
             captchaStore.delete(captchaKey);
             await bot!.answerCallbackQuery(query.id, { text: "✅ Correct! You are now verified." });
+            // Restore full permissions in the group
             try {
-              // Restore full permissions in the group
               await bot!.restrictChatMember(chatId, userId, {
                 permissions: {
                   can_send_messages: true,
+                  can_send_audios: true,
+                  can_send_documents: true,
+                  can_send_photos: true,
+                  can_send_videos: true,
+                  can_send_video_notes: true,
+                  can_send_voice_notes: true,
                   can_send_other_messages: true,
                   can_add_web_page_previews: true,
                   can_send_polls: true,
+                  can_invite_users: true,
                 },
               });
-              // Clean up the group "Verify" message
-              if (challenge.messageId) {
-                await bot!.deleteMessage(chatId, challenge.messageId).catch(() => {});
-              }
-              // Update DM to show success
-              if (challenge.dmChatId && challenge.dmMessageId) {
-                await bot!.editMessageText(
-                  "✅ Verified! You can now send messages in the group.",
-                  { chat_id: challenge.dmChatId, message_id: challenge.dmMessageId }
-                ).catch(() => {});
-              }
-              // Post welcome message in the group
+            } catch (unmuteErr) {
+              logger.error({ err: unmuteErr, chatId, userId }, "Captcha: failed to restore member permissions after verification");
+            }
+            // Clean up the group "Verify" message
+            if (challenge.messageId) {
+              await bot!.deleteMessage(chatId, challenge.messageId).catch(() => {});
+            }
+            // Update DM to show success
+            if (challenge.dmChatId && challenge.dmMessageId) {
+              await bot!.editMessageText(
+                "✅ Verified! You can now send messages in the group.",
+                { chat_id: challenge.dmChatId, message_id: challenge.dmMessageId }
+              ).catch(() => {});
+            }
+            // Post welcome message in the group
+            try {
               const name = query.from.first_name || query.from.username || "User";
               const groupSettings2 = await GroupSettings.findOne({ chatId });
               const welcomeText = groupSettings2?.welcomeMessage
