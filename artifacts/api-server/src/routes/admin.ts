@@ -407,8 +407,8 @@ router.patch("/admin/config", async (req, res) => {
   try {
     const config = await getOrCreateBotConfig();
     const allowed = [
-      "activeChatModel", "activeImageModel", "activeVideoModel", "activeVoiceModel",
-      "activeAsrModel", "premiumEmojiEnabled", "maintenanceMode", "welcomeMessage", "botPersonality",
+      "activeChatModel", "activeImageModel",
+      "premiumEmojiEnabled", "maintenanceMode", "welcomeMessage", "botPersonality",
     ];
     for (const key of allowed) {
       if (key in req.body) (config as any)[key] = req.body[key];
@@ -426,8 +426,8 @@ router.put("/admin/config/limits", async (req, res) => {
     const config = await getOrCreateBotConfig();
     const limits = req.body as Record<string, number>;
     const limitKeys = [
-      "freeMessages", "freeImages", "freeBuilds", "freeVideos", "freeMusic",
-      "premiumMessages", "premiumImages", "premiumBuilds", "premiumVideos", "premiumMusic",
+      "freeMessages", "freeImages", "freeBuilds", "freeMusic",
+      "premiumMessages", "premiumImages", "premiumBuilds", "premiumMusic",
       "resetIntervalHours",
     ];
     for (const key of limitKeys) {

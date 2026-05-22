@@ -50,7 +50,7 @@ export interface User {
   banned: boolean;
   isOwner: boolean;
   premium: { active: boolean; expiresAt?: string; plan?: string };
-  usage: { messages: number; images: number; builds: number; videos: number; music: number };
+  usage: { messages: number; images: number; builds: number; music: number };
   settings: { style: string; emoji: boolean; length: string; language: string };
   warnings: number;
   groups: number[];
@@ -81,19 +81,13 @@ export interface AnalyticsData {
 export interface BotConfigData {
   activeChatModel: string;
   activeImageModel: string;
-  activeVideoModel: string;
-  activeVoiceModel: string;
-  activeAsrModel: string;
   chatModels: Array<{ id: string; name: string; active: boolean }>;
   imageModels: Array<{ id: string; name: string; active: boolean }>;
-  videoModels: Array<{ id: string; name: string; active: boolean }>;
-  voiceModels: Array<{ id: string; name: string; active: boolean }>;
-  asrModels: Array<{ id: string; name: string; active: boolean }>;
   premiumEmojiEnabled: boolean;
   maintenanceMode: boolean;
   usageLimits: {
-    freeMessages: number; freeImages: number; freeBuilds: number; freeVideos: number; freeMusic: number;
-    premiumMessages: number; premiumImages: number; premiumBuilds: number; premiumVideos: number; premiumMusic: number;
+    freeMessages: number; freeImages: number; freeBuilds: number; freeMusic: number;
+    premiumMessages: number; premiumImages: number; premiumBuilds: number; premiumMusic: number;
     resetIntervalHours: number;
   };
   welcomeMessage: string;

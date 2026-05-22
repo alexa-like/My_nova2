@@ -109,8 +109,6 @@ export default function BotConfig() {
       await api.updateBotConfig({
         activeChatModel: config.activeChatModel,
         activeImageModel: config.activeImageModel,
-        activeVideoModel: config.activeVideoModel,
-        activeVoiceModel: config.activeVoiceModel,
         premiumEmojiEnabled: config.premiumEmojiEnabled,
         maintenanceMode: config.maintenanceMode,
         welcomeMessage: config.welcomeMessage,
@@ -188,8 +186,6 @@ export default function BotConfig() {
           {[
             { label: "Chat Model", key: "activeChatModel" },
             { label: "Image Model", key: "activeImageModel" },
-            { label: "Video Model", key: "activeVideoModel" },
-            { label: "Voice Model", key: "activeVoiceModel" },
           ].map(({ label, key }) => (
             <div key={key}>
               <label className="block text-xs mb-1.5" style={{ color: "rgba(255,255,255,0.4)" }}>{label}</label>
@@ -263,7 +259,6 @@ export default function BotConfig() {
           <LimitRow label="Messages" freeKey="freeMessages" premiumKey="premiumMessages" values={limits} onChange={setLimitVal} />
           <LimitRow label="Images" freeKey="freeImages" premiumKey="premiumImages" values={limits} onChange={setLimitVal} />
           <LimitRow label="Builds" freeKey="freeBuilds" premiumKey="premiumBuilds" values={limits} onChange={setLimitVal} />
-          <LimitRow label="Videos" freeKey="freeVideos" premiumKey="premiumVideos" values={limits} onChange={setLimitVal} />
           <LimitRow label="Music" freeKey="freeMusic" premiumKey="premiumMusic" values={limits} onChange={setLimitVal} />
           <div className="pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <div className="flex items-center gap-3">

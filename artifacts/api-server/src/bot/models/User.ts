@@ -12,8 +12,6 @@ export interface IUser extends Document {
     emoji: boolean;
     length: "long" | "short";
     language: string;
-    voiceEnabled: boolean;
-    voiceName: string;
   };
   preferredChatModel?: string;
   mood?: string;
@@ -29,7 +27,6 @@ export interface IUser extends Document {
     messages: number;
     images: number;
     builds: number;
-    videos: number;
     music: number;
     lastReset: Date;
   };
@@ -68,8 +65,6 @@ const UserSchema = new Schema<IUser>(
       emoji: { type: Boolean, default: true },
       length: { type: String, enum: ["long", "short"], default: "long" },
       language: { type: String, default: "en" },
-      voiceEnabled: { type: Boolean, default: false },
-      voiceName: { type: String, default: "facebook/mms-tts-eng" },
     },
     preferredChatModel: { type: String },
     mood: { type: String },
@@ -85,7 +80,6 @@ const UserSchema = new Schema<IUser>(
       messages: { type: Number, default: 0 },
       images: { type: Number, default: 0 },
       builds: { type: Number, default: 0 },
-      videos: { type: Number, default: 0 },
       music: { type: Number, default: 0 },
       lastReset: { type: Date, default: Date.now },
     },

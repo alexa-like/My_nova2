@@ -65,7 +65,6 @@ export async function ensureUser(msg: TelegramBot.Message): Promise<IUser> {
       user.usage.messages  = 0;
       user.usage.images    = 0;
       user.usage.builds    = 0;
-      user.usage.videos    = 0;
       user.usage.music     = 0;
       user.usage.lastReset = now;
       dirty = true;
