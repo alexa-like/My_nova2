@@ -494,4 +494,96 @@ router.patch("/admin/feedback/:id/read", async (req, res) => {
   }
 });
 
+// ── POST /api/admin/test/chat ─────────────────────────────────────────────────
+// Sends a minimal prompt to the given OpenRouter model and returns latency + reply.
+router.post("/admin/test/chat", async (req, res) => {
+  const { model, prompt = "Reply with exactly three words: test is working" } = req.body as { model?: string; prompt?: string };
+  if (!model) { res.status(400).json({ error: "model is required" }); return; }
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) { res.status(400).json({ ok: false, error: "OPENROUTER_API_KEY is not set" }); return; }
+
+  const start = Date.now();
+  try {
+    const { default: axios } = await import("axios");
+    const response = await axios.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      { model, messages: [{ role: "user", content: prompt }], max_tokens: 60, temperature: 0.3 },
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": process.env.APP_URL || "https://nova-bot.replit.app",
+          "X-Title": "Nova AI Bot",
+        },
+        timeout: 20000,
+      }
+    );
+    const reply: string = response.data?.choices?.[0]?.message?.content ?? "";
+    if (!reply) { res.json({ ok: false, error: "Empty response from model", latencyMs: Date.now() - start }); return; }
+    res.json({ ok: true, reply: reply.substring(0, 200), latencyMs: Date.now() - start });
+  } catch (err: any) {
+    const status: number | undefined = err?.response?.status;
+    const detail: string = err?.response?.data?.error?.message || err?.response?.data?.error || err.message || "Unknown error";
+    res.json({ ok: false, error: `${status ? `[${status}] ` : ""}${detail}`, latencyMs: Date.now() - start });
+  }
+});
+
+// ── POST /api/admin/test/image ────────────────────────────────────────────────
+// Attempts to generate a tiny image with the given HuggingFace model (or Pollinations).
+router.post("/admin/test/image", async (req, res) => {
+  const { model } = req.body as { model?: string };
+  if (!model) { res.status(400).json({ error: "model is required" }); return; }
+
+  const token = process.env.HUGGINGFACE_API_TOKEN;
+  const start = Date.now();
+
+  if (!token) {
+    // No HF token — test Pollinations fallback (always free)
+    try {
+      const { default: axios } = await import("axios");
+      const url = `https://image.pollinations.ai/prompt/red+circle?width=64&height=64&nologo=true&model=flux&seed=42`;
+      const r = await axios.get(url, { responseType: "arraybuffer", timeout: 30000, headers: { "User-Agent": "Nova-Bot/1.0" } });
+      const buf = Buffer.from(r.data);
+      res.json({ ok: buf.byteLength > 1000, source: "pollinations (no HF token)", bytes: buf.byteLength, latencyMs: Date.now() - start });
+    } catch (e: any) {
+      res.json({ ok: false, source: "pollinations", error: e.message, latencyMs: Date.now() - start });
+    }
+    return;
+  }
+
+  try {
+    const { default: axios } = await import("axios");
+    const url = `https://api-inference.huggingface.co/models/${model}`;
+    const response = await axios.post(
+      url,
+      { inputs: "a simple red circle on white background" },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "X-Wait-For-Model": "true",
+        },
+        responseType: "arraybuffer",
+        timeout: 60000,
+      }
+    );
+    const buf = Buffer.from(response.data);
+    const contentType: string = (response.headers["content-type"] as string) || "";
+    const ok = contentType.includes("image") || buf.byteLength > 5000;
+    res.json({ ok, bytes: buf.byteLength, latencyMs: Date.now() - start });
+  } catch (err: any) {
+    const status: number | undefined = err?.response?.status;
+    let detail = "Unknown error";
+    try {
+      const raw = Buffer.from(err.response?.data ?? []).toString("utf-8");
+      const parsed = JSON.parse(raw);
+      detail = parsed?.error || raw.substring(0, 200);
+    } catch {
+      detail = err.message || detail;
+    }
+    res.json({ ok: false, error: `${status ? `[${status}] ` : ""}${detail}`, latencyMs: Date.now() - start });
+  }
+});
+
 export default router;

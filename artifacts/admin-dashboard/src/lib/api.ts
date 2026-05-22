@@ -176,4 +176,10 @@ export const api = {
   },
   markFeedbackRead: (id: string): Promise<void> =>
     apiFetch(`/api/admin/feedback/${id}/read`, { method: "PATCH" }),
+
+  testChatModel: (model: string): Promise<{ ok: boolean; reply?: string; error?: string; latencyMs: number }> =>
+    apiFetch("/api/admin/test/chat", { method: "POST", body: JSON.stringify({ model }) }),
+
+  testImageModel: (model: string): Promise<{ ok: boolean; source?: string; bytes?: number; error?: string; latencyMs: number }> =>
+    apiFetch("/api/admin/test/image", { method: "POST", body: JSON.stringify({ model }) }),
 };

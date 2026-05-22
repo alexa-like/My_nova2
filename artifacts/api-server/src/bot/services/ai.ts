@@ -7,35 +7,34 @@ const MAX_HISTORY = 20;
 const MAX_SUMMARY_TRIGGER = 30;
 
 // ── Free sequential fallback chain (used by free-tier users) ─────────────────
-// Tried in order when the primary model fails. Heavier/quality models first,
-// smaller/faster ones as last resort.
+// Tried in order when the primary model fails. All are INSTRUCT models — base
+// models intentionally excluded (they cause 400 errors in chat mode).
 const FREE_FALLBACK_MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",                         // 131K ctx — proven reliable
-  "deepseek/deepseek-r1-distill-llama-70b:free",                    // 131K ctx — distilled R1
-  "nousresearch/hermes-3-llama-3.1-405b:free",                      // 131K ctx — hermes 405B
-  "qwen/qwen-2.5-72b-instruct:free",                                 // 131K ctx — Qwen 2.5 72B
-  "deepseek/deepseek-v3-base:free",                                  // 64K ctx — DeepSeek V3
-  "mistralai/mixtral-8x7b-instruct:free",                           // 32K ctx — Mixtral MoE
-  "mistralai/mistral-7b-instruct:free",                              // 32K ctx — Mistral 7B
-  "google/gemma-2-9b-it:free",                                       // 8K ctx — fast Gemma 2
-  "meta-llama/llama-3.1-8b-instruct:free",                          // 131K — fast llama
-  "meta-llama/llama-3.2-3b-instruct:free",                          // 131K — tiny/fastest
+  "meta-llama/llama-3.3-70b-instruct:free",          // 131K ctx — best quality, proven reliable
+  "qwen/qwen-2.5-72b-instruct:free",                  // 131K ctx — great multilingual
+  "google/gemma-3-12b-it:free",                       // 128K ctx — Gemma 3, fast + accurate
+  "deepseek/deepseek-r1-distill-llama-70b:free",      // 131K ctx — strong reasoning
+  "microsoft/phi-4:free",                             // 16K ctx — very reliable mid-size
+  "mistralai/mixtral-8x7b-instruct:free",             // 32K ctx — solid MoE
+  "mistralai/mistral-7b-instruct:free",               // 32K ctx — reliable, fast
+  "google/gemma-2-9b-it:free",                        // 8K ctx — fast Gemma 2
+  "meta-llama/llama-3.1-8b-instruct:free",            // 131K ctx — fast llama
+  "meta-llama/llama-3.2-3b-instruct:free",            // 131K ctx — tiny/fastest last resort
 ];
 
 // ── Premium race pool — small fast models run in parallel, first wins ─────────
-// These are lightweight models that respond in 2-5s. Racing 3 at once virtually
-// guarantees a sub-5s reply even if one or two are cold-starting.
+// Fires all 3 simultaneously. First to reply wins, others are aborted.
 const PREMIUM_RACE_MODELS = [
   "meta-llama/llama-3.1-8b-instruct:free",   // 8B — fastest Llama
-  "google/gemma-2-9b-it:free",               // 9B — fast Google model
+  "google/gemma-3-12b-it:free",              // 12B — fast Gemma 3
   "mistralai/mistral-7b-instruct:free",      // 7B — reliable Mistral
 ];
 
 // ── Premium quality fallbacks (if the race fails entirely) ───────────────────
 const PREMIUM_QUALITY_FALLBACKS = [
   "meta-llama/llama-3.3-70b-instruct:free",
-  "deepseek/deepseek-r1-distill-llama-70b:free",
   "qwen/qwen-2.5-72b-instruct:free",
+  "deepseek/deepseek-r1-distill-llama-70b:free",
   "mistralai/mixtral-8x7b-instruct:free",
   "meta-llama/llama-3.2-3b-instruct:free",
 ];
@@ -379,14 +378,14 @@ export async function chat(
       return reply;
     } catch (err: any) {
       const status = err?.response?.status;
-      // Retryable: 402 payment required, 429 rate limited, 500/503 server errors
-      if (status === 402 || status === 429 || status === 500 || status === 503) {
-        logger.warn({ model, status, attempt: i + 1, total: modelsToTry.length }, "Model unavailable — trying next free fallback");
-        continue;
+      // 401 = bad API key — no point trying other models
+      if (status === 401) {
+        logger.error({ model, status }, "OpenRouter auth failed (401) — stopping retries");
+        break;
       }
-      // Hard errors (401 bad key, 400 invalid) — stop retrying
-      logger.error({ err, model, status }, "OpenRouter hard error — stopping retries");
-      break;
+      // All other errors (400 bad model, 402 limit, 429 rate, 500/503 server) — try next model
+      logger.warn({ model, status, attempt: i + 1, total: modelsToTry.length }, "Model failed — trying next fallback");
+      continue;
     }
   }
 

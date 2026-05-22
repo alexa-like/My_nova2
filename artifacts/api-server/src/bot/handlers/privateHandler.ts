@@ -1743,7 +1743,7 @@ async function handleBuildRequest(
     logger.error({ err }, "Project generation failed");
     try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
     await bot.sendMessage(chatId,
-      `❌ Generation failed: ${err.message}\n\nTry being more specific, e.g. "portfolio website for a photographer" or "todo app with dark mode".`,
+      `❌ Generation failed. Try being more specific, e.g. "portfolio website for a photographer" or "todo app with dark mode".`,
       { reply_markup: buildResultKeyboard() }
     );
     return;
@@ -1914,7 +1914,7 @@ async function handleDeployRequest(
     stopTyping();
     logger.error({ err }, "Deploy-generate failed");
     try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
-    await bot.sendMessage(chatId, `❌ Generation failed: ${err.message}`);
+    await bot.sendMessage(chatId, "❌ Project generation failed. The AI had trouble with this prompt — please try again with a more specific description.");
     return;
   }
 

@@ -686,7 +686,7 @@ export async function handleCallbackQuery(
       } catch (err: any) {
         try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
         await bot.sendMessage(chatId,
-          `❌ Deployment failed: ${err.message}\n\nRun /deploy to retry.`,
+          `❌ Deployment failed. Check your Vercel token is valid and try /deploy again.`,
           { reply_markup: backToMainKeyboard() }
         );
       }
@@ -749,7 +749,7 @@ export async function handleCallbackQuery(
       } catch (err: any) {
         try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
         await bot.sendMessage(chatId,
-          `❌ Render deployment failed: ${err.message}`,
+          `❌ Render deployment failed. Check your Render token and try again.`,
           { reply_markup: backToMainKeyboard() }
         );
       }

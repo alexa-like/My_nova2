@@ -52,8 +52,8 @@ const UsageLimitsSchema = new Schema(
 
 const BotConfigSchema = new Schema<IBotConfig>(
   {
-    activeChatModel:  { type: String, default: "meta-llama/llama-3.1-8b-instruct:free" },
-    activeImageModel: { type: String, default: "black-forest-labs/FLUX.1-schnell" },
+    activeChatModel:  { type: String, default: "meta-llama/llama-3.3-70b-instruct:free" },
+    activeImageModel: { type: String, default: "stabilityai/stable-diffusion-xl-base-1.0" },
     chatModels:  { type: [ModelEntrySchema], default: [] },
     imageModels: { type: [ModelEntrySchema], default: [] },
     premiumEmojiEnabled: { type: Boolean, default: false },
@@ -75,24 +75,23 @@ export const BotConfig = mongoose.model<IBotConfig>("BotConfig", BotConfigSchema
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DEFAULT_CHAT_MODELS: IModelEntry[] = [
-  { id: "meta-llama/llama-3.1-8b-instruct:free",                    name: "Fast: Llama 3.1 8B — Ultra Fast",      active: true  },
-  { id: "google/gemma-2-9b-it:free",                                 name: "Fast: Gemma 2 9B — Smart & Quick",     active: false },
-  { id: "mistralai/mistral-7b-instruct:free",                        name: "Fast: Mistral 7B — Reliable",          active: false },
-  { id: "meta-llama/llama-3.3-70b-instruct:free",                    name: "Quality: Llama 3.3 70B — Best",        active: false },
-  { id: "deepseek/deepseek-r1-distill-llama-70b:free",               name: "Quality: DeepSeek R1 70B — Reasoning", active: false },
-  { id: "nousresearch/hermes-3-llama-3.1-405b:free",                 name: "Quality: Hermes 3 405B — Context",     active: false },
-  { id: "qwen/qwen-2.5-72b-instruct:free",                           name: "Quality: Qwen 2.5 72B — Multilingual", active: false },
-  { id: "deepseek/deepseek-v3-base:free",                            name: "Quality: DeepSeek V3 — Coder",         active: false },
-  { id: "deepseek/deepseek-r1:free",                                  name: "Quality: DeepSeek R1 — Full Reason",   active: false },
-  { id: "mistralai/mixtral-8x7b-instruct:free",                      name: "Quality: Mixtral 8x7B — Balanced",     active: false },
-  { id: "google/gemma-2-27b-it:free",                                 name: "Quality: Gemma 2 27B — Google Large",  active: false },
-  { id: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", name: "Dolphin 24B — Uncensored",         active: false },
-  { id: "meta-llama/llama-3.2-3b-instruct:free",                     name: "Fast: Llama 3.2 3B — Tiny/Fastest",   active: false },
+  { id: "meta-llama/llama-3.3-70b-instruct:free",               name: "Llama 3.3 70B — Best Quality",         active: true  },
+  { id: "google/gemma-3-12b-it:free",                            name: "Gemma 3 12B — Fast & Accurate",        active: false },
+  { id: "qwen/qwen-2.5-72b-instruct:free",                       name: "Qwen 2.5 72B — Multilingual",          active: false },
+  { id: "deepseek/deepseek-r1-distill-llama-70b:free",           name: "DeepSeek R1 70B — Reasoning",          active: false },
+  { id: "deepseek/deepseek-r1:free",                             name: "DeepSeek R1 — Full Reasoning",         active: false },
+  { id: "microsoft/phi-4:free",                                  name: "Phi-4 — Reliable Mid-Size",            active: false },
+  { id: "mistralai/mixtral-8x7b-instruct:free",                  name: "Mixtral 8x7B — Balanced",              active: false },
+  { id: "mistralai/mistral-7b-instruct:free",                    name: "Mistral 7B — Fast & Reliable",         active: false },
+  { id: "google/gemma-2-9b-it:free",                             name: "Gemma 2 9B — Smart & Quick",           active: false },
+  { id: "meta-llama/llama-3.1-8b-instruct:free",                 name: "Llama 3.1 8B — Ultra Fast",            active: false },
+  { id: "meta-llama/llama-3.2-3b-instruct:free",                 name: "Llama 3.2 3B — Tiny/Fastest",          active: false },
+  { id: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", name: "Dolphin 24B — Uncensored",     active: false },
 ];
 
 const DEFAULT_IMAGE_MODELS: IModelEntry[] = [
-  { id: "black-forest-labs/FLUX.1-schnell",                        name: "FLUX.1 Schnell — Fast & Sharp",     active: true  },
-  { id: "stabilityai/stable-diffusion-xl-base-1.0",               name: "SDXL 1.0 — High Quality",           active: false },
+  { id: "stabilityai/stable-diffusion-xl-base-1.0",               name: "SDXL 1.0 — High Quality",           active: true  },
+  { id: "black-forest-labs/FLUX.1-schnell",                        name: "FLUX.1 Schnell — Fast & Sharp",     active: false },
   { id: "SG161222/RealVisXL_V4.0",                                 name: "RealVisXL v4 — Photorealistic",     active: false },
   { id: "Lykon/dreamshaper-8",                                     name: "DreamShaper 8 — Creative",          active: false },
   { id: "cagliostrolab/animagine-xl-4.0",                          name: "Animagine XL 4.0 — Anime",          active: false },

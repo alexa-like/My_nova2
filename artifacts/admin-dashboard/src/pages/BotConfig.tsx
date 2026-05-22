@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type BotConfigData } from "@/lib/api";
-import { Save, RefreshCw, AlertTriangle, CheckCircle, Settings, Sliders, Brain, Wrench } from "lucide-react";
+import { Save, RefreshCw, AlertTriangle, CheckCircle, Settings, Sliders, Brain, Wrench, FlaskConical, Loader2 } from "lucide-react";
 
 function Section({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
   return (
@@ -74,6 +74,31 @@ function Toggle({ label, desc, checked, onChange }: { label: string; desc?: stri
   );
 }
 
+type TestStatus = { state: "idle" } | { state: "loading" } | { state: "ok"; latencyMs: number; detail?: string } | { state: "error"; error: string; latencyMs: number };
+
+function ModelTestBadge({ status }: { status: TestStatus }) {
+  if (status.state === "idle") return null;
+  if (status.state === "loading") {
+    return (
+      <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
+        <Loader2 size={10} className="animate-spin" /> testing…
+      </span>
+    );
+  }
+  if (status.state === "ok") {
+    return (
+      <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.25)", color: "#4ade80" }}>
+        ✓ {status.latencyMs}ms{status.detail ? ` · ${status.detail}` : ""}
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#fca5a5" }} title={status.error}>
+      ✗ {status.latencyMs}ms · {status.error.substring(0, 60)}
+    </span>
+  );
+}
+
 export default function BotConfig() {
   const [config, setConfig] = useState<BotConfigData | null>(null);
   const [limits, setLimits] = useState<BotConfigData["usageLimits"] | null>(null);
@@ -82,6 +107,8 @@ export default function BotConfig() {
   const [savingLimits, setSavingLimits] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [chatTestStatus, setChatTestStatus] = useState<TestStatus>({ state: "idle" });
+  const [imageTestStatus, setImageTestStatus] = useState<TestStatus>({ state: "idle" });
 
   const load = async () => {
     setLoading(true);
@@ -100,6 +127,37 @@ export default function BotConfig() {
   useEffect(() => { load(); }, []);
 
   const flash = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(""), 3000); };
+
+  const handleTestChat = async () => {
+    if (!config?.activeChatModel) return;
+    setChatTestStatus({ state: "loading" });
+    try {
+      const result = await api.testChatModel(config.activeChatModel);
+      if (result.ok) {
+        setChatTestStatus({ state: "ok", latencyMs: result.latencyMs, detail: result.reply?.substring(0, 40) });
+      } else {
+        setChatTestStatus({ state: "error", error: result.error || "No response", latencyMs: result.latencyMs });
+      }
+    } catch (err: any) {
+      setChatTestStatus({ state: "error", error: err.message, latencyMs: 0 });
+    }
+  };
+
+  const handleTestImage = async () => {
+    if (!config?.activeImageModel) return;
+    setImageTestStatus({ state: "loading" });
+    try {
+      const result = await api.testImageModel(config.activeImageModel);
+      if (result.ok) {
+        const detail = result.source ? result.source : result.bytes ? `${Math.round(result.bytes / 1024)}KB` : undefined;
+        setImageTestStatus({ state: "ok", latencyMs: result.latencyMs, detail });
+      } else {
+        setImageTestStatus({ state: "error", error: result.error || "Generation failed", latencyMs: result.latencyMs });
+      }
+    } catch (err: any) {
+      setImageTestStatus({ state: "error", error: err.message, latencyMs: 0 });
+    }
+  };
 
   const handleSaveConfig = async () => {
     if (!config) return;
@@ -182,22 +240,62 @@ export default function BotConfig() {
       )}
 
       <Section title="Active Models" icon={Brain}>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: "Chat Model", key: "activeChatModel" },
-            { label: "Image Model", key: "activeImageModel" },
-          ].map(({ label, key }) => (
-            <div key={key}>
-              <label className="block text-xs mb-1.5" style={{ color: "rgba(255,255,255,0.4)" }}>{label}</label>
-              <input
-                type="text"
-                value={(config as any)[key] || ""}
-                onChange={e => setConfig(prev => prev ? { ...prev, [key]: e.target.value } : prev)}
-                className="w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none font-mono"
-                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
-              />
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>Chat Model</label>
+              <div className="flex items-center gap-2">
+                <ModelTestBadge status={chatTestStatus} />
+                <button
+                  onClick={() => { setChatTestStatus({ state: "idle" }); handleTestChat(); }}
+                  disabled={chatTestStatus.state === "loading"}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-opacity disabled:opacity-40"
+                  style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)", color: "rgba(165,168,255,0.9)" }}
+                >
+                  <FlaskConical size={10} />
+                  Test
+                </button>
+              </div>
             </div>
-          ))}
+            <input
+              type="text"
+              value={config.activeChatModel || ""}
+              onChange={e => { setConfig(prev => prev ? { ...prev, activeChatModel: e.target.value } : prev); setChatTestStatus({ state: "idle" }); }}
+              className="w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none font-mono"
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+              placeholder="e.g. meta-llama/llama-3.3-70b-instruct:free"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>Image Model</label>
+              <div className="flex items-center gap-2">
+                <ModelTestBadge status={imageTestStatus} />
+                <button
+                  onClick={() => { setImageTestStatus({ state: "idle" }); handleTestImage(); }}
+                  disabled={imageTestStatus.state === "loading"}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-opacity disabled:opacity-40"
+                  style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)", color: "rgba(165,168,255,0.9)" }}
+                >
+                  <FlaskConical size={10} />
+                  Test
+                </button>
+              </div>
+            </div>
+            <input
+              type="text"
+              value={config.activeImageModel || ""}
+              onChange={e => { setConfig(prev => prev ? { ...prev, activeImageModel: e.target.value } : prev); setImageTestStatus({ state: "idle" }); }}
+              className="w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none font-mono"
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+              placeholder="e.g. stabilityai/stable-diffusion-xl-base-1.0"
+            />
+          </div>
+
+          <p className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>
+            Chat: OpenRouter model ID (e.g. <span className="font-mono">meta-llama/llama-3.3-70b-instruct:free</span>). Image: HuggingFace model ID (e.g. <span className="font-mono">stabilityai/stable-diffusion-xl-base-1.0</span>).
+          </p>
         </div>
       </Section>
 
