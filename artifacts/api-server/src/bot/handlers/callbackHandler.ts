@@ -1902,6 +1902,43 @@ export async function handleCallbackQuery(
       return;
     }
 
+    // ── Group: regenerate image with same prompt ──────────────────────────────
+    if (data.startsWith("grp_regen:")) {
+      const prompt = data.slice("grp_regen:".length).trim();
+      const cId = query.message?.chat.id;
+      if (!cId || !prompt) { await answer(bot, query.id, "Could not regenerate."); return; }
+      await answer(bot, query.id, "🔄 Regenerating...");
+      const statusMsg = await bot.sendMessage(cId, `🎨 Regenerating: "${prompt.slice(0, 50)}"...`);
+      try {
+        const { generateImage } = await import("../services/image.js");
+        const buf = await generateImage(prompt);
+        try { await bot.deleteMessage(cId, statusMsg.message_id); } catch {}
+        if (!buf) { await bot.sendMessage(cId, "Image generation failed. Try again."); return; }
+        await bot.sendPhoto(cId, buf, {
+          caption: prompt,
+          reply_markup: { inline_keyboard: [[{ text: "🔄 Regenerate", callback_data: `grp_regen:${prompt.substring(0, 53)}` }]] },
+        });
+      } catch {
+        try { await bot.deleteMessage(cId, statusMsg.message_id); } catch {}
+        await bot.sendMessage(cId, "Image generation failed. Please try again.");
+      }
+      return;
+    }
+
+    // ── Group: pin the current message ───────────────────────────────────────
+    if (data === "grp_pin") {
+      const cId = query.message?.chat.id;
+      const mId = query.message?.message_id;
+      if (!cId || !mId) { await answer(bot, query.id, "Could not pin."); return; }
+      try {
+        await bot.pinChatMessage(cId, mId, { disable_notification: true });
+        await answer(bot, query.id, "📌 Pinned!");
+      } catch {
+        await answer(bot, query.id, "Could not pin — I need admin + pin rights.", true);
+      }
+      return;
+    }
+
     logger.warn({ data, userId }, "Unknown callback_data received");
 
   } catch (err) {

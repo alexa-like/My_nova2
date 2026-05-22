@@ -7,6 +7,9 @@ import { safeSend, startTypingLoop } from "../utils/helpers.js";
 import { track } from "../services/analytics.js";
 import { logger } from "../../lib/logger.js";
 
+// ── AFK system (in-memory, resets on restart) ─────────────────────────────────
+const afkStore = new Map<number, { reason: string; since: number }>();
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function getGroupSettings(chatId: number) {
@@ -224,6 +227,17 @@ export async function handleGroupMessage(
 
   const senderIsAdmin = await isAdmin(bot, chatId, fromId);
 
+  // ── AFK auto-clear: when an AFK user sends any message ───────────────────
+  if (afkStore.has(fromId) && cmd !== "/afk" && cmd !== "/back") {
+    const afkEntry = afkStore.get(fromId)!;
+    afkStore.delete(fromId);
+    const displayName = user.firstName || msg.from?.first_name || "User";
+    const durationMins = Math.max(0, Math.round((Date.now() - afkEntry.since) / 60000));
+    const durationStr = durationMins < 60 ? `${durationMins}m` : `${Math.round(durationMins / 60)}h`;
+    const backMsg = await bot.sendMessage(chatId, `👋 ${displayName} is back! (was AFK for ${durationStr})`).catch(() => null);
+    if (backMsg) setTimeout(() => bot.deleteMessage(chatId, backMsg.message_id).catch(() => {}), 10000);
+  }
+
   // ── Anti-link middleware ──────────────────────────────────────────────────
   if (groupSettings.antilink && !senderIsAdmin) {
     const hasLink = /https?:\/\/|t\.me\//i.test(text) ||
@@ -278,46 +292,52 @@ export async function handleGroupMessage(
   if (cmd === "/help") {
     await bot.sendMessage(chatId,
       "Nova Group Commands\n\n" +
-      "AI:\n" +
-      "/ai on|off — Toggle AI replies\n" +
-      "/style friendly|funny|serious|balanced\n\n" +
-      "Info:\n" +
+      "Everyone:\n" +
+      "/id — Show your Telegram ID & group ID\n" +
+      "/admins — List group admins\n" +
+      "/info — Group information & Nova settings\n" +
       "/rules — Show group rules\n" +
-      "/report — Report a message (reply to it)\n\n" +
-      "Admin — Group Settings:\n" +
+      "/report — Report a message (reply to it)\n" +
+      "/fact — Random mind-blowing fact\n" +
+      "/quote — Inspiring quote\n" +
+      "/tip — Productivity tip\n" +
+      "/afk [reason] — Mark yourself as AFK\n" +
+      "/back — Remove your AFK status\n" +
+      "/summarize — Summarize your AI conversation\n\n" +
+      "AI (mention @Nova or reply to it):\n" +
+      "@Nova /image <prompt> — Generate image\n" +
+      "@Nova /ask <question> — Ask anything\n" +
+      "@Nova /translate <text> — Translate to English\n" +
+      "@Nova /search <query> — Web search\n" +
+      "@Nova /music <desc> — Generate music\n" +
+      "@Nova /sticker <desc> — Generate sticker\n\n" +
+      "Admin — Settings:\n" +
+      "/ai on|off — Toggle AI replies\n" +
+      "/style friendly|funny|serious|balanced\n" +
+      "/lang <code> — Set AI language (en ar fr es de zh hi pt auto)\n" +
       "/welcome <text> — Set welcome msg ({name} {group})\n" +
-      "/setgoodbye <text> — Set goodbye msg ({name} {group})\n" +
-      "/setrules <text> — Set rules\n" +
-      "/lock / /unlock — Lock or unlock group\n" +
+      "/setgoodbye <text> — Set goodbye msg\n" +
+      "/setrules <text> — Set group rules\n" +
+      "/lock / /unlock — Lock or unlock the group\n" +
       "/slowmode <sec> — Set slow mode (0 = off)\n" +
       "/antilink on|off — Delete messages with links\n" +
-      "/antiflood on|off [limit] — Mute flood spammers\n" +
+      "/antiflood on|off [limit] — Auto-mute flood spammers\n" +
       "/captcha on|off — Math captcha for new members\n" +
       "/autodelete on|off — Auto-delete join/leave messages\n" +
       "/setlimit <n> — Warn limit before auto-ban\n" +
       "/poll Q | Opt1 | Opt2 — Create a poll\n" +
-      "/messageall <text> — DM all group members privately\n\n" +
+      "/messageall <text> — DM all members privately\n" +
+      "/addword <word> / /removeword / /wordlist — Word filter\n\n" +
       "Admin — Moderation:\n" +
-      "/ban — Ban user\n" +
-      "/unban — Unban user\n" +
-      "/mute [1m|1h|1d] — Mute user (timed optional)\n" +
-      "/unmute — Unmute user\n" +
-      "/kick — Kick user\n" +
-      "/warn [reason] — Warn user\n" +
-      "/unwarn — Remove one warning\n" +
-      "/warnings — Check warnings\n" +
-      "/clearwarn — Clear all warnings\n" +
-      "/note <text> — Add note to user (reply)\n" +
-      "/notes — View user notes (reply)\n" +
-      "/clearnotes — Clear user notes (reply)\n" +
-      "/purge <n> — Delete last N msgs\n" +
-      "/delete — Delete replied msg\n" +
-      "/pin / /unpin — Pin/unpin message\n" +
-      "/promote / /demote — Promote/demote admin\n" +
-      "/addword <word> — Add word to filter\n" +
-      "/removeword <word> — Remove word from filter\n" +
-      "/wordlist — Show filtered words\n\n" +
-      "Tip: reply to a user's message before typing a moderation command — it's the most reliable method."
+      "/ban /unban /kick — Remove members\n" +
+      "/mute [1m|1h|1d] / /unmute — Restrict messaging\n" +
+      "/warn [reason] / /unwarn / /warnings / /clearwarn\n" +
+      "/note <text> / /notes / /clearnotes — User notes (reply)\n" +
+      "/purge <n> — Delete last N messages\n" +
+      "/delete — Delete replied message\n" +
+      "/pin / /unpin — Pin or unpin message\n" +
+      "/promote / /demote — Change admin status\n\n" +
+      "Tip: reply to a user's message for moderation commands — always the most reliable method."
     );
     return;
   }
@@ -355,6 +375,199 @@ export async function handleGroupMessage(
     return;
   }
 
+  // ── AFK mention notification: when a message mentions an AFK user ─────────
+  if (msg.entities && msg.text && afkStore.size > 0) {
+    for (const e of msg.entities) {
+      if (e.type === "mention") {
+        const mentioned = msg.text.substring(e.offset, e.offset + e.length);
+        const clean = mentioned.replace(/^@/, "").toLowerCase();
+        if (clean === botUsername.toLowerCase()) continue;
+        try {
+          const safeClean = clean.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const dbUser = await User.findOne({ username: new RegExp(`^${safeClean}$`, "i") });
+          if (dbUser && afkStore.has(dbUser.userId)) {
+            const afkInfo = afkStore.get(dbUser.userId)!;
+            const afkMins = Math.max(0, Math.round((Date.now() - afkInfo.since) / 60000));
+            const afkDur = afkMins < 60 ? `${afkMins}m ago` : `${Math.round(afkMins / 60)}h ago`;
+            await bot.sendMessage(chatId, `💤 ${mentioned} is AFK${afkInfo.reason ? `: ${afkInfo.reason}` : ""} (${afkDur})`);
+          }
+        } catch {}
+      }
+    }
+  }
+
+  // /id — show Telegram user ID and group chat ID
+  if (cmd === "/id") {
+    const extra = msg.reply_to_message?.from
+      ? `\nReplied user ID: ${msg.reply_to_message.from.id}`
+      : "";
+    await bot.sendMessage(chatId, `🆔 IDs\nYour ID: ${fromId}\nGroup ID: ${chatId}${extra}`);
+    return;
+  }
+
+  // /admins — list group administrators
+  if (cmd === "/admins") {
+    try {
+      const admins = await bot.getChatAdministrators(chatId);
+      const lines = admins
+        .filter(a => !a.user.is_bot)
+        .map(a => {
+          const badge = a.status === "creator" ? "👑" : "⭐";
+          const name = a.user.first_name + (a.user.last_name ? ` ${a.user.last_name}` : "");
+          const uname = a.user.username ? ` (@${a.user.username})` : "";
+          return `${badge} ${name}${uname}`;
+        });
+      await bot.sendMessage(chatId, lines.length
+        ? `Group Admins\n━━━━━━━━━━━━\n${lines.join("\n")}`
+        : "No admins found.");
+    } catch {
+      await bot.sendMessage(chatId, "Could not retrieve admin list.");
+    }
+    return;
+  }
+
+  // /info — group information and Nova settings
+  if (cmd === "/info") {
+    try {
+      const chatInfo = await bot.getChat(chatId) as any;
+      const memberCount = await bot.getChatMemberCount(chatId).catch(() => "?");
+      const parts = [
+        `ℹ️ Group Info\n━━━━━━━━━━━━`,
+        `Title: ${chatInfo.title || "Unknown"}`,
+        `ID: ${chatId}`,
+        `Members: ${memberCount}`,
+        chatInfo.description
+          ? `About: ${chatInfo.description.slice(0, 80)}${chatInfo.description.length > 80 ? "…" : ""}`
+          : null,
+        `\nNova Settings:`,
+        `AI: ${groupSettings.aiEnabled ? "✅ ON" : "❌ OFF"} · Style: ${groupSettings.style} · Lang: ${groupSettings.language}`,
+        `Antilink: ${groupSettings.antilink ? "✅" : "❌"} · Antiflood: ${groupSettings.antiflood ? "✅" : "❌"}`,
+        `Captcha: ${groupSettings.captchaEnabled ? "✅" : "❌"} · Lock: ${groupSettings.locked ? "🔒" : "🔓"}`,
+        groupSettings.rules ? "Rules: ✅ Set" : null,
+      ].filter(Boolean).join("\n");
+      await bot.sendMessage(chatId, parts);
+    } catch {
+      await bot.sendMessage(chatId, "Could not retrieve group info.");
+    }
+    return;
+  }
+
+  // /fact — AI-generated mind-blowing fact
+  if (cmd === "/fact") {
+    const stopTyping = startTypingLoop(bot, chatId);
+    const reply = await chat(fromId, chatId + 1111,
+      "Give me one mind-blowing fact. Just the fact itself, no intro text.",
+      {
+        style: "friendly", emoji: groupSettings.emoji, length: "short",
+        language: groupSettings.language !== "auto" ? groupSettings.language : undefined,
+      },
+      user.premium.active
+    );
+    stopTyping();
+    await safeSend(bot, chatId, `💡 ${reply}`, {
+      reply_markup: { inline_keyboard: [[{ text: "📌 Pin this", callback_data: "grp_pin" }]] },
+    });
+    return;
+  }
+
+  // /quote — inspiring quote
+  if (cmd === "/quote") {
+    const stopTyping = startTypingLoop(bot, chatId);
+    const reply = await chat(fromId, chatId + 2222,
+      `Give me one inspiring quote with attribution. Format: "Quote" — Author. Nothing else.`,
+      {
+        style: "friendly", emoji: false, length: "short",
+        language: groupSettings.language !== "auto" ? groupSettings.language : undefined,
+      },
+      user.premium.active
+    );
+    stopTyping();
+    await safeSend(bot, chatId, `✨ ${reply}`, {
+      reply_markup: { inline_keyboard: [[{ text: "📌 Pin this", callback_data: "grp_pin" }]] },
+    });
+    return;
+  }
+
+  // /tip — productivity or life tip
+  if (cmd === "/tip") {
+    const stopTyping = startTypingLoop(bot, chatId);
+    const reply = await chat(fromId, chatId + 3333,
+      "Give me one practical life or productivity tip. 2 sentences max, no fluff.",
+      {
+        style: "friendly", emoji: groupSettings.emoji, length: "short",
+        language: groupSettings.language !== "auto" ? groupSettings.language : undefined,
+      },
+      user.premium.active
+    );
+    stopTyping();
+    await safeSend(bot, chatId, `💡 ${reply}`, {
+      reply_markup: { inline_keyboard: [[{ text: "📌 Pin this", callback_data: "grp_pin" }]] },
+    });
+    return;
+  }
+
+  // /afk [reason] — mark user as AFK
+  if (cmd === "/afk") {
+    const reason = args.join(" ").trim();
+    afkStore.set(fromId, { reason, since: Date.now() });
+    const displayName = user.firstName || msg.from?.first_name || "User";
+    await bot.sendMessage(chatId,
+      `💤 ${displayName} is now AFK${reason ? `: ${reason}` : ""}. They'll be notified when mentioned.`
+    );
+    return;
+  }
+
+  // /back — manually remove AFK status
+  if (cmd === "/back") {
+    if (!afkStore.has(fromId)) {
+      await bot.sendMessage(chatId, "You are not currently marked as AFK.");
+      return;
+    }
+    const afkEntry = afkStore.get(fromId)!;
+    afkStore.delete(fromId);
+    const displayName = user.firstName || msg.from?.first_name || "User";
+    const durationMins = Math.max(0, Math.round((Date.now() - afkEntry.since) / 60000));
+    const durationStr = durationMins < 60 ? `${durationMins}m` : `${Math.round(durationMins / 60)}h`;
+    await bot.sendMessage(chatId, `👋 ${displayName} is back! (was AFK for ${durationStr})`);
+    return;
+  }
+
+  // /summarize — summarize recent AI conversation history in this group
+  if (cmd === "/summarize") {
+    const stopTyping = startTypingLoop(bot, chatId);
+    try {
+      const { Memory } = await import("../models/Memory.js");
+      const memory = await Memory.findOne({ userId: fromId, chatId });
+      const msgs = memory?.messages?.slice(-10) ?? [];
+      if (msgs.length < 2) {
+        stopTyping();
+        await bot.sendMessage(chatId,
+          "No conversation history to summarize. Mention me or reply to my messages to build history."
+        );
+        return;
+      }
+      const convoText = msgs
+        .map((m: any) => `${m.role === "user" ? "User" : "Nova"}: ${String(m.content).slice(0, 200)}`)
+        .join("\n");
+      const summary = await chat(fromId, chatId + 8888,
+        `Summarize this conversation in 3-5 bullet points. Be concise:\n\n${convoText}`,
+        {
+          style: "serious", emoji: groupSettings.emoji, length: "short",
+          language: groupSettings.language !== "auto" ? groupSettings.language : undefined,
+        },
+        user.premium.active
+      );
+      stopTyping();
+      await safeSend(bot, chatId, `📝 Summary\n\n${summary}`, {
+        reply_markup: { inline_keyboard: [[{ text: "📌 Pin this", callback_data: "grp_pin" }]] },
+      });
+    } catch {
+      stopTyping();
+      await bot.sendMessage(chatId, "Could not summarize. Please try again.");
+    }
+    return;
+  }
+
   // ── Admin-only commands ───────────────────────────────────────────────────
 
   const adminCmds = new Set([
@@ -364,7 +577,7 @@ export async function handleGroupMessage(
     "/setrules", "/style", "/slowmode", "/antilink", "/antiflood",
     "/setlimit", "/note", "/notes", "/clearnotes", "/messageall",
     "/setgoodbye", "/poll", "/captcha", "/autodelete",
-    "/addword", "/removeword", "/wordlist",
+    "/addword", "/removeword", "/wordlist", "/lang",
   ]);
 
   if (!adminCmds.has(cmd)) {

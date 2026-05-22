@@ -7,6 +7,7 @@ export interface IGroupSettings extends Document {
   style: "friendly" | "funny" | "serious" | "balanced";
   emoji: boolean;
   length: "long" | "short";
+  language: string;
   welcomeMessage?: string;
   goodbyeMessage?: string;
   rules?: string;
@@ -34,6 +35,7 @@ const GroupSettingsSchema = new Schema<IGroupSettings>(
     },
     emoji: { type: Boolean, default: true },
     length: { type: String, enum: ["long", "short"], default: "short" },
+    language: { type: String, default: "auto" },
     welcomeMessage: { type: String },
     goodbyeMessage: { type: String },
     rules: { type: String },
