@@ -2114,8 +2114,9 @@ export async function handleCallbackQuery(
       const voice = config.voiceModels[idx];
       if (!voice) { await answer(bot, query.id, "Voice not found."); return; }
       await answer(bot, query.id, `Generating preview for ${voice.name}...`);
-      if (!process.env.HUGGINGFACE_API_TOKEN) {
-        await bot.sendMessage(chatId, "Voice preview is not available — HuggingFace API key not set.");
+      const isEdgeVoice = voice.id.startsWith("edge:");
+      if (!isEdgeVoice && !process.env.HUGGINGFACE_API_TOKEN) {
+        await bot.sendMessage(chatId, `⚠️ ${voice.name} requires a HuggingFace API token.\n\nTry one of the Edge TTS voices — they work without any API key!`);
         return;
       }
       const audio = await textToSpeech(VOICE_PREVIEW_TEXT, voice.id);
@@ -2123,7 +2124,7 @@ export async function handleCallbackQuery(
         await bot.sendVoice(chatId, audio, { caption: `🎙 ${voice.name} — voice preview` });
       } else {
         await bot.sendMessage(chatId,
-          `Could not generate preview for ${voice.name}. The model may be loading — try again in a moment.`
+          `Could not generate preview for ${voice.name}. ${isEdgeVoice ? "Edge TTS may be temporarily unavailable." : "The model may be loading — try again in a moment."}`
         );
       }
       return;

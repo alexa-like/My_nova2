@@ -97,7 +97,7 @@ const BotConfigSchema = new Schema<IBotConfig>(
     activeChatModel:  { type: String, default: "deepseek/deepseek-v4-flash:free" },
     activeImageModel: { type: String, default: "black-forest-labs/FLUX.1-schnell" },
     activeVideoModel: { type: String, default: "ByteDance/AnimateDiff-Lightning" },
-    activeVoiceModel: { type: String, default: "hexgrad/Kokoro-82M" },
+    activeVoiceModel: { type: String, default: "edge:en-US-AriaNeural" },
     activeAsrModel:   { type: String, default: "openai/whisper-large-v3-turbo" },
     chatModels:  { type: [ModelEntrySchema], default: [] },
     imageModels: { type: [ModelEntrySchema], default: [] },
@@ -167,12 +167,18 @@ const DEFAULT_VIDEO_MODELS: IModelEntry[] = [
 ];
 
 const DEFAULT_VOICE_MODELS: IModelEntry[] = [
-  // ── HuggingFace TTS models — all inf:true or inf:"warm" verified ──────────
-  { id: "hexgrad/Kokoro-82M",              name: "Kokoro — Best Quality (10M users)",  active: true  },
-  { id: "facebook/mms-tts-eng",            name: "MMS — Clean & Natural",              active: false },
-  { id: "myshell-ai/MeloTTS-English",      name: "MeloTTS — Expressive English",       active: false },
-  { id: "suno/bark-small",                 name: "Bark — Dynamic & Emotional",         active: false },
-  { id: "espnet/kan-bayashi_ljspeech_vits",name: "VITS LJSpeech — Smooth",            active: false },
+  // ── Microsoft Edge TTS — free, no API key, Azure quality ─────────────────
+  { id: "edge:en-US-AriaNeural",    name: "Aria — Warm & Natural (US)",           active: true  },
+  { id: "edge:en-US-GuyNeural",     name: "Guy — Clear & Confident (US)",         active: false },
+  { id: "edge:en-US-JennyNeural",   name: "Jenny — Professional & Friendly (US)", active: false },
+  { id: "edge:en-GB-SoniaNeural",   name: "Sonia — Elegant British (UK)",         active: false },
+  { id: "edge:en-AU-NatashaNeural", name: "Natasha — Australian Friendly",        active: false },
+  // ── HuggingFace TTS — fallback (requires HUGGINGFACE_API_TOKEN) ───────────
+  { id: "hexgrad/Kokoro-82M",              name: "Kokoro — HF (requires HF token)",    active: false },
+  { id: "facebook/mms-tts-eng",            name: "MMS — HF Fallback",                  active: false },
+  { id: "myshell-ai/MeloTTS-English",      name: "MeloTTS — HF Expressive",            active: false },
+  { id: "suno/bark-small",                 name: "Bark — HF Dynamic (slow)",           active: false },
+  { id: "espnet/kan-bayashi_ljspeech_vits",name: "VITS — HF Smooth",                   active: false },
 ];
 
 const DEFAULT_ASR_MODELS: IModelEntry[] = [
