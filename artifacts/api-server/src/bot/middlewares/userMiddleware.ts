@@ -19,6 +19,10 @@ export async function ensureUser(msg: TelegramBot.Message): Promise<IUser> {
       firstName: from.first_name,
       lastName:  from.last_name,
       isOwner:   currentIsOwner,
+      // Owner starts with lifetime premium automatically
+      premium: currentIsOwner
+        ? { active: true, plan: "owner" }
+        : { active: false },
     });
     await user.save();
     return user;
@@ -38,30 +42,41 @@ export async function ensureUser(msg: TelegramBot.Message): Promise<IUser> {
   }
   if (user.isOwner !== currentIsOwner) {
     user.isOwner = currentIsOwner;
-  }
-
-  // Reset all daily usage counters if the configured reset interval has passed
-  const lastReset = user.usage.lastReset;
-  let resetIntervalMs = 24 * 60 * 60 * 1000; // default 24h
-  try {
-    const cfg = await getOrCreateBotConfig();
-    resetIntervalMs = (cfg.usageLimits.resetIntervalHours || 24) * 60 * 60 * 1000;
-  } catch {}
-  if (now.getTime() - lastReset.getTime() >= resetIntervalMs) {
-    user.usage.messages  = 0;
-    user.usage.images    = 0;
-    user.usage.builds    = 0;
-    user.usage.videos    = 0;
-    user.usage.music     = 0;
-    user.usage.lastReset = now;
     dirty = true;
   }
 
-  // Expire premium if needed
-  if (user.premium.active && user.premium.expiresAt && now > user.premium.expiresAt) {
-    user.premium.active = false;
-    user.premium.plan   = undefined;
-    dirty = true;
+  // ── Owner always has lifetime premium — enforce on every request ───────────
+  if (currentIsOwner) {
+    if (!user.premium.active || user.premium.plan !== "owner" || user.premium.expiresAt) {
+      user.premium.active    = true;
+      user.premium.plan      = "owner";
+      user.premium.expiresAt = undefined;
+      dirty = true;
+    }
+  } else {
+    // Reset all daily usage counters if the configured reset interval has passed
+    const lastReset = user.usage.lastReset;
+    let resetIntervalMs = 24 * 60 * 60 * 1000; // default 24h
+    try {
+      const cfg = await getOrCreateBotConfig();
+      resetIntervalMs = (cfg.usageLimits.resetIntervalHours || 24) * 60 * 60 * 1000;
+    } catch {}
+    if (now.getTime() - lastReset.getTime() >= resetIntervalMs) {
+      user.usage.messages  = 0;
+      user.usage.images    = 0;
+      user.usage.builds    = 0;
+      user.usage.videos    = 0;
+      user.usage.music     = 0;
+      user.usage.lastReset = now;
+      dirty = true;
+    }
+
+    // Expire premium if needed (only for non-owner users)
+    if (user.premium.active && user.premium.expiresAt && now > user.premium.expiresAt) {
+      user.premium.active = false;
+      user.premium.plan   = undefined;
+      dirty = true;
+    }
   }
 
   if (dirty) await user.save();

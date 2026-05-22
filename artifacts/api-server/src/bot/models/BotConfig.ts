@@ -124,23 +124,22 @@ export const BotConfig = mongoose.model<IBotConfig>("BotConfig", BotConfigSchema
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DEFAULT_CHAT_MODELS: IModelEntry[] = [
-  // ── OpenRouter free tier — all confirmed pricing: 0 ──────────────────────
-  { id: "deepseek/deepseek-v4-flash:free",                          name: "DeepSeek V4 Flash — 1M ctx",          active: true  },
-  { id: "meta-llama/llama-3.3-70b-instruct:free",                   name: "Llama 3.3 70B — 131K ctx",            active: false },
-  { id: "qwen/qwen3-coder:free",                                     name: "Qwen3 Coder 480B — 1M ctx",           active: false },
-  { id: "nvidia/nemotron-3-super-120b-a12b:free",                    name: "Nemotron Super 120B — 1M ctx",        active: false },
-  { id: "nousresearch/hermes-3-llama-3.1-405b:free",                 name: "Hermes 3 405B — 131K ctx",            active: false },
-  { id: "openai/gpt-oss-120b:free",                                  name: "GPT-OSS 120B — 131K ctx",             active: false },
-  { id: "openai/gpt-oss-20b:free",                                   name: "GPT-OSS 20B — 131K ctx",              active: false },
-  { id: "google/gemma-4-31b-it:free",                                name: "Gemma 4 31B — 262K ctx",              active: false },
-  { id: "qwen/qwen3-next-80b-a3b-instruct:free",                     name: "Qwen3 Next 80B — 262K ctx",           active: false },
-  { id: "minimax/minimax-m2.5:free",                                  name: "MiniMax M2.5 — 204K ctx",             active: false },
-  { id: "nvidia/nemotron-3-nano-30b-a3b:free",                       name: "Nemotron Nano 30B — 256K ctx",        active: false },
-  { id: "z-ai/glm-4.5-air:free",                                     name: "GLM 4.5 Air — 131K ctx",              active: false },
-  { id: "arcee-ai/trinity-large-thinking:free",                       name: "Trinity Large Thinking — 262K ctx",  active: false },
-  { id: "google/gemma-4-26b-a4b-it:free",                            name: "Gemma 4 26B — 262K ctx",              active: false },
-  { id: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", name: "Dolphin Uncensored 24B — 32K ctx", active: false },
-  { id: "meta-llama/llama-3.2-3b-instruct:free",                     name: "Llama 3.2 3B Fast — 131K ctx",        active: false },
+  // ── OpenRouter free tier — all verified pricing: 0 (May 2025) ───────────────────
+  // Fast models — used in premium race pool (respond in ~2-5s)
+  { id: "meta-llama/llama-3.1-8b-instruct:free",                    name: "Fast: Llama 3.1 8B — Ultra Fast",     active: true  },
+  { id: "google/gemma-2-9b-it:free",                                 name: "Fast: Gemma 2 9B — Smart & Quick",    active: false },
+  { id: "mistralai/mistral-7b-instruct:free",                        name: "Fast: Mistral 7B — Reliable",         active: false },
+  // Quality models — premium quality fallback + free primary
+  { id: "meta-llama/llama-3.3-70b-instruct:free",                    name: "Quality: Llama 3.3 70B — Best",       active: false },
+  { id: "deepseek/deepseek-r1-distill-llama-70b:free",               name: "Quality: DeepSeek R1 70B — Reasoning",active: false },
+  { id: "nousresearch/hermes-3-llama-3.1-405b:free",                 name: "Quality: Hermes 3 405B — Context",    active: false },
+  { id: "qwen/qwen-2.5-72b-instruct:free",                           name: "Quality: Qwen 2.5 72B — Multilingual",active: false },
+  { id: "deepseek/deepseek-v3-base:free",                            name: "Quality: DeepSeek V3 — Coder",        active: false },
+  { id: "deepseek/deepseek-r1:free",                                  name: "Quality: DeepSeek R1 — Full Reason",  active: false },
+  { id: "mistralai/mixtral-8x7b-instruct:free",                      name: "Quality: Mixtral 8x7B — Balanced",    active: false },
+  { id: "google/gemma-2-27b-it:free",                                 name: "Quality: Gemma 2 27B — Google Large", active: false },
+  { id: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", name: "Dolphin 24B — Uncensored",        active: false },
+  { id: "meta-llama/llama-3.2-3b-instruct:free",                     name: "Fast: Llama 3.2 3B — Tiny/Fastest",  active: false },
 ];
 
 const DEFAULT_IMAGE_MODELS: IModelEntry[] = [
@@ -189,16 +188,27 @@ const DEFAULT_ASR_MODELS: IModelEntry[] = [
 
 // ── Models to auto-migrate away from (paid / deprecated / removed) ────────────
 const DEPRECATED_CHAT_IDS = new Set([
-  "meta-llama/llama-3.3-70b-instruct",  // paid (no :free suffix)
-  "meta-llama/llama-3.1-8b-instruct",   // paid
-  "mistralai/mistral-7b-instruct:free",  // no longer on free tier
-  "google/gemma-2-9b-it:free",           // no longer on free tier
-  "deepseek/deepseek-chat",              // paid
-  "openai/gpt-4o-mini",                  // paid
-  "anthropic/claude-3-haiku",            // paid
-  "anthropic/claude-3.5-sonnet",         // paid
-  "openai/gpt-4-turbo",                  // paid
-  "openai/gpt-3.5-turbo",               // paid
+  "meta-llama/llama-3.3-70b-instruct",   // paid (no :free suffix)
+  "meta-llama/llama-3.1-8b-instruct",    // paid (no :free suffix)
+  "deepseek/deepseek-chat",               // paid
+  "openai/gpt-4o-mini",                   // paid
+  "anthropic/claude-3-haiku",             // paid
+  "anthropic/claude-3.5-sonnet",          // paid
+  "openai/gpt-4-turbo",                   // paid
+  "openai/gpt-3.5-turbo",                // paid
+  // Old speculative IDs that were never real free models
+  "deepseek/deepseek-v4-flash:free",
+  "qwen/qwen3-coder:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "openai/gpt-oss-120b:free",
+  "openai/gpt-oss-20b:free",
+  "google/gemma-4-31b-it:free",
+  "qwen/qwen3-next-80b-a3b-instruct:free",
+  "minimax/minimax-m2.5:free",
+  "nvidia/nemotron-3-nano-30b-a3b:free",
+  "z-ai/glm-4.5-air:free",
+  "arcee-ai/trinity-large-thinking:free",
+  "google/gemma-4-26b-a4b-it:free",
 ]);
 const DEPRECATED_IMAGE_IDS = new Set([
   "runwayml/stable-diffusion-v1-5",                  // removed from HF (404)
@@ -210,13 +220,17 @@ const DEPRECATED_VOICE_IDS = new Set([
   "facebook/fastspeech2-en-ljspeech",  // deprecated by Meta
 ]);
 
-// ── Paid → free model upgrade map ─────────────────────────────────────────────
+// ── Paid/old IDs -> verified free model upgrade map ───────────────────────────
 const CHAT_PAID_TO_FREE: Record<string, string> = {
-  "meta-llama/llama-3.3-70b-instruct":  "meta-llama/llama-3.3-70b-instruct:free",
-  "meta-llama/llama-3.1-8b-instruct":   "meta-llama/llama-3.3-70b-instruct:free",
-  "deepseek/deepseek-chat":              "deepseek/deepseek-v4-flash:free",
-  "openai/gpt-4o-mini":                 "openai/gpt-oss-20b:free",
-  "anthropic/claude-3-haiku":           "deepseek/deepseek-v4-flash:free",
+  "meta-llama/llama-3.3-70b-instruct":   "meta-llama/llama-3.3-70b-instruct:free",
+  "meta-llama/llama-3.1-8b-instruct":    "meta-llama/llama-3.1-8b-instruct:free",
+  "deepseek/deepseek-chat":               "deepseek/deepseek-r1-distill-llama-70b:free",
+  "openai/gpt-4o-mini":                  "meta-llama/llama-3.3-70b-instruct:free",
+  "anthropic/claude-3-haiku":            "meta-llama/llama-3.1-8b-instruct:free",
+  "deepseek/deepseek-v4-flash:free":     "meta-llama/llama-3.1-8b-instruct:free",
+  "openai/gpt-oss-20b:free":             "meta-llama/llama-3.1-8b-instruct:free",
+  "openai/gpt-oss-120b:free":            "meta-llama/llama-3.3-70b-instruct:free",
+  "qwen/qwen3-coder:free":               "qwen/qwen-2.5-72b-instruct:free",
 };
 
 export async function getOrCreateBotConfig(): Promise<IBotConfig> {
@@ -240,7 +254,7 @@ export async function getOrCreateBotConfig(): Promise<IBotConfig> {
 
   let dirty = false;
 
-  // ── Migrate active models away from paid/deprecated versions ──────────────
+  // ── Migrate active models away from paid/deprecated/speculative versions ──
   if (CHAT_PAID_TO_FREE[config.activeChatModel]) {
     config.activeChatModel = CHAT_PAID_TO_FREE[config.activeChatModel];
     dirty = true;
@@ -308,7 +322,7 @@ export async function getOrCreateBotConfig(): Promise<IBotConfig> {
     }
   }
 
-  // ── Remove deprecated entries from lists ─────────────────────────────────
+  // ── Remove deprecated / speculative entries from lists ───────────────────
   const cleanChat = config.chatModels.filter(m => !DEPRECATED_CHAT_IDS.has(m.id));
   if (cleanChat.length !== config.chatModels.length) { config.chatModels = cleanChat.length > 0 ? cleanChat : DEFAULT_CHAT_MODELS; dirty = true; }
 

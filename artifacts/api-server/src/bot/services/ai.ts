@@ -6,23 +6,38 @@ import { logger } from "../../lib/logger.js";
 const MAX_HISTORY = 20;
 const MAX_SUMMARY_TRIGGER = 30;
 
-// ── Free-tier fallback chain — all verified pricing:0 on OpenRouter (May 2025) ─
-// Tried in order when the primary model returns 402/429/500/503.
-// Large context first → smaller/faster models as last resort.
+// ── Free sequential fallback chain (used by free-tier users) ─────────────────
+// Tried in order when the primary model fails. Heavier/quality models first,
+// smaller/faster ones as last resort.
 const FREE_FALLBACK_MODELS = [
-  "deepseek/deepseek-v3-base:free",                                  // 64K ctx — DeepSeek V3
   "meta-llama/llama-3.3-70b-instruct:free",                         // 131K ctx — proven reliable
-  "deepseek/deepseek-r1:free",                                       // 164K ctx — reasoning
-  "deepseek/deepseek-r1-distill-llama-70b:free",                    // 131K ctx — distilled
-  "nousresearch/hermes-3-llama-3.1-405b:free",                      // 131K ctx — hermes
-  "qwen/qwen-2.5-72b-instruct:free",                                 // 131K ctx — Qwen 2.5
-  "google/gemma-2-27b-it:free",                                      // 8K ctx — Google Gemma 2
-  "google/gemma-2-9b-it:free",                                       // 8K ctx — fast Gemma 2
-  "mistralai/mistral-7b-instruct:free",                              // 32K ctx — Mistral
+  "deepseek/deepseek-r1-distill-llama-70b:free",                    // 131K ctx — distilled R1
+  "nousresearch/hermes-3-llama-3.1-405b:free",                      // 131K ctx — hermes 405B
+  "qwen/qwen-2.5-72b-instruct:free",                                 // 131K ctx — Qwen 2.5 72B
+  "deepseek/deepseek-v3-base:free",                                  // 64K ctx — DeepSeek V3
   "mistralai/mixtral-8x7b-instruct:free",                           // 32K ctx — Mixtral MoE
-  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",   // 32K — uncensored
+  "mistralai/mistral-7b-instruct:free",                              // 32K ctx — Mistral 7B
+  "google/gemma-2-9b-it:free",                                       // 8K ctx — fast Gemma 2
   "meta-llama/llama-3.1-8b-instruct:free",                          // 131K — fast llama
   "meta-llama/llama-3.2-3b-instruct:free",                          // 131K — tiny/fastest
+];
+
+// ── Premium race pool — small fast models run in parallel, first wins ─────────
+// These are lightweight models that respond in 2-5s. Racing 3 at once virtually
+// guarantees a sub-5s reply even if one or two are cold-starting.
+const PREMIUM_RACE_MODELS = [
+  "meta-llama/llama-3.1-8b-instruct:free",   // 8B — fastest Llama
+  "google/gemma-2-9b-it:free",               // 9B — fast Google model
+  "mistralai/mistral-7b-instruct:free",      // 7B — reliable Mistral
+];
+
+// ── Premium quality fallbacks (if the race fails entirely) ───────────────────
+const PREMIUM_QUALITY_FALLBACKS = [
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "deepseek/deepseek-r1-distill-llama-70b:free",
+  "qwen/qwen-2.5-72b-instruct:free",
+  "mistralai/mixtral-8x7b-instruct:free",
+  "meta-llama/llama-3.2-3b-instruct:free",
 ];
 
 // ── Auto-detect queries that need real-time web context ───────────────────────
@@ -195,7 +210,8 @@ async function callOpenRouter(
   model: string,
   messages: { role: string; content: string }[],
   maxTokens: number,
-  temperature: number
+  temperature: number,
+  timeoutMs = 25000
 ): Promise<string> {
   const response = await axios.post(
     "https://openrouter.ai/api/v1/chat/completions",
@@ -207,12 +223,54 @@ async function callOpenRouter(
         "HTTP-Referer": process.env.APP_URL || "https://nova-bot.replit.app",
         "X-Title": "Nova AI Bot",
       },
-      timeout: 30000,
+      timeout: timeoutMs,
     }
   );
   const reply = response.data?.choices?.[0]?.message?.content;
   if (!reply) throw new Error("Empty response from model");
   return reply;
+}
+
+// ── Premium fast path — race PREMIUM_RACE_MODELS in parallel, first wins ──────
+// Fires all 3 fast models simultaneously. Whoever responds first is used.
+// If all 3 fail, falls back through PREMIUM_QUALITY_FALLBACKS sequentially.
+async function chatPremiumFast(
+  apiKey: string,
+  messages: { role: string; content: string }[],
+  maxTokens: number,
+  temperature: number
+): Promise<string> {
+  // Race the fast models — AbortController per request so losers are cancelled
+  const controllers = PREMIUM_RACE_MODELS.map(() => new AbortController());
+
+  const racePromises = PREMIUM_RACE_MODELS.map((model, idx) =>
+    callOpenRouter(apiKey, model, messages, maxTokens, temperature, 12000)
+      .then((reply) => {
+        controllers.forEach((c, i) => { if (i !== idx) c.abort(); });
+        return reply;
+      })
+  );
+
+  try {
+    const reply = await Promise.any(racePromises);
+    if (reply) return reply;
+  } catch {
+    // AggregateError — all 3 fast models failed
+  }
+
+  // Quality fallback chain
+  for (const model of PREMIUM_QUALITY_FALLBACKS) {
+    try {
+      const reply = await callOpenRouter(apiKey, model, messages, maxTokens, temperature, 20000);
+      if (reply) return reply;
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 402 || status === 429 || status === 500 || status === 503) continue;
+      break;
+    }
+  }
+
+  throw new Error("All premium models failed");
 }
 
 export async function chat(
@@ -294,7 +352,20 @@ export async function chat(
   const maxTokens = settings.length === "short" ? 300 : 800;
   const temperature = settings.style === "funny" ? 0.92 : 0.78;
 
-  // ── Try primary model, fall back through free models on payment/rate errors ─
+  // ── Premium path: race fast models in parallel — first to reply wins ─────────
+  if (isPremium) {
+    try {
+      const reply = await chatPremiumFast(apiKey, fullMessages, maxTokens, temperature);
+      logger.info("Premium fast chat succeeded");
+      memory.messages.push({ role: "assistant", content: reply, ts: new Date() });
+      await memory.save();
+      return reply;
+    } catch {
+      logger.warn("Premium fast path failed — falling through to sequential fallback");
+    }
+  }
+
+  // ── Standard sequential fallback (free users, or premium last resort) ────────
   const modelsToTry = [
     primaryModel,
     ...FREE_FALLBACK_MODELS.filter(m => m !== primaryModel),
@@ -303,7 +374,7 @@ export async function chat(
   for (let i = 0; i < modelsToTry.length; i++) {
     const model = modelsToTry[i];
     try {
-      const reply = await callOpenRouter(apiKey, model, fullMessages, maxTokens, temperature);
+      const reply = await callOpenRouter(apiKey, model, fullMessages, maxTokens, temperature, 25000);
 
       if (i > 0) {
         logger.info({ primaryModel, usedModel: model }, "Chat fell back to free model successfully");
