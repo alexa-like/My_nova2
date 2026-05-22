@@ -26,7 +26,8 @@ import {
 } from "../utils/keyboards.js";
 import { encrypt, decrypt } from "../utils/crypto.js";
 import { webSearch, formatSearchResults } from "../services/webSearch.js";
-import { generateMusic } from "../services/music.js";
+import { generateTTS } from "../services/tts.js";
+import { transcribeAudio } from "../services/stt.js";
 import { generateProject, typeLabel } from "../services/projectGenerator.js";
 import {
   createGitHubRepo,
@@ -155,32 +156,6 @@ function detectImageIntent(text: string): string | null {
   return null;
 }
 
-// ── Music intent detection ─────────────────────────────────────────────────────
-
-function detectMusicIntent(text: string): string | null {
-  const t = text.trim();
-  if (t.length < 5 || t.startsWith("/")) return null;
-  const patterns = [
-    /^(?:generate|create|make|produce|compose|write)\s+(?:some\s+|me\s+|me\s+some\s+)?(?:music|audio|a song|a beat|a track|a melody|a tune)\s*(?:that|with|about|like|for|of)?\s*(.*)?/i,
-    /^(?:play|make)\s+(?:me\s+)?(?:some\s+)?(?:music|a song|a beat|a track)\s*(?:that|with|about|like|for|of)?\s*(.*)?/i,
-    /^(?:generate|make|create)\s+(?:a\s+)?(?:lo-?fi|hip-?hop|jazz|classical|ambient|chill|upbeat|epic|sad|happy|calm|relaxing|energetic|electronic|pop|rock|reggae|country)\s+(?:music|beat|track|song|melody|vibe)?\s*(.*)?/i,
-    /^(?:can you|could you)\s+(?:generate|create|make|compose|write|play)\s+(?:some\s+)?(?:music|a song|a beat|a track|a melody)\s*(?:that|with|about|like|for|of)?\s*(.*)?/i,
-    /^(?:generate|make|create)\s+(?:a\s+)?(?:music|song|beat|track)\s+(?:for|about|with)\s+(.+)/i,
-    /^i\s+(?:want|need)\s+(?:some\s+)?(?:music|a beat|a song)\s*(?:that|like|about|with|for)?\s*(.*)?/i,
-  ];
-  for (const pattern of patterns) {
-    const match = t.match(pattern);
-    if (match) {
-      const captured = (match[1] || "").trim();
-      const fullPrompt = captured.length > 3
-        ? captured
-        : t.replace(/^(?:generate|create|make|play|compose|produce|write|i want|i need)\s+(?:me\s+)?(?:some\s+)?/i, "").trim();
-      if (fullPrompt.length > 3) return fullPrompt.replace(/[?.!]+$/, "");
-    }
-  }
-  return null;
-}
-
 // ── Sticker intent detection ───────────────────────────────────────────────────
 
 function detectStickerIntent(text: string): string | null {
@@ -286,7 +261,43 @@ export async function handleVoiceMessage(
 ): Promise<void> {
   const chatId = msg.chat.id;
   if (user.banned) return;
-  await bot.sendMessage(chatId, "Voice messages aren't supported. Please type your message instead!");
+
+  const config = await getOrCreateBotConfig();
+  if (!config.features?.sttEnabled) {
+    await bot.sendMessage(chatId, "Voice transcription is temporarily unavailable. Please type your message instead.");
+    return;
+  }
+
+  const voice = msg.voice;
+  if (!voice) {
+    await bot.sendMessage(chatId, "Please send a voice message to transcribe.");
+    return;
+  }
+
+  const statusMsg = await bot.sendMessage(chatId, "🎤 Transcribing your voice message...");
+  const stopTyping = startTypingLoop(bot, chatId);
+  try {
+    const file = await bot.getFile(voice.file_id);
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
+    const response = await fetch(fileUrl);
+    if (!response.ok) throw new Error("Failed to download voice file");
+    const buffer = Buffer.from(await response.arrayBuffer());
+    stopTyping();
+    const transcript = await transcribeAudio(buffer);
+    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+    if (!transcript) {
+      await bot.sendMessage(chatId, "Could not transcribe your voice message. Please try again or type your message.");
+      return;
+    }
+    await bot.sendMessage(chatId, `🎤 Transcript:\n\n${transcript}`,
+      { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+    );
+  } catch (err) {
+    stopTyping();
+    logger.error({ err }, "Voice transcription error");
+    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+    await bot.sendMessage(chatId, "Voice transcription failed. Please type your message instead.");
+  }
 }
 
 export async function handlePrivateMessage(
@@ -371,7 +382,8 @@ export async function handlePrivateMessage(
         `Here's what I can do:\n` +
         `💬 Chat naturally — just type anything!\n` +
         `🎨 Generate images & stickers\n` +
-        `🎵 Generate music from a description\n` +
+        `🔊 Convert text to speech — /voice <text>\n` +
+        `🎤 Transcribe voice messages — /listen\n` +
         `🔍 Search the web with AI synthesis\n` +
         `⏰ Set reminders — /remind 1h Call mom\n` +
         `📄 Read & analyze PDFs, DOCX, TXT files\n` +
@@ -381,7 +393,6 @@ export async function handlePrivateMessage(
         `📝 Summarize anything — paste text, say "summarize"\n\n` +
         `💡 Tip: You don't need commands! Just type naturally:\n` +
         `   "draw me a sunset" → generates an image\n` +
-        `   "make chill lo-fi music" → generates music\n` +
         `   "build me a portfolio website" → builds it!\n\n` +
         `Use the menu below to get started 👇`
       );
@@ -403,8 +414,10 @@ export async function handlePrivateMessage(
       `💬 Just type anything to chat with me!\n\n` +
       `── Create ──\n` +
       `🎨 /image <prompt> — Generate an image\n` +
-      `🎵 /music <prompt> — Generate music\n` +
       `🖼️ /sticker <prompt> — Generate a sticker\n` +
+      `🔊 /voice <text> — Text-to-speech audio\n` +
+      `🎤 /listen — Transcribe a voice message\n` +
+      `🔍 /describe — Analyze or describe a photo\n` +
       `🔨 /build <idea> — Build a website or app with AI\n` +
       `🚀 /deploy <idea> — Build + deploy to Vercel\n\n` +
       `── Explore ──\n` +
@@ -464,7 +477,6 @@ export async function handlePrivateMessage(
       `── Usage ──\n` +
       `Messages today: ${user.usage.messages}\n` +
       `Images today: ${user.usage.images}/${await getImageLimit(user.premium.active)}\n` +
-      `Music today: ${user.usage.music ?? 0}\n` +
       `Total builds: ${builds}\n` +
       `Groups: ${user.groups.length}\n` +
       `Warnings: ${user.warnings}`,
@@ -570,9 +582,6 @@ export async function handlePrivateMessage(
     const imageLimit = await getImageLimit(user.premium.active);
     const daysSinceJoin = Math.floor((Date.now() - user.firstSeen.getTime()) / 86400000);
     const builds = user.usage.builds ?? 0;
-    const statsCfg = await getOrCreateBotConfig();
-    const musicLimit = user.premium.active ? statsCfg.usageLimits.premiumMusic : statsCfg.usageLimits.freeMusic;
-    const musicLimitStr = musicLimit < 0 ? "∞" : String(musicLimit);
     await bot.sendMessage(chatId,
       `📊 Your Stats\n\n` +
       `👤 ${name}\n` +
@@ -581,8 +590,7 @@ export async function handlePrivateMessage(
       `💎 Plan: ${premiumLine}\n\n` +
       `── Today ──\n` +
       `💬 Messages: ${user.usage.messages}\n` +
-      `🖼️ Images: ${user.usage.images}/${imageLimit >= 999999 ? "∞" : imageLimit}\n` +
-      `🎵 Music: ${user.usage.music ?? 0}/${musicLimitStr}\n\n` +
+      `🖼️ Images: ${user.usage.images}/${imageLimit >= 999999 ? "∞" : imageLimit}\n\n` +
       `── All Time ──\n` +
       `🔨 Builds: ${builds}\n` +
       `👥 Groups: ${user.groups.length}\n` +
@@ -999,16 +1007,47 @@ export async function handlePrivateMessage(
     return;
   }
 
-  // /music <description> — generate music via HuggingFace musicgen
-  if (text.startsWith("/music")) {
-    const prompt = text.replace(/^\/music\s*/i, "").trim();
+  // /voice <text> — text-to-speech
+  if (text.startsWith("/voice")) {
+    const prompt = text.replace(/^\/voice\s*/i, "").trim();
     if (!prompt) {
+      setPending(user.userId, "voice_tts_input");
       await bot.sendMessage(chatId,
-        "🎵 Usage: /music <description>\n\nExamples:\n• /music calm lo-fi beats for studying\n• /music epic cinematic orchestral\n• /music upbeat jazz piano"
+        "🔊 Type the text you want me to speak:",
+        { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
       );
       return;
     }
-    await handleMusicGeneration(bot, chatId, user, prompt, e);
+    await handleTTS(bot, chatId, user, prompt, e);
+    return;
+  }
+
+  // /listen — prompt user to send a voice message for transcription
+  if (text === "/listen" || text.startsWith("/listen ")) {
+    const config = await getOrCreateBotConfig();
+    if (!config.features?.sttEnabled) {
+      await bot.sendMessage(chatId, e ? "🎤 Voice transcription is temporarily unavailable." : "Voice transcription is temporarily unavailable.");
+      return;
+    }
+    await bot.sendMessage(chatId,
+      "🎤 Send me a voice message and I'll transcribe it for you!\n\nJust record and send a voice message now.",
+      { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
+    );
+    return;
+  }
+
+  // /describe — prompt user to send a photo for AI analysis
+  if (text === "/describe" || text.startsWith("/describe ")) {
+    const config = await getOrCreateBotConfig();
+    if (!config.features?.imageAnalysisEnabled) {
+      await bot.sendMessage(chatId, "Image analysis is temporarily unavailable, will be available soon.");
+      return;
+    }
+    setPending(user.userId, "describe_photo");
+    await bot.sendMessage(chatId,
+      "🔍 Send me a photo and I'll describe or analyze it!\n\nYou can also add a caption with a specific question.",
+      { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
+    );
     return;
   }
 
@@ -1093,12 +1132,6 @@ export async function handlePrivateMessage(
   const imagePrompt = detectImageIntent(text);
   if (imagePrompt) {
     await handleImageGeneration(bot, chatId, user, imagePrompt, e);
-    return;
-  }
-
-  const musicPrompt = detectMusicIntent(text);
-  if (musicPrompt) {
-    await handleMusicGeneration(bot, chatId, user, musicPrompt, e);
     return;
   }
 
@@ -1411,8 +1444,8 @@ async function handlePendingText(
         );
         break;
       }
-      case "music_input": {
-        await handleMusicGeneration(bot, chatId, user, input, e);
+      case "voice_tts_input": {
+        await handleTTS(bot, chatId, user, input, e);
         break;
       }
       case "sticker_input": {
@@ -2050,61 +2083,42 @@ async function sendProjectFiles(
   }
 }
 
-// ── Music generation helper ───────────────────────────────────────────────────
+// ── TTS generation helper ─────────────────────────────────────────────────────
 
-async function handleMusicGeneration(
+async function handleTTS(
   bot: TelegramBot,
   chatId: number,
   user: IUser,
-  prompt: string,
+  text: string,
   e: boolean
 ): Promise<void> {
-  if (!process.env.HUGGINGFACE_API_TOKEN) {
-    await bot.sendMessage(chatId, e ? "🎵 Music generation isn't configured yet. Ask the owner to set it up!" : "Music generation is not configured yet.");
+  const config = await getOrCreateBotConfig();
+  if (!config.features?.ttsEnabled) {
+    await bot.sendMessage(chatId, "Voice generation is temporarily unavailable, will be available soon.");
     return;
   }
-  // Per-day music limit check
-  const musLimCfg = await getOrCreateBotConfig();
-  const musicLimit = user.premium.active ? musLimCfg.usageLimits.premiumMusic : musLimCfg.usageLimits.freeMusic;
-  if (musicLimit >= 0 && (user.usage.music ?? 0) >= musicLimit) {
-    await bot.sendMessage(chatId,
-      `Daily music limit reached (${musicLimit}/day).` +
-      (user.premium.active ? "" : " Upgrade to /premium for more music generations.")
-    );
+  if (text.length > 1000) {
+    await bot.sendMessage(chatId, e ? "🔊 Text is too long! Maximum 1000 characters." : "Text too long. Maximum 1000 characters.");
     return;
   }
-  const sentMsg = await bot.sendMessage(chatId,
-    e ? "🎵 Generating your music... This takes 30-90 seconds. Hang tight!" : "🎵 Generating music..."
-  );
-  const stopTyping = startTypingLoop(bot, chatId);
-  const onStatus = async (msg: string) => {
-    try { await bot.editMessageText(msg, { chat_id: chatId, message_id: sentMsg.message_id }); } catch {}
-  };
+  const sentMsg = await bot.sendMessage(chatId, e ? "🔊 Generating voice..." : "Generating audio...");
+  const stopTyping = startTypingLoop(bot, chatId, "record_voice");
   try {
-    const audioBuffer = await generateMusic(prompt, onStatus);
+    const provider = config.providers?.tts || "huggingface";
+    const voice = config.providers?.ttsVoice || "nova";
+    const audioBuffer = await generateTTS(text, provider, voice);
     stopTyping();
     try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
     if (!audioBuffer) {
-      await bot.sendMessage(chatId,
-        e ? "🎵 Music generation failed. The model may be warming up — try again in a minute!" : "Music generation failed. Try again in a minute.",
-        { reply_markup: { inline_keyboard: [[{ text: "🎵 Try Again", callback_data: "music_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-      );
+      await bot.sendMessage(chatId, e ? "🔊 Voice generation failed. Try again!" : "Voice generation failed. Please try again.");
       return;
     }
-    user.usage.music = (user.usage.music ?? 0) + 1;
-    await user.save();
-    await bot.sendAudio(chatId, audioBuffer, { title: prompt.substring(0, 60), performer: "Nova AI" });
-    await bot.sendMessage(chatId,
-      e ? "🎵 Here's your music! Want a different style?" : "Music generated! Want another?",
-      { reply_markup: { inline_keyboard: [[{ text: "🎵 Generate Another", callback_data: "music_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-    );
+    await bot.sendVoice(chatId, audioBuffer, { caption: e ? "🔊 Here's your audio!" : undefined });
   } catch (err) {
     stopTyping();
-    logger.error({ err }, "Music generation error");
+    logger.error({ err }, "TTS error");
     try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-    await bot.sendMessage(chatId, e ? "🎵 Music generation failed. Please try again later." : "Music generation failed. Please try again later.",
-      { reply_markup: { inline_keyboard: [[{ text: "🎵 Try Again", callback_data: "music_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-    );
+    await bot.sendMessage(chatId, e ? "🔊 Voice generation failed. Please try again later." : "Voice generation failed. Please try again.");
   }
 }
 

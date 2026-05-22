@@ -6,15 +6,40 @@ export interface IModelEntry {
   active: boolean;
 }
 
+export type ChatProvider = "openrouter" | "pollinations";
+export type ImageProvider = "huggingface" | "pollinations";
+export type TtsProvider = "huggingface" | "openrouter";
+
+export interface IProviderSlot {
+  provider: ChatProvider;
+  model: string;
+}
+
+export interface IProviders {
+  freeChat: IProviderSlot;
+  premiumChat: IProviderSlot;
+  groupChat: IProviderSlot;
+  freeImage: ImageProvider;
+  premiumImage: ImageProvider;
+  groupImage: ImageProvider;
+  tts: TtsProvider;
+  ttsVoice: string;
+}
+
+export interface IFeatures {
+  imageEnabled: boolean;
+  ttsEnabled: boolean;
+  sttEnabled: boolean;
+  imageAnalysisEnabled: boolean;
+}
+
 export interface IUsageLimits {
   freeMessages: number;
   freeImages: number;
   freeBuilds: number;
-  freeMusic: number;
   premiumMessages: number;
   premiumImages: number;
   premiumBuilds: number;
-  premiumMusic: number;
   resetIntervalHours: number;
 }
 
@@ -28,6 +53,8 @@ export interface IBotConfig extends Document {
   usageLimits: IUsageLimits;
   welcomeMessage: string;
   botPersonality: string;
+  providers: IProviders;
+  features: IFeatures;
 }
 
 const ModelEntrySchema = new Schema<IModelEntry>(
@@ -40,12 +67,42 @@ const UsageLimitsSchema = new Schema(
     freeMessages:    { type: Number, default: 50 },
     freeImages:      { type: Number, default: 5 },
     freeBuilds:      { type: Number, default: 3 },
-    freeMusic:       { type: Number, default: 3 },
     premiumMessages: { type: Number, default: -1 },
     premiumImages:   { type: Number, default: -1 },
     premiumBuilds:   { type: Number, default: 20 },
-    premiumMusic:    { type: Number, default: -1 },
     resetIntervalHours: { type: Number, default: 24 },
+  },
+  { _id: false }
+);
+
+const ProviderSlotSchema = new Schema<IProviderSlot>(
+  {
+    provider: { type: String, enum: ["openrouter", "pollinations"], default: "pollinations" },
+    model: { type: String, default: "openai" },
+  },
+  { _id: false }
+);
+
+const ProvidersSchema = new Schema<IProviders>(
+  {
+    freeChat:    { type: ProviderSlotSchema, default: () => ({ provider: "pollinations", model: "openai" }) },
+    premiumChat: { type: ProviderSlotSchema, default: () => ({ provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" }) },
+    groupChat:   { type: ProviderSlotSchema, default: () => ({ provider: "pollinations", model: "openai" }) },
+    freeImage:    { type: String, enum: ["huggingface", "pollinations"], default: "pollinations" },
+    premiumImage: { type: String, enum: ["huggingface", "pollinations"], default: "huggingface" },
+    groupImage:   { type: String, enum: ["huggingface", "pollinations"], default: "pollinations" },
+    tts:      { type: String, enum: ["huggingface", "openrouter"], default: "huggingface" },
+    ttsVoice: { type: String, default: "alloy" },
+  },
+  { _id: false }
+);
+
+const FeaturesSchema = new Schema<IFeatures>(
+  {
+    imageEnabled:        { type: Boolean, default: true },
+    ttsEnabled:          { type: Boolean, default: true },
+    sttEnabled:          { type: Boolean, default: true },
+    imageAnalysisEnabled:{ type: Boolean, default: true },
   },
   { _id: false }
 );
@@ -61,37 +118,32 @@ const BotConfigSchema = new Schema<IBotConfig>(
     usageLimits: { type: UsageLimitsSchema, default: () => ({}) },
     welcomeMessage:  { type: String, default: "" },
     botPersonality:  { type: String, default: "" },
+    providers: { type: ProvidersSchema, default: () => ({}) },
+    features:  { type: FeaturesSchema,  default: () => ({}) },
   },
   { timestamps: true }
 );
 
 export const BotConfig = mongoose.model<IBotConfig>("BotConfig", BotConfigSchema);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DEFAULT MODEL CATALOGS
-// All entries verified free / open-access as of May 2025.
-// Chat models: OpenRouter (:free suffix = zero cost, confirmed via live API).
-// Image: HuggingFace Inference API (inf:true or inf:"warm" verified).
-// ─────────────────────────────────────────────────────────────────────────────
-
 const DEFAULT_CHAT_MODELS: IModelEntry[] = [
   { id: "meta-llama/llama-3.3-70b-instruct:free",               name: "Llama 3.3 70B — Best Quality",         active: true  },
-  { id: "google/gemma-3-12b-it:free",                            name: "Gemma 3 12B — Fast & Accurate",        active: false },
-  { id: "qwen/qwen-2.5-72b-instruct:free",                       name: "Qwen 2.5 72B — Multilingual",          active: false },
-  { id: "deepseek/deepseek-r1-distill-llama-70b:free",           name: "DeepSeek R1 70B — Reasoning",          active: false },
-  { id: "deepseek/deepseek-r1:free",                             name: "DeepSeek R1 — Full Reasoning",         active: false },
+  { id: "google/gemma-4-31b-it:free",                            name: "Gemma 4 31B — Google",                 active: false },
+  { id: "deepseek/deepseek-v4-flash:free",                       name: "DeepSeek V4 Flash — Fast",             active: false },
+  { id: "qwen/qwen3-coder:free",                                 name: "Qwen3 Coder — Code & Chat",            active: false },
+  { id: "openai/gpt-oss-20b:free",                               name: "GPT OSS 20B — OpenAI Free",            active: false },
+  { id: "nvidia/nemotron-3-super-120b-a12b:free",                name: "Nemotron 120B — NVIDIA",               active: false },
   { id: "microsoft/phi-4:free",                                  name: "Phi-4 — Reliable Mid-Size",            active: false },
-  { id: "mistralai/mixtral-8x7b-instruct:free",                  name: "Mixtral 8x7B — Balanced",              active: false },
   { id: "mistralai/mistral-7b-instruct:free",                    name: "Mistral 7B — Fast & Reliable",         active: false },
-  { id: "google/gemma-2-9b-it:free",                             name: "Gemma 2 9B — Smart & Quick",           active: false },
   { id: "meta-llama/llama-3.1-8b-instruct:free",                 name: "Llama 3.1 8B — Ultra Fast",            active: false },
-  { id: "meta-llama/llama-3.2-3b-instruct:free",                 name: "Llama 3.2 3B — Tiny/Fastest",          active: false },
+  { id: "meta-llama/llama-3.2-3b-instruct:free",                 name: "Llama 3.2 3B — Smallest/Fastest",      active: false },
   { id: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", name: "Dolphin 24B — Uncensored",     active: false },
 ];
 
 const DEFAULT_IMAGE_MODELS: IModelEntry[] = [
   { id: "stabilityai/stable-diffusion-xl-base-1.0",               name: "SDXL 1.0 — High Quality",           active: true  },
-  { id: "black-forest-labs/FLUX.1-schnell",                        name: "FLUX.1 Schnell — Fast & Sharp",     active: false },
+  { id: "black-forest-labs/FLUX.1-schnell",                        name: "FLUX Schnell — Fast & Sharp",       active: false },
+  { id: "black-forest-labs/FLUX.1-dev",                            name: "FLUX Dev — Best Quality",           active: false },
   { id: "SG161222/RealVisXL_V4.0",                                 name: "RealVisXL v4 — Photorealistic",     active: false },
   { id: "Lykon/dreamshaper-8",                                     name: "DreamShaper 8 — Creative",          active: false },
   { id: "cagliostrolab/animagine-xl-4.0",                          name: "Animagine XL 4.0 — Anime",          active: false },
@@ -99,7 +151,6 @@ const DEFAULT_IMAGE_MODELS: IModelEntry[] = [
   { id: "SG161222/Realistic_Vision_V5.1_noVAE",                    name: "Realistic Vision v5.1 — Portraits", active: false },
   { id: "CompVis/stable-diffusion-v1-4",                           name: "SD v1.4 — Classic Reliable",        active: false },
   { id: "stable-diffusion-v1-5/stable-diffusion-v1-5",             name: "SD v1.5 — Reliable Fallback",       active: false },
-  { id: "stabilityai/stable-diffusion-3-medium-diffusers",         name: "SD 3 Medium — Modern Quality",      active: false },
 ];
 
 export async function getOrCreateBotConfig(): Promise<IBotConfig> {
@@ -114,6 +165,5 @@ export async function getOrCreateBotConfig(): Promise<IBotConfig> {
     await config.save();
     return config;
   }
-
   return config;
 }

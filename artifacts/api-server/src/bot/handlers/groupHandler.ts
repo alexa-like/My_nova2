@@ -309,7 +309,8 @@ export async function handleGroupMessage(
       "@Nova /ask <question> — Ask anything\n" +
       "@Nova /translate <text> — Translate to English\n" +
       "@Nova /search <query> — Web search\n" +
-      "@Nova /music <desc> — Generate music\n" +
+      "@Nova /voice <text> — Convert text to speech\n" +
+      "@Nova /describe — Send a photo for AI description\n" +
       "@Nova /sticker <desc> — Generate sticker\n\n" +
       "Admin — Settings:\n" +
       "/ai on|off — Toggle AI replies\n" +
@@ -1416,37 +1417,87 @@ export async function handleGroupMessage(
     return;
   }
 
-  // /music command when bot is mentioned
-  if (cleanText.toLowerCase().startsWith("/music")) {
-    const prompt = cleanText.replace(/^\/music\s*/i, "").trim();
-    if (!prompt) {
+  // /voice command when bot is mentioned
+  if (cleanText.toLowerCase().startsWith("/voice")) {
+    const text = cleanText.replace(/^\/voice\s*/i, "").trim();
+    if (!text) {
       await bot.sendMessage(chatId,
-        `Give me a description!\nExample: @${botUsername} /music calm lo-fi beats for studying`,
+        `Give me some text!\nExample: @${botUsername} /voice Hello, this is Nova speaking`,
         { reply_to_message_id: msg.message_id }
       );
       return;
     }
-    if (!process.env.HUGGINGFACE_API_TOKEN) {
-      await bot.sendMessage(chatId, "Music generation is not configured.", { reply_to_message_id: msg.message_id });
+    const { getOrCreateBotConfig } = await import("../models/BotConfig.js");
+    const config = await getOrCreateBotConfig();
+    if (!config.features?.ttsEnabled) {
+      await bot.sendMessage(chatId, "Voice generation is temporarily unavailable.", { reply_to_message_id: msg.message_id });
       return;
     }
-    const sentMsg = await bot.sendMessage(chatId, `🎵 Generating: "${prompt.slice(0, 50)}"... (30-60s)`);
-    const stopMusicTyping = startTypingLoop(bot, chatId);
+    const sentMsg = await bot.sendMessage(chatId, `🔊 Generating voice...`);
+    const stopVoiceTyping = startTypingLoop(bot, chatId, "record_voice");
     try {
-      const { generateMusic } = await import("../services/music.js");
-      const audioBuffer = await generateMusic(prompt);
-      stopMusicTyping();
+      const { generateTTS } = await import("../services/tts.js");
+      const provider = config.providers?.tts || "huggingface";
+      const voice = config.providers?.ttsVoice || "nova";
+      const audioBuffer = await generateTTS(text, provider, voice);
+      stopVoiceTyping();
       try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
       if (!audioBuffer) {
-        await bot.sendMessage(chatId, "Music generation failed. Try again in a minute.");
+        await bot.sendMessage(chatId, "Voice generation failed. Try again.", { reply_to_message_id: msg.message_id });
         return;
       }
-      await bot.sendAudio(chatId, audioBuffer, { title: prompt.substring(0, 60), performer: "Nova AI" });
+      await bot.sendVoice(chatId, audioBuffer);
     } catch (err) {
-      stopMusicTyping();
-      logger.error({ err }, "Group music error");
+      stopVoiceTyping();
+      logger.error({ err }, "Group TTS error");
       try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-      await bot.sendMessage(chatId, "Music generation failed. Please try again.");
+      await bot.sendMessage(chatId, "Voice generation failed. Please try again.");
+    }
+    return;
+  }
+
+  // /describe command when bot is mentioned (reply to a photo)
+  if (cleanText.toLowerCase().startsWith("/describe")) {
+    const replyMsg = msg.reply_to_message;
+    if (!replyMsg?.photo) {
+      await bot.sendMessage(chatId,
+        `Reply to a photo with @${botUsername} /describe to get an AI description.`,
+        { reply_to_message_id: msg.message_id }
+      );
+      return;
+    }
+    const { getOrCreateBotConfig } = await import("../models/BotConfig.js");
+    const config = await getOrCreateBotConfig();
+    if (!config.features?.imageAnalysisEnabled) {
+      await bot.sendMessage(chatId, "Image analysis is temporarily unavailable.", { reply_to_message_id: msg.message_id });
+      return;
+    }
+    const photos = replyMsg.photo;
+    const photo = photos[photos.length - 1];
+    const sentMsg = await bot.sendMessage(chatId, "🔍 Analyzing image...");
+    const stopDescribeTyping = startTypingLoop(bot, chatId, "upload_photo");
+    try {
+      const { downloadTelegramPhoto, analyzeImage } = await import("./privateHandler.js");
+      const imageBuffer = await downloadTelegramPhoto(bot, photo.file_id);
+      if (!imageBuffer) {
+        stopDescribeTyping();
+        try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+        await bot.sendMessage(chatId, "Failed to download the image.", { reply_to_message_id: msg.message_id });
+        return;
+      }
+      const rawAnalysis = await analyzeImage(imageBuffer);
+      stopDescribeTyping();
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      if (!rawAnalysis) {
+        await bot.sendMessage(chatId, "Could not analyze this image. Please try again.", { reply_to_message_id: replyMsg.message_id });
+        return;
+      }
+      await bot.sendMessage(chatId, `🔍 ${rawAnalysis}`, { reply_to_message_id: replyMsg.message_id });
+    } catch (err) {
+      stopDescribeTyping();
+      logger.error({ err }, "Group describe error");
+      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Image analysis failed. Please try again.");
     }
     return;
   }

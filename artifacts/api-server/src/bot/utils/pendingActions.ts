@@ -22,7 +22,7 @@ export type PendingTextAction =
   | "write_email"
   | "write_lyrics"
   | "remind_input"
-  | "music_input"
+  | "voice_tts_input"
   | "search_input"
   | "sticker_input"
   | "github_set_username"
@@ -35,7 +35,8 @@ export type PendingPhotoAction =
   | "img_edit"
   | "img_enhance"
   | "img_stylize"
-  | "img_restore";
+  | "img_restore"
+  | "describe_photo";
 
 export type OwnerPendingAction =
   | "owner_lookup"
@@ -74,6 +75,7 @@ export const PHOTO_ACTIONS = new Set<PendingActionType>([
   "img_enhance",
   "img_stylize",
   "img_restore",
+  "describe_photo",
 ]);
 
 export const OWNER_PENDING_ACTIONS = new Set<PendingActionType>([

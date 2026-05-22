@@ -2,36 +2,32 @@ import axios from "axios";
 import { getOrCreateBotConfig } from "../models/BotConfig.js";
 import { logger } from "../../lib/logger.js";
 
-// Fallback limits when BotConfig is unavailable
 const FREE_LIMIT_DEFAULT = 5;
-const PREMIUM_LIMIT_DEFAULT = 999999; // effectively unlimited
+const PREMIUM_LIMIT_DEFAULT = 999999;
 
-// ── Fallback image models — all verified inf:true on HF Inference API (May 2025) ─
-// Tried in order when the primary (BotConfig.activeImageModel) fails or is loading.
-// Mix of quality tiers: photorealistic, creative/stylized, anime, classic reliable.
+// ── Fallback image models ─────────────────────────────────────────────────────
 const FALLBACK_MODELS = [
-  "stabilityai/stable-diffusion-xl-base-1.0",               // 1.9M DL — highly reliable
-  "SG161222/RealVisXL_V4.0",                                 // photorealistic portraits
-  "Lykon/dreamshaper-8",                                     // creative all-purpose
-  "cagliostrolab/animagine-xl-4.0",                          // anime / illustration
-  "playgroundai/playground-v2.5-1024px-aesthetic",           // aesthetic quality
-  "SG161222/Realistic_Vision_V5.1_noVAE",                    // photorealistic v5
-  "CompVis/stable-diffusion-v1-4",                           // classic, very reliable
-  "stable-diffusion-v1-5/stable-diffusion-v1-5",             // 1.7M DL — reliable fallback
-  "stabilityai/stable-diffusion-3-medium-diffusers",         // modern quality (last)
+  "stabilityai/stable-diffusion-xl-base-1.0",
+  "SG161222/RealVisXL_V4.0",
+  "Lykon/dreamshaper-8",
+  "cagliostrolab/animagine-xl-4.0",
+  "playgroundai/playground-v2.5-1024px-aesthetic",
+  "SG161222/Realistic_Vision_V5.1_noVAE",
+  "CompVis/stable-diffusion-v1-4",
+  "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "stabilityai/stable-diffusion-3-medium-diffusers",
 ];
 
 const IMG2IMG_ENDPOINT =
   "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix";
 
-// ── Pollinations.ai — 100% free, no API key required ─────────────────────────
-// Uses FLUX under the hood. Works as primary fallback when HF token is absent.
+// ── Pollinations.ai — free, no API key required ───────────────────────────────
 async function generateImagePollinations(prompt: string): Promise<Buffer | null> {
   try {
     const seed = Math.floor(Math.random() * 2147483647);
     const encoded = encodeURIComponent(prompt);
     const url = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
-    logger.info({ seed }, "Attempting image generation via Pollinations.ai (no key needed)");
+    logger.info({ seed }, "Attempting image generation via Pollinations.ai");
     const response = await axios.get(url, {
       responseType: "arraybuffer",
       timeout: 90000,
@@ -50,29 +46,20 @@ async function generateImagePollinations(prompt: string): Promise<Buffer | null>
   }
 }
 
-export async function generateImage(prompt: string): Promise<Buffer | null> {
+// ── HuggingFace image generation ──────────────────────────────────────────────
+async function generateImageHuggingFace(prompt: string): Promise<Buffer | null> {
   const token = process.env.HUGGINGFACE_API_TOKEN;
-
-  // ── No HuggingFace token: fall back to Pollinations.ai (free, no key) ────
-  if (!token) {
-    return generateImagePollinations(prompt);
-  }
+  if (!token) return null;
 
   const config = await getOrCreateBotConfig();
   const primaryModel = config.activeImageModel;
-
-  // Build endpoint list: primary first, then fallbacks (deduplicated)
-  const allModels = [
-    primaryModel,
-    ...FALLBACK_MODELS.filter(m => m !== primaryModel),
-  ];
+  const allModels = [primaryModel, ...FALLBACK_MODELS.filter(m => m !== primaryModel)];
 
   for (const modelId of allModels) {
     const url = `https://api-inference.huggingface.co/models/${modelId}`;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        logger.info({ model: modelId, attempt }, "Attempting image generation");
-
+        logger.info({ model: modelId, attempt }, "Attempting HF image generation");
         const response = await axios.post(
           url,
           { inputs: prompt },
@@ -87,45 +74,66 @@ export async function generateImage(prompt: string): Promise<Buffer | null> {
             timeout: 120000,
           }
         );
-
         const contentType = (response.headers["content-type"] as string) || "";
-        if (
-          contentType.includes("image") ||
-          (response.data as Buffer)?.byteLength > 1000
-        ) {
-          logger.info({ model: modelId }, "Image generated successfully");
+        if (contentType.includes("image") || (response.data as Buffer)?.byteLength > 1000) {
+          logger.info({ model: modelId }, "HF image generated successfully");
           return Buffer.from(response.data);
         }
-
-        logger.warn(
-          { model: modelId, contentType },
-          "Response was not an image, trying next model"
-        );
+        logger.warn({ model: modelId, contentType }, "Response was not an image, trying next model");
         break;
       } catch (err: any) {
         const status = err?.response?.status;
         if (status === 503 && attempt === 1) {
-          logger.warn({ model: modelId }, "Image model loading (503) — retrying with wait");
+          logger.warn({ model: modelId }, "Image model loading (503) — retrying");
           await new Promise((r) => setTimeout(r, 8000));
           continue;
         }
-        logger.warn(
-          { model: modelId, status },
-          "Image generation failed for this model, trying next"
-        );
+        logger.warn({ model: modelId, status }, "Image generation failed for this model");
         break;
       }
     }
   }
+  return null;
+}
 
-  // ── All HuggingFace models failed — try Pollinations.ai as final fallback ─
-  logger.warn("All HF image models failed — falling back to Pollinations.ai");
-  return generateImagePollinations(prompt);
+export async function generateImage(
+  prompt: string,
+  context?: "free" | "premium" | "group"
+): Promise<Buffer | null> {
+  const config = await getOrCreateBotConfig();
+  const providers = config.providers;
+
+  let imageProvider: "huggingface" | "pollinations" = "pollinations";
+  if (context === "premium") {
+    imageProvider = providers?.premiumImage ?? "huggingface";
+  } else if (context === "group") {
+    imageProvider = providers?.groupImage ?? "pollinations";
+  } else {
+    imageProvider = providers?.freeImage ?? "pollinations";
+  }
+
+  logger.info({ context, imageProvider }, "Generating image");
+
+  if (imageProvider === "huggingface") {
+    const buf = await generateImageHuggingFace(prompt);
+    if (buf) return buf;
+    logger.warn("HF image failed — falling back to Pollinations");
+    return generateImagePollinations(prompt);
+  }
+
+  // pollinations (or no HF token)
+  const buf = await generateImagePollinations(prompt);
+  if (buf) return buf;
+
+  // Last resort: try HF anyway
+  if (process.env.HUGGINGFACE_API_TOKEN) {
+    return generateImageHuggingFace(prompt);
+  }
+  return null;
 }
 
 /**
  * Edit an existing image using a text instruction (img2img).
- * Falls back to text-to-image if img2img fails.
  */
 export async function editImage(
   imageBuffer: Buffer,
@@ -138,7 +146,6 @@ export async function editImage(
 
   try {
     logger.info({ endpoint: IMG2IMG_ENDPOINT }, "Attempting img2img");
-
     const response = await axios.post(
       IMG2IMG_ENDPOINT,
       {
@@ -174,7 +181,6 @@ export async function editImage(
         (Array.isArray(json) ? json[0]?.generated_image : json?.generated_image) ||
         json?.image ||
         (Array.isArray(json) ? json[0]?.image : null);
-
       if (b64 && typeof b64 === "string") {
         logger.info("img2img succeeded (JSON base64)");
         return Buffer.from(b64, "base64");
@@ -186,15 +192,9 @@ export async function editImage(
       }
     }
 
-    logger.warn(
-      { contentType, byteLength: rawData?.byteLength },
-      "img2img response unrecognised — falling back"
-    );
+    logger.warn({ contentType, byteLength: rawData?.byteLength }, "img2img response unrecognised — falling back");
   } catch (err: any) {
-    logger.warn(
-      { err: err?.message, status: err?.response?.status },
-      "img2img failed — falling back to text generation"
-    );
+    logger.warn({ err: err?.message, status: err?.response?.status }, "img2img failed — falling back");
   }
 
   return generateImage(prompt);
@@ -213,10 +213,7 @@ export async function downloadTelegramPhoto(
     const file = await bot.getFile(fileId);
     if (!file.file_path) return null;
     const url = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
-    const response = await axios.get(url, {
-      responseType: "arraybuffer",
-      timeout: 30000,
-    });
+    const response = await axios.get(url, { responseType: "arraybuffer", timeout: 30000 });
     return Buffer.from(response.data);
   } catch (err: any) {
     logger.warn({ err: err?.message }, "Failed to download Telegram photo");
@@ -228,27 +225,21 @@ export async function getImageLimit(isPremium: boolean): Promise<number> {
   try {
     const config = await getOrCreateBotConfig();
     const n = isPremium ? config.usageLimits.premiumImages : config.usageLimits.freeImages;
-    return n < 0 ? 999999 : n; // -1 = unlimited
+    return n < 0 ? 999999 : n;
   } catch {
     return isPremium ? PREMIUM_LIMIT_DEFAULT : FREE_LIMIT_DEFAULT;
   }
 }
 
 const STYLE_PRESETS: Record<string, string> = {
-  anime:
-    "anime style, vibrant colors, cel-shaded, sharp outlines, Studio Ghibli inspired, beautiful",
-  realistic:
-    "photorealistic, 8K resolution, ultra-detailed, professional photography, natural lighting",
-  oil: "oil painting, thick brushstrokes, impressionist style, canvas texture, rich colors, museum quality",
-  watercolor:
-    "watercolor painting, soft washes, delicate brushwork, pastel tones, artistic",
-  cyberpunk:
-    "cyberpunk style, neon lights, futuristic city, rain-slicked streets, dark atmosphere, cinematic",
-  fantasy:
-    "fantasy art, magical, ethereal lighting, epic scale, detailed world-building, concept art",
-  sketch:
-    "pencil sketch, detailed line art, black and white, cross-hatching, professional illustration",
-  pixel: "pixel art, 16-bit style, retro game aesthetic, vibrant palette, crisp pixels",
+  anime:     "anime style, vibrant colors, cel-shaded, sharp outlines, Studio Ghibli inspired, beautiful",
+  realistic: "photorealistic, 8K resolution, ultra-detailed, professional photography, natural lighting",
+  oil:       "oil painting, thick brushstrokes, impressionist style, canvas texture, rich colors, museum quality",
+  watercolor:"watercolor painting, soft washes, delicate brushwork, pastel tones, artistic",
+  cyberpunk: "cyberpunk style, neon lights, futuristic city, rain-slicked streets, dark atmosphere, cinematic",
+  fantasy:   "fantasy art, magical, ethereal lighting, epic scale, detailed world-building, concept art",
+  sketch:    "pencil sketch, detailed line art, black and white, cross-hatching, professional illustration",
+  pixel:     "pixel art, 16-bit style, retro game aesthetic, vibrant palette, crisp pixels",
 };
 
 export function applyStylePreset(prompt: string, preset?: string): string {

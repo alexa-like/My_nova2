@@ -49,6 +49,15 @@ import {
   githubSettingsKeyboard,
   deploymentsKeyboard,
   projectsListKeyboard,
+  ownerProvidersKeyboard,
+  ownerFeaturesKeyboard,
+  ownerChatProvidersKeyboard,
+  ownerPickChatProviderKeyboard,
+  ownerPickOpenRouterModelKeyboard,
+  ownerImageProvidersKeyboard,
+  ownerPickImageProviderKeyboard,
+  ownerTtsKeyboard,
+  ownerPickTtsVoiceKeyboard,
 } from "../utils/keyboards.js";
 import { logger } from "../../lib/logger.js";
 
@@ -590,25 +599,6 @@ export async function handleCallbackQuery(
       await editMsg(bot, query,
         `🔧 Restore Image\n\nSend me an old or damaged photo — I'll generate a clean, sharp version:`,
         backToImgKeyboard()
-      );
-      return;
-    }
-
-    if (data === "music_btn") {
-      setPending(userId, "music_input");
-      await editMsg(bot, query,
-        `🎵 Generate Music\n\nDescribe the music you want and I'll create it:\n\n• calm lo-fi beats for studying\n• epic cinematic orchestral\n• upbeat jazz piano\n• dark electronic ambient`,
-        backToImgKeyboard()
-      );
-      return;
-    }
-
-    if (data === "music_generate_btn") {
-      setPending(userId, "music_input");
-      await bot.answerCallbackQuery(query.id);
-      await bot.sendMessage(chatId,
-        `🎵 What should I generate next?\n\nDescribe the style, mood, or genre:\n• upbeat summer pop\n• peaceful rain sounds\n• intense battle theme`,
-        { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
       );
       return;
     }
@@ -1936,6 +1926,236 @@ export async function handleCallbackQuery(
       } catch {
         await answer(bot, query.id, "Could not pin — I need admin + pin rights.", true);
       }
+      return;
+    }
+
+    if (data === "own_providers") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const config = await getOrCreateBotConfig();
+      const providers = config.providers || {};
+      await editMsg(bot, query,
+        `🔌 Providers\n━━━━━━━━━━━━━━━━\nManage AI provider routing for chat, image, and TTS.`,
+        ownerProvidersKeyboard()
+      );
+      return;
+    }
+
+    if (data === "own_features") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const config = await getOrCreateBotConfig();
+      const features = config.features || {};
+      await editMsg(bot, query,
+        `⚙️ Features\n━━━━━━━━━━━━━━━━\nToggle bot capabilities on or off.`,
+        ownerFeaturesKeyboard({
+          imageEnabled: features.imageEnabled !== false,
+          ttsEnabled: features.ttsEnabled !== false,
+          sttEnabled: features.sttEnabled !== false,
+          imageAnalysisEnabled: features.imageAnalysisEnabled !== false,
+        })
+      );
+      return;
+    }
+
+    if (data === "own_feat_image" || data === "own_feat_tts" || data === "own_feat_stt" || data === "own_feat_imganalyze") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const config = await getOrCreateBotConfig();
+      if (!config.features) config.features = {};
+      const featureMap: Record<string, keyof typeof config.features> = {
+        own_feat_image: "imageEnabled",
+        own_feat_tts: "ttsEnabled",
+        own_feat_stt: "sttEnabled",
+        own_feat_imganalyze: "imageAnalysisEnabled",
+      };
+      const key = featureMap[data];
+      (config.features as any)[key] = !((config.features as any)[key] !== false);
+      await config.save();
+      const val = (config.features as any)[key];
+      await answer(bot, query.id, `${val ? "✅ Enabled" : "❌ Disabled"}`);
+      await editMsg(bot, query,
+        `⚙️ Features\n━━━━━━━━━━━━━━━━\nToggle bot capabilities on or off.`,
+        ownerFeaturesKeyboard({
+          imageEnabled: config.features.imageEnabled !== false,
+          ttsEnabled: config.features.ttsEnabled !== false,
+          sttEnabled: config.features.sttEnabled !== false,
+          imageAnalysisEnabled: config.features.imageAnalysisEnabled !== false,
+        })
+      );
+      return;
+    }
+
+    if (data === "own_chat_providers") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const config = await getOrCreateBotConfig();
+      const providers = config.providers || {};
+      await editMsg(bot, query,
+        `💬 Chat Providers\n━━━━━━━━━━━━━━━━\nChoose which AI provider handles each user type.`,
+        ownerChatProvidersKeyboard({
+          freeChat: { provider: providers.freeChat || "pollinations", model: providers.freeChatModel || "" },
+          premiumChat: { provider: providers.premiumChat || "openrouter", model: providers.premiumChatModel || "" },
+          groupChat: { provider: providers.groupChat || "pollinations", model: providers.groupChatModel || "" },
+        })
+      );
+      return;
+    }
+
+    if (data === "own_chat_slot_free" || data === "own_chat_slot_premium" || data === "own_chat_slot_group") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const slot = data.replace("own_chat_slot_", "");
+      await editMsg(bot, query,
+        `💬 Chat Provider — ${slot.charAt(0).toUpperCase() + slot.slice(1)}\n━━━━━━━━━━━━━━━━\nPick the AI provider:`,
+        ownerPickChatProviderKeyboard(slot)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_chat_prov_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const parts = data.replace("own_chat_prov_", "").split("_");
+      const slot = parts[0];
+      const prov = parts.slice(1).join("_");
+      const config = await getOrCreateBotConfig();
+      if (!config.providers) config.providers = {} as any;
+      if (prov === "pollinations") {
+        (config.providers as any)[`${slot}Chat`] = "pollinations";
+        (config.providers as any)[`${slot}ChatModel`] = "";
+        await config.save();
+        await answer(bot, query.id, "✅ Switched to Pollinations");
+        await editMsg(bot, query,
+          `💬 Chat Providers\n━━━━━━━━━━━━━━━━\nUpdated successfully.`,
+          ownerChatProvidersKeyboard({
+            freeChat: { provider: config.providers.freeChat || "pollinations", model: config.providers.freeChatModel || "" },
+            premiumChat: { provider: config.providers.premiumChat || "openrouter", model: config.providers.premiumChatModel || "" },
+            groupChat: { provider: config.providers.groupChat || "pollinations", model: config.providers.groupChatModel || "" },
+          })
+        );
+      } else {
+        (config.providers as any)[`${slot}Chat`] = "openrouter";
+        await config.save();
+        await editMsg(bot, query,
+          `💬 Pick OpenRouter Model\n━━━━━━━━━━━━━━━━\nChoose the model to use:`,
+          ownerPickOpenRouterModelKeyboard(slot, config.chatModels)
+        );
+      }
+      return;
+    }
+
+    if (data.startsWith("own_chat_model_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const parts = data.replace("own_chat_model_", "").split("_");
+      const slot = parts[0];
+      const idx = parseInt(parts[1]);
+      const config = await getOrCreateBotConfig();
+      const model = config.chatModels[idx];
+      if (!model) { await answer(bot, query.id, "Model not found."); return; }
+      if (!config.providers) config.providers = {} as any;
+      (config.providers as any)[`${slot}Chat`] = "openrouter";
+      (config.providers as any)[`${slot}ChatModel`] = model.id;
+      await config.save();
+      await answer(bot, query.id, `✅ Set to ${model.name}`);
+      await editMsg(bot, query,
+        `💬 Chat Providers\n━━━━━━━━━━━━━━━━\nUpdated successfully.`,
+        ownerChatProvidersKeyboard({
+          freeChat: { provider: config.providers.freeChat || "pollinations", model: config.providers.freeChatModel || "" },
+          premiumChat: { provider: config.providers.premiumChat || "openrouter", model: config.providers.premiumChatModel || "" },
+          groupChat: { provider: config.providers.groupChat || "pollinations", model: config.providers.groupChatModel || "" },
+        })
+      );
+      return;
+    }
+
+    if (data === "own_img_providers") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const config = await getOrCreateBotConfig();
+      const providers = config.providers || {};
+      await editMsg(bot, query,
+        `🖼 Image Providers\n━━━━━━━━━━━━━━━━\nChoose which provider generates images per user type.`,
+        ownerImageProvidersKeyboard({
+          freeImage: providers.freeImage || "pollinations",
+          premiumImage: providers.premiumImage || "huggingface",
+          groupImage: providers.groupImage || "pollinations",
+        })
+      );
+      return;
+    }
+
+    if (data === "own_img_slot_free" || data === "own_img_slot_premium" || data === "own_img_slot_group") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const slot = data.replace("own_img_slot_", "");
+      await editMsg(bot, query,
+        `🖼 Image Provider — ${slot.charAt(0).toUpperCase() + slot.slice(1)}\n━━━━━━━━━━━━━━━━\nPick the provider:`,
+        ownerPickImageProviderKeyboard(slot)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_img_prov_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const parts = data.replace("own_img_prov_", "").split("_");
+      const slot = parts[0];
+      const prov = parts.slice(1).join("_");
+      const config = await getOrCreateBotConfig();
+      if (!config.providers) config.providers = {} as any;
+      (config.providers as any)[`${slot}Image`] = prov;
+      await config.save();
+      await answer(bot, query.id, `✅ Switched to ${prov}`);
+      await editMsg(bot, query,
+        `🖼 Image Providers\n━━━━━━━━━━━━━━━━\nUpdated successfully.`,
+        ownerImageProvidersKeyboard({
+          freeImage: config.providers.freeImage || "pollinations",
+          premiumImage: config.providers.premiumImage || "huggingface",
+          groupImage: config.providers.groupImage || "pollinations",
+        })
+      );
+      return;
+    }
+
+    if (data === "own_tts_provider") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const config = await getOrCreateBotConfig();
+      const providers = config.providers || {};
+      await editMsg(bot, query,
+        `🔊 TTS Provider\n━━━━━━━━━━━━━━━━\nSelect the text-to-speech provider and voice.`,
+        ownerTtsKeyboard(providers.tts || "huggingface", providers.ttsVoice || "nova")
+      );
+      return;
+    }
+
+    if (data === "own_tts_prov_huggingface" || data === "own_tts_prov_openrouter") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const prov = data.replace("own_tts_prov_", "");
+      const config = await getOrCreateBotConfig();
+      if (!config.providers) config.providers = {} as any;
+      (config.providers as any).tts = prov;
+      await config.save();
+      await answer(bot, query.id, `✅ TTS set to ${prov}`);
+      await editMsg(bot, query,
+        `🔊 TTS Provider\n━━━━━━━━━━━━━━━━\nUpdated.`,
+        ownerTtsKeyboard(config.providers.tts || "huggingface", config.providers.ttsVoice || "nova")
+      );
+      return;
+    }
+
+    if (data === "own_tts_voice") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      await editMsg(bot, query,
+        `🎙 Pick TTS Voice\n━━━━━━━━━━━━━━━━\nSelect a voice:`,
+        ownerPickTtsVoiceKeyboard()
+      );
+      return;
+    }
+
+    if (data.startsWith("own_tts_voice_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const voice = data.replace("own_tts_voice_", "");
+      const config = await getOrCreateBotConfig();
+      if (!config.providers) config.providers = {} as any;
+      (config.providers as any).ttsVoice = voice;
+      await config.save();
+      await answer(bot, query.id, `✅ Voice set to ${voice}`);
+      await editMsg(bot, query,
+        `🔊 TTS Provider\n━━━━━━━━━━━━━━━━\nVoice updated to ${voice}.`,
+        ownerTtsKeyboard(config.providers.tts || "huggingface", config.providers.ttsVoice || "nova")
+      );
       return;
     }
 

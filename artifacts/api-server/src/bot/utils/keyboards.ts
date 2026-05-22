@@ -185,9 +185,6 @@ export function imageMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
         { text: "🔧 Restore", callback_data: "img_restore" },
       ],
       [
-        { text: "🎵 Generate Music", callback_data: "music_btn" },
-      ],
-      [
         { text: "🖼️ Create Sticker", callback_data: "sticker_btn" },
       ],
       [{ text: "⬅️ Back", callback_data: "main_menu" }],
@@ -501,6 +498,10 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
         { text: "🖼 Image Model", callback_data: "own_img_models" },
       ],
       [
+        { text: "🔌 Providers", callback_data: "own_providers" },
+        { text: "⚙️ Features", callback_data: "own_features" },
+      ],
+      [
         {
           text: maintenanceOn ? "🔴 Maintenance: ON" : "🟢 Maintenance: OFF",
           callback_data: "own_maint",
@@ -642,6 +643,145 @@ export function ownerImageModelsKeyboard(
   };
 }
 
+
+// ── Owner: Provider & Feature keyboards ──────────────────────────────────────
+
+export function ownerProvidersKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "💬 Chat Providers", callback_data: "own_chat_providers" }],
+      [{ text: "🖼 Image Providers", callback_data: "own_img_providers" }],
+      [{ text: "🔊 TTS Provider", callback_data: "own_tts_provider" }],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+export function ownerFeaturesKeyboard(features: {
+  imageEnabled: boolean;
+  ttsEnabled: boolean;
+  sttEnabled: boolean;
+  imageAnalysisEnabled: boolean;
+}): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{
+        text: features.imageEnabled ? "🖼 Image Gen: ✅ ON" : "🖼 Image Gen: ❌ OFF",
+        callback_data: "own_feat_image",
+      }],
+      [{
+        text: features.ttsEnabled ? "🔊 TTS (Voice): ✅ ON" : "🔊 TTS (Voice): ❌ OFF",
+        callback_data: "own_feat_tts",
+      }],
+      [{
+        text: features.sttEnabled ? "🎤 STT (Listen): ✅ ON" : "🎤 STT (Listen): ❌ OFF",
+        callback_data: "own_feat_stt",
+      }],
+      [{
+        text: features.imageAnalysisEnabled ? "🔍 Image Analysis: ✅ ON" : "🔍 Image Analysis: ❌ OFF",
+        callback_data: "own_feat_imganalyze",
+      }],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+export function ownerChatProvidersKeyboard(providers: {
+  freeChat: { provider: string; model: string };
+  premiumChat: { provider: string; model: string };
+  groupChat: { provider: string; model: string };
+}): TelegramBot.InlineKeyboardMarkup {
+  const label = (slot: { provider: string; model: string }) => {
+    if (slot.provider === "pollinations") return "Pollinations (free)";
+    return `OpenRouter: ${slot.model.split("/").pop()?.replace(/:free$/, "") || slot.model}`;
+  };
+  return {
+    inline_keyboard: [
+      [{ text: `👤 Free: ${label(providers.freeChat)}`, callback_data: "own_chat_slot_free" }],
+      [{ text: `💎 Premium: ${label(providers.premiumChat)}`, callback_data: "own_chat_slot_premium" }],
+      [{ text: `👥 Groups: ${label(providers.groupChat)}`, callback_data: "own_chat_slot_group" }],
+      [{ text: "⬅️ Back", callback_data: "own_providers" }],
+    ],
+  };
+}
+
+export function ownerPickChatProviderKeyboard(slot: string): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "🆓 Pollinations (free, no key)", callback_data: `own_chat_prov_${slot}_pollinations` }],
+      [{ text: "🔑 OpenRouter (API key required)", callback_data: `own_chat_prov_${slot}_openrouter` }],
+      [{ text: "⬅️ Back", callback_data: "own_chat_providers" }],
+    ],
+  };
+}
+
+export function ownerPickOpenRouterModelKeyboard(
+  slot: string,
+  models: IModelEntry[]
+): TelegramBot.InlineKeyboardMarkup {
+  const rows = models.map(m => [{
+    text: m.name,
+    callback_data: `own_chat_model_${slot}_${models.indexOf(m)}`,
+  }]);
+  return {
+    inline_keyboard: [
+      ...rows,
+      [{ text: "⬅️ Back", callback_data: `own_chat_slot_${slot}` }],
+    ],
+  };
+}
+
+export function ownerImageProvidersKeyboard(providers: {
+  freeImage: string;
+  premiumImage: string;
+  groupImage: string;
+}): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: `👤 Free: ${providers.freeImage}`, callback_data: "own_img_slot_free" }],
+      [{ text: `💎 Premium: ${providers.premiumImage}`, callback_data: "own_img_slot_premium" }],
+      [{ text: `👥 Groups: ${providers.groupImage}`, callback_data: "own_img_slot_group" }],
+      [{ text: "⬅️ Back", callback_data: "own_providers" }],
+    ],
+  };
+}
+
+export function ownerPickImageProviderKeyboard(slot: string): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "🤗 HuggingFace (API key required)", callback_data: `own_img_prov_${slot}_huggingface` }],
+      [{ text: "🆓 Pollinations (free, no key)", callback_data: `own_img_prov_${slot}_pollinations` }],
+      [{ text: "⬅️ Back", callback_data: "own_img_providers" }],
+    ],
+  };
+}
+
+export function ownerTtsKeyboard(tts: string, ttsVoice: string): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{
+        text: tts === "huggingface" ? "✅ HuggingFace SpeechT5" : "HuggingFace SpeechT5",
+        callback_data: "own_tts_prov_huggingface",
+      }],
+      [{
+        text: tts === "openrouter" ? "✅ OpenRouter TTS" : "OpenRouter TTS",
+        callback_data: "own_tts_prov_openrouter",
+      }],
+      [{ text: `🎙 Voice: ${ttsVoice} (tap to change)`, callback_data: "own_tts_voice" }],
+      [{ text: "⬅️ Back", callback_data: "own_providers" }],
+    ],
+  };
+}
+
+export function ownerPickTtsVoiceKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  const voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
+  return {
+    inline_keyboard: [
+      ...voices.map(v => [{ text: v, callback_data: `own_tts_voice_${v}` }]),
+      [{ text: "⬅️ Back", callback_data: "own_tts_provider" }],
+    ],
+  };
+}
 
 // ── User: AI Model selection keyboard ─────────────────────────────────────────
 

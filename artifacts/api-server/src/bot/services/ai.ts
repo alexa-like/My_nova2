@@ -6,31 +6,27 @@ import { logger } from "../../lib/logger.js";
 const MAX_HISTORY = 20;
 const MAX_SUMMARY_TRIGGER = 30;
 
-// ── Free sequential fallback chain (used by free-tier users) ─────────────────
-// Tried in order when the primary model fails. All are INSTRUCT models — base
-// models intentionally excluded (they cause 400 errors in chat mode).
+// ── Free sequential fallback chain (OpenRouter) ───────────────────────────────
 const FREE_FALLBACK_MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",          // 131K ctx — best quality, proven reliable
-  "qwen/qwen-2.5-72b-instruct:free",                  // 131K ctx — great multilingual
-  "google/gemma-3-12b-it:free",                       // 128K ctx — Gemma 3, fast + accurate
-  "deepseek/deepseek-r1-distill-llama-70b:free",      // 131K ctx — strong reasoning
-  "microsoft/phi-4:free",                             // 16K ctx — very reliable mid-size
-  "mistralai/mixtral-8x7b-instruct:free",             // 32K ctx — solid MoE
-  "mistralai/mistral-7b-instruct:free",               // 32K ctx — reliable, fast
-  "google/gemma-2-9b-it:free",                        // 8K ctx — fast Gemma 2
-  "meta-llama/llama-3.1-8b-instruct:free",            // 131K ctx — fast llama
-  "meta-llama/llama-3.2-3b-instruct:free",            // 131K ctx — tiny/fastest last resort
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "qwen/qwen-2.5-72b-instruct:free",
+  "google/gemma-3-12b-it:free",
+  "deepseek/deepseek-r1-distill-llama-70b:free",
+  "microsoft/phi-4:free",
+  "mistralai/mixtral-8x7b-instruct:free",
+  "mistralai/mistral-7b-instruct:free",
+  "google/gemma-2-9b-it:free",
+  "meta-llama/llama-3.1-8b-instruct:free",
+  "meta-llama/llama-3.2-3b-instruct:free",
 ];
 
-// ── Premium race pool — small fast models run in parallel, first wins ─────────
-// Fires all 3 simultaneously. First to reply wins, others are aborted.
+// ── Premium race pool ─────────────────────────────────────────────────────────
 const PREMIUM_RACE_MODELS = [
-  "meta-llama/llama-3.1-8b-instruct:free",   // 8B — fastest Llama
-  "google/gemma-3-12b-it:free",              // 12B — fast Gemma 3
-  "mistralai/mistral-7b-instruct:free",      // 7B — reliable Mistral
+  "meta-llama/llama-3.1-8b-instruct:free",
+  "google/gemma-3-12b-it:free",
+  "mistralai/mistral-7b-instruct:free",
 ];
 
-// ── Premium quality fallbacks (if the race fails entirely) ───────────────────
 const PREMIUM_QUALITY_FALLBACKS = [
   "meta-llama/llama-3.3-70b-instruct:free",
   "qwen/qwen-2.5-72b-instruct:free",
@@ -86,20 +82,14 @@ function buildSystemPrompt(
   };
 
   const langMap: Record<string, string> = {
-    en: "English",
-    ar: "Arabic",
-    fr: "French",
-    es: "Spanish",
-    de: "German",
-    zh: "Chinese",
-    hi: "Hindi",
-    pt: "Portuguese",
+    en: "English", ar: "Arabic", fr: "French", es: "Spanish",
+    de: "German", zh: "Chinese", hi: "Hindi", pt: "Portuguese",
   };
 
   const languageInstruction =
     language && language !== "en" && langMap[language]
       ? `CRITICAL — LANGUAGE RULE: You MUST respond ONLY in ${langMap[language]}. Every single word of every reply must be in ${langMap[language]}. Never switch to English or any other language, even for technical terms — translate or approximate them. This is non-negotiable.`
-      : "Respond in the same language the user writes to you in. If they write in English, reply in English. If they write in Arabic, reply in Arabic. Mirror their language always.";
+      : "Respond in the same language the user writes to you in. Mirror their language always.";
 
   const moodInstruction = mood
     ? `The user's current mood is: ${mood}. Adapt your energy to match — be sensitive, responsive, and meet them where they are.`
@@ -124,7 +114,9 @@ You are Nova, a next-generation AI assistant packed with real capabilities. You 
 YOUR FULL CAPABILITIES (these are REAL, working features — not suggestions):
 • Chat about literally anything — no topic is off limits unless it's directly harmful
 • Generate images from text — just say "draw X" or "make an image of X" and it happens automatically
-• Generate music/audio — say "make lo-fi beats" or "create jazz music" and it happens
+• Text-to-speech — use /voice [text] to convert any text to audio
+• Voice-to-text — use /listen and send a voice message to get a transcript
+• Describe images — use /describe and send a photo for a full AI description
 • Create stickers — say "make a sticker of X" and it triggers automatically
 • Search the web — say "search for X" or "look up X" for real-time information
 • Build complete websites and apps — say /build to get a full project with working code
@@ -140,7 +132,9 @@ YOUR FULL CAPABILITIES (these are REAL, working features — not suggestions):
 
 YOUR COMMANDS (share these when users ask what you can do):
 /image [prompt] — generate an image
-/music [description] — generate music/audio
+/voice [text] — convert text to speech audio
+/listen — send a voice message to get a transcript
+/describe — send a photo for AI description/analysis
 /sticker [prompt] — create a sticker image
 /search [query] — web search with AI summary
 /build [description] — generate a complete website or app with working code
@@ -164,19 +158,16 @@ YOUR COMMANDS (share these when users ask what you can do):
 /summarize — summarize our conversation
 
 PROACTIVE ACTION — THIS IS CRITICAL:
-You have REAL capabilities to generate images, music, stickers, and full websites/apps. These are not suggestions — they actually work.
+You have REAL capabilities to generate images, stickers, and full websites/apps. These are not suggestions — they actually work.
 
 When a user's message triggers one of these (which happens automatically before you even respond), you're already doing it. But when their phrasing is too vague to auto-trigger, YOU guide them confidently:
 
-- If they say "make me some music" → respond: "On it! What style? Lo-fi, jazz, epic, upbeat? Describe the vibe."
 - If they say "draw me something" → respond: "Sure! Describe what you want — anything from abstract art to a realistic portrait."
 - If they say "make a sticker" → respond: "Of course! What should the sticker show? Be as specific as you like."
 - If they say "can you build me a website?" or "make me an app" → respond: "Yes! Tell me what it should do and I'll generate the complete code. For example: /build portfolio website for a designer"
-- If they say "create a Netflix clone" or "build a todo app" → respond: "Send: /build [your description] and I'll generate the full project with working code right now."
 
 NEVER say:
-- "I'm just an AI, I can't make music" — you CAN
-- "I don't have the ability to create images" — you DO
+- "I can't create images" — you CAN
 - "I can't build websites" — you CAN (via /build)
 
 RULES — READ CAREFULLY:
@@ -195,7 +186,7 @@ ${moodInstruction ? `- ${moodInstruction}` : ""}
 ${premiumNote ? `\n${premiumNote}` : ""}`;
 }
 
-// ── Single OpenRouter request — throws on HTTP error ─────────────────────────
+// ── Single OpenRouter request ─────────────────────────────────────────────────
 async function callOpenRouter(
   apiKey: string,
   model: string,
@@ -224,18 +215,36 @@ async function callOpenRouter(
   return reply;
 }
 
-// ── Premium fast path — race PREMIUM_RACE_MODELS in parallel, first wins ──────
-// Fires all 3 fast models simultaneously. Whoever responds first is used.
-// If all 3 fail, falls back through PREMIUM_QUALITY_FALLBACKS sequentially.
+// ── Pollinations.ai chat (free, no API key) ───────────────────────────────────
+async function callPollinations(
+  messages: { role: string; content: string }[],
+  model = "openai"
+): Promise<string> {
+  const seed = Math.floor(Math.random() * 2147483647);
+  const response = await axios.post(
+    "https://text.pollinations.ai/",
+    { model, messages, seed, jsonMode: false },
+    {
+      headers: { "Content-Type": "application/json" },
+      timeout: 30000,
+    }
+  );
+  const reply =
+    typeof response.data === "string"
+      ? response.data
+      : response.data?.choices?.[0]?.message?.content;
+  if (!reply) throw new Error("Empty response from Pollinations");
+  return reply;
+}
+
+// ── Premium fast path ─────────────────────────────────────────────────────────
 async function chatPremiumFast(
   apiKey: string,
   messages: { role: string; content: string }[],
   maxTokens: number,
   temperature: number
 ): Promise<string> {
-  // Race the fast models — AbortController per request so losers are cancelled
   const controllers = PREMIUM_RACE_MODELS.map(() => new AbortController());
-
   const racePromises = PREMIUM_RACE_MODELS.map((model, idx) =>
     callOpenRouter(apiKey, model, messages, maxTokens, temperature, 12000, controllers[idx].signal)
       .then((reply) => {
@@ -243,15 +252,12 @@ async function chatPremiumFast(
         return reply;
       })
   );
-
   try {
     const reply = await Promise.any(racePromises);
     if (reply) return reply;
   } catch {
-    // AggregateError — all 3 fast models failed
+    // all 3 fast models failed
   }
-
-  // Quality fallback chain
   for (const model of PREMIUM_QUALITY_FALLBACKS) {
     try {
       const reply = await callOpenRouter(apiKey, model, messages, maxTokens, temperature, 20000);
@@ -262,7 +268,6 @@ async function chatPremiumFast(
       break;
     }
   }
-
   throw new Error("All premium models failed");
 }
 
@@ -278,13 +283,19 @@ export async function chat(
   },
   isPremium: boolean,
   mood?: string,
-  preferredModel?: string
+  preferredModel?: string,
+  context?: "free" | "premium" | "group"
 ): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return "AI service is not configured.";
-
   const config = await getOrCreateBotConfig();
-  const primaryModel = preferredModel || config.activeChatModel;
+
+  // Determine provider slot based on context
+  const effectiveContext = context ?? (isPremium ? "premium" : "free");
+  let providerSlot = config.providers?.freeChat ?? { provider: "pollinations", model: "openai" };
+  if (effectiveContext === "premium") {
+    providerSlot = config.providers?.premiumChat ?? { provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" };
+  } else if (effectiveContext === "group") {
+    providerSlot = config.providers?.groupChat ?? { provider: "pollinations", model: "openai" };
+  }
 
   let memory = await Memory.findOne({ userId, chatId });
   if (!memory) {
@@ -305,7 +316,7 @@ export async function chat(
     settings.language
   );
 
-  // ── Auto-inject real-time web search context for time-sensitive queries ─────
+  // ── Auto-inject real-time web search context ──────────────────────────────
   let webContext = "";
   if (needsCurrentInfo(userMessage)) {
     try {
@@ -325,7 +336,6 @@ export async function chat(
     content: m.content,
   }));
 
-  // Append web context to the last user message so the AI sees it as fresh data
   const messagesPayload = [...historyMessages];
   if (webContext && messagesPayload.length > 0) {
     const last = messagesPayload[messagesPayload.length - 1];
@@ -345,8 +355,38 @@ export async function chat(
   const maxTokens = settings.length === "short" ? 300 : 800;
   const temperature = settings.style === "funny" ? 0.92 : 0.78;
 
-  // ── Premium path: race fast models in parallel — first to reply wins ─────────
-  if (isPremium) {
+  // ── Pollinations provider path ────────────────────────────────────────────
+  if (providerSlot.provider === "pollinations") {
+    try {
+      const reply = await callPollinations(fullMessages, providerSlot.model || "openai");
+      logger.info({ context: effectiveContext }, "Pollinations chat succeeded");
+      memory.messages.push({ role: "assistant", content: reply, ts: new Date() });
+      await memory.save();
+      return reply;
+    } catch (err: any) {
+      logger.warn({ err: err?.message }, "Pollinations chat failed — falling back to OpenRouter");
+      // fall through to OpenRouter
+    }
+  }
+
+  // ── OpenRouter provider path ──────────────────────────────────────────────
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    // No OpenRouter key — try Pollinations as final fallback
+    try {
+      const reply = await callPollinations(fullMessages, "openai");
+      memory.messages.push({ role: "assistant", content: reply, ts: new Date() });
+      await memory.save();
+      return reply;
+    } catch {
+      return settings.emoji
+        ? "AI service is not configured. 😅"
+        : "AI service is not configured.";
+    }
+  }
+
+  // Premium fast path
+  if (isPremium && effectiveContext === "premium") {
     try {
       const reply = await chatPremiumFast(apiKey, fullMessages, maxTokens, temperature);
       logger.info("Premium fast chat succeeded");
@@ -358,7 +398,8 @@ export async function chat(
     }
   }
 
-  // ── Standard sequential fallback (free users, or premium last resort) ────────
+  // Sequential fallback (free/group on OpenRouter, or premium last resort)
+  const primaryModel = preferredModel || providerSlot.model || config.activeChatModel;
   const modelsToTry = [
     primaryModel,
     ...FREE_FALLBACK_MODELS.filter(m => m !== primaryModel),
@@ -368,26 +409,30 @@ export async function chat(
     const model = modelsToTry[i];
     try {
       const reply = await callOpenRouter(apiKey, model, fullMessages, maxTokens, temperature, 25000);
-
       if (i > 0) {
         logger.info({ primaryModel, usedModel: model }, "Chat fell back to free model successfully");
       }
-
       memory.messages.push({ role: "assistant", content: reply, ts: new Date() });
       await memory.save();
       return reply;
     } catch (err: any) {
       const status = err?.response?.status;
-      // 401 = bad API key — no point trying other models
       if (status === 401) {
         logger.error({ model, status }, "OpenRouter auth failed (401) — stopping retries");
         break;
       }
-      // All other errors (400 bad model, 402 limit, 429 rate, 500/503 server) — try next model
-      logger.warn({ model, status, attempt: i + 1, total: modelsToTry.length }, "Model failed — trying next fallback");
+      logger.warn({ model, status, attempt: i + 1 }, "Model failed — trying next fallback");
       continue;
     }
   }
+
+  // Final fallback — try Pollinations
+  try {
+    const reply = await callPollinations(fullMessages, "openai");
+    memory.messages.push({ role: "assistant", content: reply, ts: new Date() });
+    await memory.save();
+    return reply;
+  } catch {}
 
   return settings.emoji
     ? "Oops, my brain glitched! 😅 Try again in a moment."
