@@ -219,6 +219,77 @@ function detectSearchIntent(text: string): string | null {
   return null;
 }
 
+// ── Build intent detection ─────────────────────────────────────────────────────
+
+function detectBuildIntent(text: string): string | null {
+  const t = text.trim();
+  if (t.length < 10 || t.startsWith("/")) return null;
+  const patterns = [
+    /^(?:build|create|make|generate|code|develop)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:website|web\s*app|webapp|landing\s*page|portfolio|dashboard|blog|e-?commerce\s*(?:store|shop)?|store|shop|platform|tool|calculator|game|app|application)\b/i,
+    /^(?:i want|i need|can you build|can you make|can you create|could you build|could you make)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:website|web\s*app|webapp|landing\s*page|portfolio|dashboard|app|application)\b/i,
+    /^(?:build|develop|code)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:react|node(?:js|\.js)?|express|fullstack|full.stack)\s+(?:app|application|project|website)\b/i,
+    /^(?:clone|make a clone of|build a clone of)\s+(?:netflix|spotify|twitter|instagram|youtube|airbnb|amazon|reddit|facebook|tiktok|whatsapp|telegram)\b/i,
+  ];
+  for (const pattern of patterns) {
+    if (t.match(pattern)) return t;
+  }
+  return null;
+}
+
+// ── TTS intent detection ───────────────────────────────────────────────────────
+
+function detectTTSIntent(text: string): string | null {
+  const t = text.trim();
+  if (t.length < 5 || t.startsWith("/")) return null;
+  const patterns = [
+    /^(?:say|speak|read\s*out(?:\s*loud)?|voice|narrate)\s+(?:this\s+)?:?\s*(.+)/i,
+    /^(?:text\s*to\s*speech|tts)\s*:?\s*(.+)/i,
+    /^(?:convert|turn|change)\s+(?:this\s+)?(?:text|message)?\s*(?:to|into)\s+(?:speech|voice|audio)\s*:?\s*(.*)/i,
+    /^(?:make|create)\s+(?:a\s+)?(?:voice|audio)\s+(?:for|of|from)\s+(.+)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = t.match(pattern);
+    const captured = match?.[1]?.trim();
+    if (match && captured && captured.length > 3) return captured;
+  }
+  return null;
+}
+
+// ── Summarize intent detection ─────────────────────────────────────────────────
+
+function detectSummarizeIntent(text: string): string | null {
+  const t = text.trim();
+  if (t.length < 10 || t.startsWith("/")) return null;
+  const patterns = [
+    /^(?:summarize|summarise|tldr|tl;dr)\s*:?\s*(.+)/i,
+    /^(?:sum up|condense|shorten|make shorter)\s+(?:this|the following)\s*:?\s*(.+)/i,
+    /^(?:give me a summary of|what(?:'s| is) the (?:summary|gist|main point) of)\s+(.+)/i,
+    /^(?:summarize|summarise)\s+this\s+(?:article|text|passage|document)\s*:?\s*(.*)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = t.match(pattern);
+    const captured = match?.[1]?.trim();
+    if (match && captured && captured.length > 10) return captured;
+  }
+  return null;
+}
+
+// ── Translate intent detection ─────────────────────────────────────────────────
+
+function detectTranslateIntent(text: string): { content: string; targetLang: string } | null {
+  const t = text.trim();
+  if (t.length < 5 || t.startsWith("/")) return null;
+  const m1 = t.match(/^(?:translate|convert)\s+(.+?)\s+(?:to|into|in)\s+(\w+)\s*$/i);
+  if (m1 && m1[1].length > 2) return { content: m1[1], targetLang: m1[2] };
+  const m2 = t.match(/^how do you say\s+(.+?)\s+in\s+(\w+)/i);
+  if (m2) return { content: m2[1], targetLang: m2[2] };
+  const m3 = t.match(/^(?:in|to)\s+([A-Za-z]+):\s*(.+)/i);
+  if (m3 && m3[2].length > 3) return { content: m3[2], targetLang: m3[1] };
+  const m4 = t.match(/^translate\s+(?:this\s+)?(?:to|into)\s+(\w+)\s*:?\s*(.*)/i);
+  if (m4 && m4[2].length > 3) return { content: m4[2], targetLang: m4[1] };
+  return null;
+}
+
 export async function handleVoiceMessage(
   bot: TelegramBot,
   msg: TelegramBot.Message,
@@ -385,17 +456,24 @@ export async function handlePrivateMessage(
     if (isNew) {
       await bot.sendMessage(chatId,
         `👋 Welcome to Nova, ${name}!\n\n` +
-        `I'm your personal AI assistant — smarter than a chatbot, friendlier than a search engine.\n\n` +
-        `Here's what I can do for you:\n` +
+        `I'm your personal AI assistant — smarter than a chatbot, more powerful than a search engine.\n\n` +
+        `Here's what I can do:\n` +
         `💬 Chat naturally — just type anything!\n` +
-        `🎨 Generate images & stickers\n` +
+        `🎨 Generate images, stickers & short videos\n` +
+        `🎵 Generate music from a description\n` +
+        `🔊 Voice replies & text-to-speech\n` +
         `🔍 Search the web with AI synthesis\n` +
-        `⏰ Set personal reminders\n` +
-        `🎵 Generate music\n` +
-        `📄 Read documents — send any PDF, DOCX or TXT!\n` +
-        `🎬 Generate short videos\n` +
-        `🔊 Voice replies\n\n` +
-        `Use the menu below to explore everything 👇`
+        `⏰ Set reminders — /remind 1h Call mom\n` +
+        `📄 Read & analyze PDFs, DOCX, TXT files\n` +
+        `🔨 Build full websites & apps — /build <idea>\n` +
+        `🚀 Deploy live to Vercel — /deploy <idea>\n` +
+        `🌐 Translate text — just say "translate X to Spanish"\n` +
+        `📝 Summarize anything — paste text, say "summarize"\n\n` +
+        `💡 Tip: You don't need commands! Just type naturally:\n` +
+        `   "draw me a sunset" → generates an image\n` +
+        `   "make chill lo-fi music" → generates music\n` +
+        `   "build me a portfolio website" → builds it!\n\n` +
+        `Use the menu below to get started 👇`
       );
       await bot.sendMessage(chatId, `What would you like to do first?`, { reply_markup: mainMenuKeyboard() });
     } else {
@@ -949,17 +1027,22 @@ export async function handlePrivateMessage(
     const reminders = await listUserReminders(user.userId);
     if (reminders.length === 0) {
       await bot.sendMessage(chatId,
-        "You have no upcoming reminders.\n\nSet one with: /remind 30m Your message",
-        { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+        "⏰ You have no upcoming reminders.\n\nSet one with:\n/remind 30m Take a break\n/remind 2h Call mom",
+        { reply_markup: { inline_keyboard: [[{ text: "➕ Set Reminder", callback_data: "remind_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
       );
       return;
     }
     const lines = reminders.map((r, i) => {
       const id = (r._id as any).toString().slice(-6);
-      return `${i + 1}. ⏰ ${formatDate(r.triggerAt)}\n   "${r.message.substring(0, 60)}"\n   ID: ${id}`;
+      return `${i + 1}. ⏰ ${formatDate(r.triggerAt)}\n   "${r.message.substring(0, 60)}${r.message.length > 60 ? "…" : ""}"\n   ID: ${id}`;
     });
+    const cancelBtns = reminders.map((r) => ([{
+      text: `❌ ${r.message.substring(0, 30)}${r.message.length > 30 ? "…" : ""}`,
+      callback_data: `cancel_rem_${(r._id as any).toString().slice(-6)}`,
+    }]));
     await bot.sendMessage(chatId,
-      `📋 Your Reminders (${reminders.length})\n\n${lines.join("\n\n")}\n\nCancel one: /remind cancel <ID>`
+      `📋 Your Reminders (${reminders.length})\n\n${lines.join("\n\n")}`,
+      { reply_markup: { inline_keyboard: [...cancelBtns, [{ text: "➕ Add Reminder", callback_data: "remind_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
     );
     return;
   }
@@ -1146,18 +1229,92 @@ export async function handlePrivateMessage(
       if (results.length === 0) {
         stopSearchTyping();
         try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
-        await bot.sendMessage(chatId, `No results found for: "${searchQuery}"\n\nTry rephrasing.`);
+        await bot.sendMessage(chatId, `No results found for: "${searchQuery}"\n\nTry rephrasing.`,
+          { reply_markup: { inline_keyboard: [[{ text: "🔍 Try Again", callback_data: "search_again" }]] } });
         return;
       }
       const aiPrompt = `Based on these web search results for "${searchQuery}":\n\n${raw}\n\nSummarize the key findings in a helpful, natural response. Be concise and direct. Mention relevant sources.`;
       const aiReply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
       stopSearchTyping();
       try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
-      await safeSend(bot, chatId, `🔍 ${searchQuery}\n\n${aiReply}\n\n──────\n${results.slice(0, 2).map(r => r.url).filter(Boolean).join("\n")}`);
+      const sourceLines = results.slice(0, 3).map(r => r.url).filter(Boolean);
+      await safeSend(bot, chatId,
+        `🔍 ${searchQuery}\n\n${aiReply}${sourceLines.length ? `\n\n──────\n${sourceLines.join("\n")}` : ""}`,
+        { reply_markup: { inline_keyboard: [[{ text: "🔍 Search Again", callback_data: "search_again" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+      );
     } catch {
       stopSearchTyping();
       try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
       await bot.sendMessage(chatId, "Search failed. Please try again.");
+    }
+    return;
+  }
+
+  // ── Build intent (natural language) ──────────────────────────────────────────
+  const buildDesc = detectBuildIntent(text);
+  if (buildDesc) {
+    await handleBuildRequest(bot, chatId, user, buildDesc, e);
+    return;
+  }
+
+  // ── TTS intent (natural language) ─────────────────────────────────────────────
+  const ttsText = detectTTSIntent(text);
+  if (ttsText) {
+    if (!process.env.HUGGINGFACE_API_TOKEN) {
+      await bot.sendMessage(chatId, e ? "🔊 Voice isn't configured yet. Ask the owner to set up HuggingFace!" : "Voice generation is not configured.");
+      return;
+    }
+    const statusMsg = await bot.sendMessage(chatId, e ? "🔊 Generating voice..." : "Generating voice...");
+    const stopTyping = startTypingLoop(bot, chatId);
+    try {
+      const audio = await textToSpeech(ttsText, user.settings.voiceName ?? undefined);
+      stopTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      if (!audio) {
+        await bot.sendMessage(chatId, e ? "🔊 Voice generation failed. Try again in a moment!" : "Voice generation failed. Try again.");
+        return;
+      }
+      await bot.sendVoice(chatId, audio, { caption: e ? `🔊 "${ttsText.substring(0, 80)}"` : ttsText.substring(0, 80) });
+    } catch {
+      stopTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Voice generation failed. Please try again.");
+    }
+    return;
+  }
+
+  // ── Summarize intent (natural language) ───────────────────────────────────────
+  const summarizeText = detectSummarizeIntent(text);
+  if (summarizeText) {
+    const statusMsg = await bot.sendMessage(chatId, e ? "📝 Summarizing..." : "Summarizing...");
+    const stopTyping = startTypingLoop(bot, chatId);
+    try {
+      const reply = await chat(user.userId, chatId + 5556, `Summarize the following text in clear bullet points:\n\n${summarizeText}`, { style: "serious", emoji: e, length: "short" }, user.premium.active);
+      stopTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await safeSend(bot, chatId, `📝 Summary:\n\n${reply}`, { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+    } catch {
+      stopTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Summarization failed. Please try again.");
+    }
+    return;
+  }
+
+  // ── Translate intent (natural language) ───────────────────────────────────────
+  const translateMatch = detectTranslateIntent(text);
+  if (translateMatch) {
+    const statusMsg = await bot.sendMessage(chatId, e ? "🌐 Translating..." : "Translating...");
+    const stopTyping = startTypingLoop(bot, chatId);
+    try {
+      const reply = await chat(user.userId, chatId + 9999, `Translate the following to ${translateMatch.targetLang}. Only respond with the translation, no explanation:\n\n"${translateMatch.content}"`, { style: "serious", emoji: false, length: "short" }, user.premium.active);
+      stopTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await safeSend(bot, chatId, `🌐 ${translateMatch.targetLang} translation:\n\n${reply}`, { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+    } catch {
+      stopTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      await bot.sendMessage(chatId, "Translation failed. Please try again.");
     }
     return;
   }
@@ -1339,15 +1496,31 @@ async function handlePendingText(
         break;
       }
       case "search_input": {
-        const results = await webSearch(input);
-        const raw = formatSearchResults(input, results);
-        if (results.length === 0) {
-          await bot.sendMessage(chatId, `No results found for: "${input}"`, { reply_markup: aiMenuKeyboard() });
-          break;
+        const statusMsg2 = await bot.sendMessage(chatId, e ? "🔍 Searching the web..." : "Searching...");
+        const stopSearchTyping2 = startTypingLoop(bot, chatId);
+        try {
+          const results = await webSearch(input);
+          const raw = formatSearchResults(input, results);
+          stopSearchTyping2();
+          try { await bot.deleteMessage(chatId, statusMsg2.message_id); } catch {}
+          if (results.length === 0) {
+            await bot.sendMessage(chatId, `No results found for: "${input}"\n\nTry rephrasing.`,
+              { reply_markup: { inline_keyboard: [[{ text: "🔍 Try Again", callback_data: "search_again" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+            break;
+          }
+          const aiPrompt = `Based on these web search results for "${input}":\n\n${raw}\n\nSummarize the key findings in a helpful, natural response. Be concise and direct. Mention relevant sources.`;
+          const reply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
+          const sourceLines = results.slice(0, 3).map(r => r.url).filter(Boolean);
+          await safeSend(bot, chatId,
+            `🔍 ${input}\n\n${reply}${sourceLines.length ? `\n\n──────\n${sourceLines.join("\n")}` : ""}`,
+            { reply_markup: { inline_keyboard: [[{ text: "🔍 Search Again", callback_data: "search_again" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+          );
+        } catch {
+          stopSearchTyping2();
+          try { await bot.deleteMessage(chatId, statusMsg2.message_id); } catch {}
+          await bot.sendMessage(chatId, "Search failed. Please try again.",
+            { reply_markup: { inline_keyboard: [[{ text: "🔍 Try Again", callback_data: "search_again" }]] } });
         }
-        const aiPrompt = `Based on these web search results for "${input}":\n\n${raw}\n\nSummarize the key findings in a helpful, natural response.`;
-        const reply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
-        await safeSend(bot, chatId, `🔍 Web Search: ${input}\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
         break;
       }
       case "remind_input": {
@@ -1365,22 +1538,14 @@ async function handlePendingText(
         }
         const triggerAt = new Date(Date.now() + delayMs);
         await createReminder(bot, user.userId, chatId, reminderMsg, triggerAt);
-        await bot.sendMessage(chatId, `⏰ Reminder set! I'll remind you at ${formatDate(triggerAt)}: "${reminderMsg}"`);
+        await bot.sendMessage(chatId,
+          `⏰ Reminder set!\n\n📅 When: ${formatDate(triggerAt)}\n💬 "${reminderMsg}"`,
+          { reply_markup: { inline_keyboard: [[{ text: "📋 View All Reminders", callback_data: "reminders_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+        );
         break;
       }
       case "music_input": {
-        if (!process.env.HUGGINGFACE_API_TOKEN) {
-          await bot.sendMessage(chatId, "Music generation is not configured.");
-          break;
-        }
-        const sentMsg = await bot.sendMessage(chatId, "🎵 Generating your music... hang tight!");
-        const audioBuffer = await generateMusic(input);
-        try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-        if (!audioBuffer) {
-          await bot.sendMessage(chatId, "Music generation failed. Try again in a minute.");
-          break;
-        }
-        await bot.sendAudio(chatId, audioBuffer, { title: input.substring(0, 60), performer: "Nova AI" });
+        await handleMusicGeneration(bot, chatId, user, input, e);
         break;
       }
       case "sticker_input": {
@@ -1978,16 +2143,22 @@ async function handleMusicGeneration(
     if (!audioBuffer) {
       await bot.sendMessage(chatId,
         e ? "🎵 Music generation failed. The model may be warming up — try again in a minute!" : "Music generation failed. Try again in a minute.",
-        { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] } }
+        { reply_markup: { inline_keyboard: [[{ text: "🎵 Try Again", callback_data: "music_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
       );
       return;
     }
     await bot.sendAudio(chatId, audioBuffer, { title: prompt.substring(0, 60), performer: "Nova AI" });
+    await bot.sendMessage(chatId,
+      e ? "🎵 Here's your music! Want a different style?" : "Music generated! Want another?",
+      { reply_markup: { inline_keyboard: [[{ text: "🎵 Generate Another", callback_data: "music_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+    );
   } catch (err) {
     stopTyping();
     logger.error({ err }, "Music generation error");
     try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-    await bot.sendMessage(chatId, "Music generation failed. Please try again later.");
+    await bot.sendMessage(chatId, e ? "🎵 Music generation failed. Please try again later." : "Music generation failed. Please try again later.",
+      { reply_markup: { inline_keyboard: [[{ text: "🎵 Try Again", callback_data: "music_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+    );
   }
 }
 
@@ -2020,13 +2191,16 @@ async function handleStickerGeneration(
     user.usage.images += 1;
     await user.save();
     await bot.sendPhoto(chatId, imageBuffer, {
-      caption: `🖼️ Sticker: ${prompt.substring(0, 80)}\n\n💡 Tip: Save this image and add it as a sticker in Telegram Settings → Stickers!`,
+      caption: `🖼️ Sticker: ${prompt.substring(0, 80)}\n\n💡 Save this image → open Telegram Settings → Stickers → Create your own!`,
+      reply_markup: { inline_keyboard: [[{ text: "🖼️ Make Another", callback_data: "sticker_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] },
     });
   } catch (err) {
     stopTyping();
     logger.error({ err }, "Sticker generation error");
     try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-    await bot.sendMessage(chatId, "Sticker generation failed. Please try again.");
+    await bot.sendMessage(chatId, e ? "🖼️ Sticker generation failed. Please try again." : "Sticker generation failed. Please try again.",
+      { reply_markup: { inline_keyboard: [[{ text: "🖼️ Try Again", callback_data: "sticker_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+    );
   }
 }
 

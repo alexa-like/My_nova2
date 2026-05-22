@@ -622,11 +622,31 @@ export async function handleCallbackQuery(
       return;
     }
 
+    if (data === "music_generate_btn") {
+      setPending(userId, "music_input");
+      await bot.answerCallbackQuery(query.id);
+      await bot.sendMessage(chatId,
+        `🎵 What should I generate next?\n\nDescribe the style, mood, or genre:\n• upbeat summer pop\n• peaceful rain sounds\n• intense battle theme`,
+        { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
+      );
+      return;
+    }
+
     if (data === "sticker_btn") {
       setPending(userId, "sticker_input");
       await editMsg(bot, query,
         `🖼️ Create Sticker\n\nDescribe what you want as a sticker:\n\n• happy cat waving\n• cute anime girl with stars\n• fire dragon emoji style\n• robot dancing`,
         backToImgKeyboard()
+      );
+      return;
+    }
+
+    if (data === "sticker_generate_btn") {
+      setPending(userId, "sticker_input");
+      await bot.answerCallbackQuery(query.id);
+      await bot.sendMessage(chatId,
+        `🖼️ Describe your next sticker:\n\n• laughing panda\n• cool robot with sunglasses\n• magical unicorn emoji`,
+        { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
       );
       return;
     }
@@ -711,6 +731,16 @@ export async function handleCallbackQuery(
       await editMsg(bot, query,
         `🔍 Web Search\n\nWhat do you want to search for?\n\nExamples:\n• latest AI news\n• best programming languages 2025\n• how to make pasta carbonara`,
         backToMainKeyboard()
+      );
+      return;
+    }
+
+    if (data === "search_again") {
+      setPending(userId, "search_input");
+      await bot.answerCallbackQuery(query.id);
+      await bot.sendMessage(chatId,
+        `🔍 What do you want to search for?\n\nType your query:`,
+        { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
       );
       return;
     }
