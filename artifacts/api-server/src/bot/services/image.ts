@@ -24,9 +24,39 @@ const FALLBACK_MODELS = [
 const IMG2IMG_ENDPOINT =
   "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix";
 
+// ── Pollinations.ai — 100% free, no API key required ─────────────────────────
+// Uses FLUX under the hood. Works as primary fallback when HF token is absent.
+async function generateImagePollinations(prompt: string): Promise<Buffer | null> {
+  try {
+    const seed = Math.floor(Math.random() * 2147483647);
+    const encoded = encodeURIComponent(prompt);
+    const url = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
+    logger.info({ seed }, "Attempting image generation via Pollinations.ai (no key needed)");
+    const response = await axios.get(url, {
+      responseType: "arraybuffer",
+      timeout: 90000,
+      headers: { "User-Agent": "Nova-Bot/1.0" },
+    });
+    const buf = Buffer.from(response.data);
+    if (buf.byteLength > 5000) {
+      logger.info({ bytes: buf.byteLength }, "Pollinations.ai image generated successfully");
+      return buf;
+    }
+    logger.warn({ bytes: buf.byteLength }, "Pollinations.ai returned too-small response");
+    return null;
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Pollinations.ai image generation failed");
+    return null;
+  }
+}
+
 export async function generateImage(prompt: string): Promise<Buffer | null> {
   const token = process.env.HUGGINGFACE_API_TOKEN;
-  if (!token) return null;
+
+  // ── No HuggingFace token: fall back to Pollinations.ai (free, no key) ────
+  if (!token) {
+    return generateImagePollinations(prompt);
+  }
 
   const config = await getOrCreateBotConfig();
   const primaryModel = config.activeImageModel;
@@ -88,7 +118,9 @@ export async function generateImage(prompt: string): Promise<Buffer | null> {
     }
   }
 
-  return null;
+  // ── All HuggingFace models failed — try Pollinations.ai as final fallback ─
+  logger.warn("All HF image models failed — falling back to Pollinations.ai");
+  return generateImagePollinations(prompt);
 }
 
 /**
