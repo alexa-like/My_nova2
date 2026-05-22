@@ -27,7 +27,6 @@ export type PendingTextAction =
   | "sticker_input"
   | "github_set_username"
   | "github_set_token"
-  | "video_input"
   | "build_input"
   | "vercel_set_token"
   | "render_set_token";
@@ -57,16 +56,9 @@ export type OwnerPendingAction =
   | "owner_add_chat_step2"
   | "owner_add_img_step1"
   | "owner_add_img_step2"
-  | "owner_add_vid_step1"
-  | "owner_add_vid_step2"
-  | "owner_add_voice_step1"
-  | "owner_add_voice_step2"
-  | "owner_add_asr_step1"
-  | "owner_add_asr_step2"
   // Legacy single-step (kept for backwards compat)
   | "owner_add_chat_model"
   | "owner_add_image_model"
-  | "owner_add_video_model"
   // Search & DM
   | "owner_searchuser"
   | "owner_dm_step1"
@@ -102,15 +94,8 @@ export const OWNER_PENDING_ACTIONS = new Set<PendingActionType>([
   "owner_add_chat_step2",
   "owner_add_img_step1",
   "owner_add_img_step2",
-  "owner_add_vid_step1",
-  "owner_add_vid_step2",
-  "owner_add_voice_step1",
-  "owner_add_voice_step2",
-  "owner_add_asr_step1",
-  "owner_add_asr_step2",
   "owner_add_chat_model",
   "owner_add_image_model",
-  "owner_add_video_model",
   "owner_searchuser",
   "owner_dm_step1",
   "owner_dm_step2",

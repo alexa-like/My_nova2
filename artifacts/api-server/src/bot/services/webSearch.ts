@@ -40,17 +40,28 @@ async function scrapeHtmlResults(query: string): Promise<SearchResult[]> {
   const html = resp.data as string;
   const results: SearchResult[] = [];
 
-  const linkPattern = /<a[^>]+class="result-link"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+  const linkPatternClass = /<a[^>]+class="result-link"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+  const linkPatternUddg = /<a[^>]+href="([^"]*uddg=[^"]*)"[^>]*>([\s\S]*?)<\/a>/g;
   const snippetPattern = /<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>/g;
 
   const links: { url: string; title: string }[] = [];
   let m: RegExpExecArray | null;
 
-  while ((m = linkPattern.exec(html)) !== null && links.length < 8) {
+  while ((m = linkPatternClass.exec(html)) !== null && links.length < 8) {
     const url = extractRealUrl(m[1]);
     const title = stripHtml(m[2]);
     if (url.startsWith("http") && title.length > 2) {
       links.push({ url, title });
+    }
+  }
+
+  if (links.length === 0) {
+    while ((m = linkPatternUddg.exec(html)) !== null && links.length < 8) {
+      const url = extractRealUrl(m[1]);
+      const title = stripHtml(m[2]);
+      if (url.startsWith("http") && !url.includes("duckduckgo.com") && title.length > 2) {
+        links.push({ url, title });
+      }
     }
   }
 

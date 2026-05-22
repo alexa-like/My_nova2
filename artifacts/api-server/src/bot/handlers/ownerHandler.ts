@@ -35,7 +35,6 @@ export async function sendOwnerPanel(
   const config = await getOrCreateBotConfig();
   const activeChat = config.chatModels.find((m) => m.id === config.activeChatModel)?.name || config.activeChatModel;
   const activeImg = config.imageModels.find((m) => m.id === config.activeImageModel)?.name || config.activeImageModel;
-  const activeVid = config.videoModels.find((m) => m.id === config.activeVideoModel)?.name || config.activeVideoModel;
 
   const text =
     `🤖 Nova Owner Dashboard\n` +
@@ -45,8 +44,7 @@ export async function sendOwnerPanel(
     `🎟 Codes: ${usedCodes}/${totalCodes} used\n` +
     `🔧 Maintenance: ${getMaintenance() ? "🔴 ON" : "🟢 OFF"}\n\n` +
     `🧠 Chat Model: ${activeChat}\n` +
-    `🖼 Image Model: ${activeImg}\n` +
-    `🎬 Video Model: ${activeVid}`;
+    `🖼 Image Model: ${activeImg}`;
 
   const keyboard = ownerMainKeyboard(getMaintenance());
 
@@ -786,110 +784,6 @@ export async function handleOwnerPendingText(
         break;
       }
 
-      case "owner_add_vid_step1": {
-        const name = input.trim();
-        if (!name || name.length < 2) {
-          await bot.sendMessage(chatId, "❌ Name too short. Try again.", { reply_markup: backToOwnerKeyboard() });
-          return;
-        }
-        setPending(userId, "owner_add_vid_step2", { name });
-        await bot.sendMessage(chatId,
-          `✅ Name set to: "${name}"\n\n` +
-          `Now paste the model ID from HuggingFace.\n\n` +
-          `Examples:\n` +
-          `• damo-vilab/text-to-video-ms-1.7b\n` +
-          `• ali-vilab/i2vgen-xl\n\n` +
-          `Browse models at huggingface.co/models?pipeline_tag=text-to-video`,
-          { reply_markup: backToOwnerKeyboard() }
-        );
-        break;
-      }
-
-      case "owner_add_vid_step2": {
-        const modelId = input.trim();
-        const modelName = pendingData?.name;
-        if (!modelId || !modelName) { await bot.sendMessage(chatId, "Something went wrong. Start over.", { reply_markup: backToOwnerKeyboard() }); return; }
-        const config = await getOrCreateBotConfig();
-        if (config.videoModels.find((m) => m.id === modelId)) {
-          await bot.sendMessage(chatId, `A model with ID "${modelId}" already exists.`, { reply_markup: backToOwnerKeyboard() });
-          return;
-        }
-        config.videoModels.push({ id: modelId, name: modelName, active: false });
-        await config.save();
-        await bot.sendMessage(chatId, `✅ Video model added!\n\nName: ${modelName}\nID: ${modelId}\n\nHead to 🎬 Video Model in the dashboard to activate it.`, { reply_markup: backToOwnerKeyboard() });
-        break;
-      }
-
-      case "owner_add_voice_step1": {
-        const name = input.trim();
-        if (!name || name.length < 2) {
-          await bot.sendMessage(chatId, "❌ Name too short. Try again — e.g. Crystal or Soft Female", { reply_markup: backToOwnerKeyboard() });
-          return;
-        }
-        setPending(userId, "owner_add_voice_step2", { name });
-        await bot.sendMessage(chatId,
-          `✅ Name set to: "${name}"\n\n` +
-          `Now paste the HuggingFace TTS model ID.\n\n` +
-          `Examples:\n` +
-          `• facebook/mms-tts-eng\n` +
-          `• espnet/kan-bayashi_ljspeech_vits\n` +
-          `• facebook/fastspeech2-en-ljspeech\n\n` +
-          `Browse models at huggingface.co/models?pipeline_tag=text-to-speech`,
-          { reply_markup: backToOwnerKeyboard() }
-        );
-        break;
-      }
-
-      case "owner_add_voice_step2": {
-        const modelId = input.trim();
-        const modelName = pendingData?.name;
-        if (!modelId || !modelName) { await bot.sendMessage(chatId, "Something went wrong. Start over.", { reply_markup: backToOwnerKeyboard() }); return; }
-        const config = await getOrCreateBotConfig();
-        if (config.voiceModels.find((m) => m.id === modelId)) {
-          await bot.sendMessage(chatId, `A voice with ID "${modelId}" already exists.`, { reply_markup: backToOwnerKeyboard() });
-          return;
-        }
-        config.voiceModels.push({ id: modelId, name: modelName, active: false });
-        await config.save();
-        await bot.sendMessage(chatId, `✅ Voice model added!\n\nName: ${modelName}\nID: ${modelId}\n\nHead to 🔊 Voice Model in the dashboard to activate it.`, { reply_markup: backToOwnerKeyboard() });
-        break;
-      }
-
-      case "owner_add_asr_step1": {
-        const name = input.trim();
-        if (!name || name.length < 2) {
-          await bot.sendMessage(chatId, "❌ Name too short. Try again — e.g. Whisper Large or Wav2Vec2", { reply_markup: backToOwnerKeyboard() });
-          return;
-        }
-        setPending(userId, "owner_add_asr_step2", { name });
-        await bot.sendMessage(chatId,
-          `✅ Name set to: "${name}"\n\n` +
-          `Now paste the HuggingFace ASR model ID.\n\n` +
-          `Examples:\n` +
-          `• openai/whisper-large-v3\n` +
-          `• openai/whisper-medium\n` +
-          `• facebook/wav2vec2-large-960h\n\n` +
-          `Browse at huggingface.co/models?pipeline_tag=automatic-speech-recognition`,
-          { reply_markup: backToOwnerKeyboard() }
-        );
-        break;
-      }
-
-      case "owner_add_asr_step2": {
-        const modelId = input.trim();
-        const modelName = pendingData?.name;
-        if (!modelId || !modelName) { await bot.sendMessage(chatId, "Something went wrong. Start over.", { reply_markup: backToOwnerKeyboard() }); return; }
-        const config = await getOrCreateBotConfig();
-        if (config.asrModels.find((m) => m.id === modelId)) {
-          await bot.sendMessage(chatId, `A model with ID "${modelId}" already exists.`, { reply_markup: backToOwnerKeyboard() });
-          return;
-        }
-        config.asrModels.push({ id: modelId, name: modelName, active: false });
-        await config.save();
-        await bot.sendMessage(chatId, `✅ ASR model added!\n\nName: ${modelName}\nID: ${modelId}\n\nHead to 🎙 Speech (ASR) in the dashboard to activate it.`, { reply_markup: backToOwnerKeyboard() });
-        break;
-      }
-
       // ── Legacy single-step (kept for backwards compat) ──────────────────
 
       case "owner_add_chat_model": {
@@ -923,21 +817,6 @@ export async function handleOwnerPendingText(
         config.imageModels.push({ id: modelId, name: modelName, active: false });
         await config.save();
         await bot.sendMessage(chatId, `✅ Image model "${modelName}" added.`, { reply_markup: backToOwnerKeyboard() });
-        break;
-      }
-
-      case "owner_add_video_model": {
-        const parts = input.trim().split("|");
-        const modelId = parts[0]?.trim();
-        const modelName = parts[1]?.trim();
-        if (!modelId || !modelName) {
-          await bot.sendMessage(chatId, "Format: model_id|Display Name", { reply_markup: backToOwnerKeyboard() });
-          return;
-        }
-        const config = await getOrCreateBotConfig();
-        config.videoModels.push({ id: modelId, name: modelName, active: false });
-        await config.save();
-        await bot.sendMessage(chatId, `✅ Video model "${modelName}" added.`, { reply_markup: backToOwnerKeyboard() });
         break;
       }
 

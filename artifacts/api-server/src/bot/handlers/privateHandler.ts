@@ -3,9 +3,6 @@ import { IUser, User } from "../models/User.js";
 import { RedeemCode } from "../models/RedeemCode.js";
 import { chat, clearMemory } from "../services/ai.js";
 import { generateImage, getImageLimit, editImage, downloadTelegramPhoto } from "../services/image.js";
-import { generateVideo } from "../services/video.js";
-import { transcribeVoice, downloadTelegramAudio } from "../services/voice.js";
-import { textToSpeech, VOICE_PREVIEW_TEXT } from "../services/tts.js";
 import { analyzeImage } from "../services/imageAnalysis.js";
 import { isRateLimited } from "../utils/rateLimiter.js";
 import { formatDate, addDays, getUserName, safeSend, startTypingLoop } from "../utils/helpers.js";
@@ -157,29 +154,6 @@ function detectImageIntent(text: string): string | null {
   return null;
 }
 
-// ── Video intent detection ─────────────────────────────────────────────────────
-
-function detectVideoIntent(text: string): string | null {
-  const t = text.trim();
-  if (t.length < 5 || t.startsWith("/")) return null;
-  const patterns = [
-    /^(?:generate|create|make|produce)\s+(?:a\s+|me\s+a\s+|me\s+)?(?:short\s+)?(?:video|clip|animation|reel|movie)\s+(?:of|about|showing|depicting|with|for)?\s*(.+)/i,
-    /^(?:can you|could you|please)\s+(?:generate|create|make)\s+(?:a\s+)?(?:short\s+)?(?:video|clip|animation)\s+(?:of|about|showing|with|for)?\s*(.+)/i,
-    /^(?:video|clip|animation)\s+(?:of\s+|showing\s+|about\s+)(.+)/i,
-    /^(?:animate|film)\s+(?:me\s+)?(.+)/i,
-    /^i\s+(?:want|need)\s+(?:a\s+)?(?:short\s+)?(?:video|clip)\s+(?:of|about|showing)?\s*(.+)/i,
-  ];
-  const skip = ["me", "that", "this", "one", "it", "something", "anything", "a video", "a clip"];
-  for (const pattern of patterns) {
-    const match = t.match(pattern);
-    const captured = match?.[1]?.trim();
-    if (match && captured && captured.length > 3 && !skip.includes(captured.toLowerCase())) {
-      return captured.replace(/[?.!]+$/, "");
-    }
-  }
-  return null;
-}
-
 // ── Music intent detection ─────────────────────────────────────────────────────
 
 function detectMusicIntent(text: string): string | null {
@@ -269,25 +243,6 @@ function detectBuildIntent(text: string): string | null {
   return null;
 }
 
-// ── TTS intent detection ───────────────────────────────────────────────────────
-
-function detectTTSIntent(text: string): string | null {
-  const t = text.trim();
-  if (t.length < 5 || t.startsWith("/")) return null;
-  const patterns = [
-    /^(?:say|speak|read\s*out(?:\s*loud)?|voice|narrate)\s+(?:this\s+)?:?\s*(.+)/i,
-    /^(?:text\s*to\s*speech|tts)\s*:?\s*(.+)/i,
-    /^(?:convert|turn|change)\s+(?:this\s+)?(?:text|message)?\s*(?:to|into)\s+(?:speech|voice|audio)\s*:?\s*(.*)/i,
-    /^(?:make|create)\s+(?:a\s+)?(?:voice|audio)\s+(?:for|of|from)\s+(.+)/i,
-  ];
-  for (const pattern of patterns) {
-    const match = t.match(pattern);
-    const captured = match?.[1]?.trim();
-    if (match && captured && captured.length > 3) return captured;
-  }
-  return null;
-}
-
 // ── Summarize intent detection ─────────────────────────────────────────────────
 
 function detectSummarizeIntent(text: string): string | null {
@@ -330,112 +285,7 @@ export async function handleVoiceMessage(
 ): Promise<void> {
   const chatId = msg.chat.id;
   if (user.banned) return;
-
-  if (isRateLimited(user.userId)) {
-    await bot.sendMessage(chatId, "Too many messages. Wait a minute.");
-    return;
-  }
-
-  if (getMaintenance()) {
-    await bot.sendMessage(chatId, "Nova is currently under maintenance. Check back soon!");
-    return;
-  }
-
-  const voice = msg.voice;
-  if (!voice) return;
-
-  const e = user.settings.emoji;
-  const statusMsg = await bot.sendMessage(chatId, e ? "🎧 Listening to your voice..." : "Processing your voice message...");
-  const stopTyping = startTypingLoop(bot, chatId);
-
-  try {
-    const audioBuffer = await downloadTelegramAudio(bot, voice.file_id);
-    if (!audioBuffer) {
-      stopTyping();
-      await bot.editMessageText("Failed to download your voice message. Please try again.", {
-        chat_id: chatId, message_id: statusMsg.message_id,
-      });
-      return;
-    }
-
-    if (!process.env.HUGGINGFACE_API_TOKEN) {
-      stopTyping();
-      await bot.editMessageText(
-        e
-          ? "🎙️ Voice transcription isn't set up yet.\n\nThe bot owner needs to add a free HuggingFace token (huggingface.co → Settings → Access Tokens).\n\nFor now, please type your message!"
-          : "Voice transcription is not configured. HUGGINGFACE_API_TOKEN is missing. Please type your message.",
-        { chat_id: chatId, message_id: statusMsg.message_id }
-      );
-      return;
-    }
-    const transcription = await transcribeVoice(audioBuffer);
-    if (!transcription) {
-      stopTyping();
-      await bot.editMessageText(
-        e ? "Couldn't make out what you said 🙉 Please try again or type your message." : "Voice transcription failed. Please type your message instead.",
-        { chat_id: chatId, message_id: statusMsg.message_id }
-      );
-      return;
-    }
-
-    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
-
-    const heard = e ? `🎙️ I heard: "${transcription}"` : `Voice: "${transcription}"`;
-    await safeSend(bot, chatId, heard);
-
-    const imagePrompt = detectImageIntent(transcription);
-    if (imagePrompt) {
-      await handleImageGeneration(bot, chatId, user, imagePrompt, e);
-      stopTyping();
-      return;
-    }
-
-    const videoPromptV = detectVideoIntent(transcription);
-    if (videoPromptV) {
-      await handleVideoGeneration(bot, chatId, user, videoPromptV, e);
-      stopTyping();
-      return;
-    }
-
-    const musicPromptV = detectMusicIntent(transcription);
-    if (musicPromptV) {
-      await handleMusicGeneration(bot, chatId, user, musicPromptV, e);
-      stopTyping();
-      return;
-    }
-
-    const stickerPromptV = detectStickerIntent(transcription);
-    if (stickerPromptV) {
-      await handleStickerGeneration(bot, chatId, user, stickerPromptV, e);
-      stopTyping();
-      return;
-    }
-
-    // Per-day message limit check for voice → AI chat
-    const voiceMsgCfg = await getOrCreateBotConfig();
-    const voiceMsgLimit = user.premium.active ? voiceMsgCfg.usageLimits.premiumMessages : voiceMsgCfg.usageLimits.freeMessages;
-    if (voiceMsgLimit >= 0 && user.usage.messages >= voiceMsgLimit) {
-      stopTyping();
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
-      await bot.sendMessage(chatId,
-        `Daily message limit reached (${voiceMsgLimit}/day). Resets tomorrow.` +
-        (user.premium.active ? "" : " Upgrade to /premium for more messages.")
-      );
-      return;
-    }
-
-    user.usage.messages += 1;
-    await user.save();
-
-    const reply = await chat(user.userId, chatId, transcription, user.settings, user.premium.active, user.mood ?? undefined);
-    stopTyping();
-    await safeSend(bot, chatId, reply);
-  } catch (err) {
-    stopTyping();
-    logger.error({ err }, "Voice message error");
-    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
-    await bot.sendMessage(chatId, "Something went wrong processing your voice message. Please try again.");
-  }
+  await bot.sendMessage(chatId, "Voice messages aren't supported. Please type your message instead!");
 }
 
 export async function handlePrivateMessage(
@@ -519,9 +369,8 @@ export async function handlePrivateMessage(
         `I'm your personal AI assistant — smarter than a chatbot, more powerful than a search engine.\n\n` +
         `Here's what I can do:\n` +
         `💬 Chat naturally — just type anything!\n` +
-        `🎨 Generate images, stickers & short videos\n` +
+        `🎨 Generate images & stickers\n` +
         `🎵 Generate music from a description\n` +
-        `🔊 Voice replies & text-to-speech\n` +
         `🔍 Search the web with AI synthesis\n` +
         `⏰ Set reminders — /remind 1h Call mom\n` +
         `📄 Read & analyze PDFs, DOCX, TXT files\n` +
@@ -553,7 +402,6 @@ export async function handlePrivateMessage(
       `💬 Just type anything to chat with me!\n\n` +
       `── Create ──\n` +
       `🎨 /image <prompt> — Generate an image\n` +
-      `🎬 /video <prompt> — Generate a short video\n` +
       `🎵 /music <prompt> — Generate music\n` +
       `🖼️ /sticker <prompt> — Generate a sticker\n` +
       `🔨 /build <idea> — Build a website or app with AI\n` +
@@ -627,21 +475,10 @@ export async function handlePrivateMessage(
     return;
   }
 
-  // /voice — voice settings
+  // /voice — voice settings (feature removed)
   if (text === "/voice") {
-    const config = await (await import("../models/BotConfig.js")).getOrCreateBotConfig();
-    const { voiceSettingsKeyboard } = await import("../utils/keyboards.js");
-    const voiceEnabled = user.settings?.voiceEnabled ?? false;
-    const currentVoice = config.voiceModels.find(
-      (m) => m.id === (user.settings?.voiceName || config.activeVoiceModel)
-    );
-    await bot.sendMessage(chatId,
-      `🔊 Voice Replies\n\n` +
-      `Status: ${voiceEnabled ? "ON" : "OFF"}\n` +
-      `Voice: ${currentVoice?.name || "Nova"}\n\n` +
-      `${voiceEnabled ? "Pick a voice below, or tap ▶️ Preview to hear a sample:" : "Tap below to turn voice replies on:"}`,
-      { reply_markup: voiceSettingsKeyboard(voiceEnabled, user.settings?.voiceName || config.activeVoiceModel, config.voiceModels) }
-    );
+    await bot.sendMessage(chatId, "Voice replies are no longer available.",
+      { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
     return;
   }
 
@@ -884,19 +721,6 @@ export async function handlePrivateMessage(
       return;
     }
     await handleImageGeneration(bot, chatId, user, prompt, e);
-    return;
-  }
-
-  // /video <prompt>
-  if (text.startsWith("/video")) {
-    const prompt = text.replace(/^\/video\s*/i, "").trim();
-    if (!prompt) {
-      await bot.sendMessage(chatId,
-        e ? "🎬 Give me a prompt!\nExample: /video a cat playing piano in jazz style" : "Usage: /video <prompt>\nExample: /video a sunset timelapse over the ocean"
-      );
-      return;
-    }
-    await handleVideoGeneration(bot, chatId, user, prompt, e);
     return;
   }
 
@@ -1284,12 +1108,6 @@ export async function handlePrivateMessage(
     return;
   }
 
-  const videoPrompt = detectVideoIntent(text);
-  if (videoPrompt) {
-    await handleVideoGeneration(bot, chatId, user, videoPrompt, e);
-    return;
-  }
-
   const musicPrompt = detectMusicIntent(text);
   if (musicPrompt) {
     await handleMusicGeneration(bot, chatId, user, musicPrompt, e);
@@ -1337,32 +1155,6 @@ export async function handlePrivateMessage(
   const buildDesc = detectBuildIntent(text);
   if (buildDesc) {
     await handleBuildRequest(bot, chatId, user, buildDesc, e);
-    return;
-  }
-
-  // ── TTS intent (natural language) ─────────────────────────────────────────────
-  const ttsText = detectTTSIntent(text);
-  if (ttsText) {
-    if (!process.env.HUGGINGFACE_API_TOKEN) {
-      await bot.sendMessage(chatId, e ? "🔊 Voice isn't configured yet. Ask the owner to set up HuggingFace!" : "Voice generation is not configured.");
-      return;
-    }
-    const statusMsg = await bot.sendMessage(chatId, e ? "🔊 Generating voice..." : "Generating voice...");
-    const stopTyping = startTypingLoop(bot, chatId);
-    try {
-      const audio = await textToSpeech(ttsText, user.settings.voiceName ?? undefined);
-      stopTyping();
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
-      if (!audio) {
-        await bot.sendMessage(chatId, e ? "🔊 Voice generation failed. Try again in a moment!" : "Voice generation failed. Try again.");
-        return;
-      }
-      await bot.sendVoice(chatId, audio, { caption: e ? `🔊 "${ttsText.substring(0, 80)}"` : ttsText.substring(0, 80) });
-    } catch {
-      stopTyping();
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
-      await bot.sendMessage(chatId, "Voice generation failed. Please try again.");
-    }
     return;
   }
 
@@ -1422,15 +1214,8 @@ export async function handlePrivateMessage(
   stopTyping();
   await sendAIReply(bot, chatId, reply);
 
-  // Voice reply — fire-and-forget so it doesn't block the text response
-  if (user.settings?.voiceEnabled && process.env.HUGGINGFACE_API_TOKEN) {
-    textToSpeech(reply, user.settings.voiceName).then(async (audio) => {
-      if (audio) {
-        try { await bot.sendVoice(chatId, audio); } catch {}
-      }
-    }).catch(() => {});
-  }
 }
+
 
 // ── Pending text action handler (for button-triggered multi-step flows) ────────
 
@@ -1724,10 +1509,6 @@ async function handlePendingText(
           `✅ Render API key saved securely!\n\n🔒 Encrypted with AES-256. Nova will use it when deploying to Render.\n\nTo remove it: ⚙️ Settings → 🚀 Deployments → Remove Render Token`,
           { reply_markup: { inline_keyboard: [[{ text: "⚙️ Deployments", callback_data: "settings_deployments" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
         );
-        break;
-      }
-      case "video_input": {
-        await handleVideoGeneration(bot, chatId, user, input, e);
         break;
       }
       case "build_input": {
@@ -2277,69 +2058,6 @@ async function sendProjectFiles(
     } catch (err) {
       logger.warn({ err, path: file.path }, "Failed to send project file as document");
     }
-  }
-}
-
-// ── Video generation helper ───────────────────────────────────────────────────
-
-async function handleVideoGeneration(
-  bot: TelegramBot,
-  chatId: number,
-  user: IUser,
-  prompt: string,
-  e: boolean
-): Promise<void> {
-  if (!process.env.HUGGINGFACE_API_TOKEN) {
-    await bot.sendMessage(chatId,
-      e
-        ? "🎬 Video generation isn't set up yet.\n\nThe bot owner needs to add a free HuggingFace API token (huggingface.co → Settings → Access Tokens)."
-        : "Video generation is not configured. HUGGINGFACE_API_TOKEN is missing.",
-      { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-    );
-    return;
-  }
-  // Per-day video limit check
-  const vidLimCfg = await getOrCreateBotConfig();
-  const videoLimit = user.premium.active ? vidLimCfg.usageLimits.premiumVideos : vidLimCfg.usageLimits.freeVideos;
-  if (videoLimit >= 0 && (user.usage.videos ?? 0) >= videoLimit) {
-    await bot.sendMessage(chatId,
-      `Daily video limit reached (${videoLimit}/day).` +
-      (user.premium.active ? "" : " Upgrade to /premium for more videos.")
-    );
-    return;
-  }
-  const sentMsg = await bot.sendMessage(chatId,
-    e ? "🎬 Starting video generation...\n\nThis takes 2-5 minutes. I'll update you as it progresses!" : "🎬 Generating video..."
-  );
-  const stopTyping = startTypingLoop(bot, chatId, "upload_video");
-  const onStatus = async (msg: string) => {
-    try { await bot.editMessageText(msg, { chat_id: chatId, message_id: sentMsg.message_id }); } catch {}
-  };
-  try {
-    const videoBuffer = await generateVideo(prompt, onStatus);
-    stopTyping();
-    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-    if (!videoBuffer) {
-      await bot.sendMessage(chatId,
-        e ? "🎬 Video generation failed. The model may be warming up or overloaded — try again in a minute!" : "Video generation failed. Try again in a minute.",
-        { reply_markup: { inline_keyboard: [[{ text: "🎬 Try Again", callback_data: "video_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-      );
-      return;
-    }
-    user.usage.videos = (user.usage.videos ?? 0) + 1;
-    await user.save();
-    await bot.sendVideo(chatId, videoBuffer, {
-      caption: `🎬 ${prompt.substring(0, 800)}`,
-      reply_markup: { inline_keyboard: [[{ text: "🎬 Generate Another", callback_data: "video_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] },
-    });
-  } catch (err) {
-    stopTyping();
-    logger.error({ err }, "Video generation error");
-    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-    await bot.sendMessage(chatId,
-      e ? "🎬 Video generation failed. Please try again later." : "Video generation failed. Please try again later.",
-      { reply_markup: { inline_keyboard: [[{ text: "🎬 Try Again", callback_data: "video_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-    );
   }
 }
 

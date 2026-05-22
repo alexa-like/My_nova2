@@ -10,15 +10,7 @@ import { listUserReminders, cancelReminder } from "../services/reminder.js";
 import { getOrCreateBotConfig } from "../models/BotConfig.js";
 import { sendOwnerPanel } from "./ownerHandler.js";
 import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
-import { textToSpeech, VOICE_PREVIEW_TEXT } from "../services/tts.js";
 import { analyzeImage } from "../services/imageAnalysis.js";
-import {
-  getProviderStatus,
-  setGlobalProvider,
-  toggleProvider,
-  setTaskRoute,
-  resetTaskRouting,
-} from "../services/providerRouter.js";
 import { getCachedBuild } from "../utils/buildCache.js";
 import { deployToVercel, deployToRender } from "../services/deploy.js";
 import { decrypt } from "../utils/crypto.js";
@@ -45,8 +37,6 @@ import {
   wyrKeyboard,
   repeatKeyboard,
   userModelKeyboard,
-  voiceSettingsKeyboard,
-  ownerAsrModelsKeyboard,
   ownerUsersKeyboard,
   ownerPremiumKeyboard,
   ownerCodesKeyboard,
@@ -54,17 +44,8 @@ import {
   ownerGroupsKeyboard,
   ownerChatModelsKeyboard,
   ownerImageModelsKeyboard,
-  ownerVideoModelsKeyboard,
-  ownerVoiceModelsKeyboard,
   ownerUserListKeyboard,
   backToOwnerKeyboard,
-  providerMainKeyboard,
-  providerSwitchKeyboard,
-  providerRoutingKeyboard,
-  providerEnableKeyboard,
-  providerDisableKeyboard,
-  providerStatusKeyboard,
-  providerRoutePickKeyboard,
   githubSettingsKeyboard,
   deploymentsKeyboard,
   projectsListKeyboard,
@@ -649,32 +630,6 @@ export async function handleCallbackQuery(
       await bot.answerCallbackQuery(query.id);
       await bot.sendMessage(chatId,
         `🖼️ Describe your next sticker:\n\n• laughing panda\n• cool robot with sunglasses\n• magical unicorn emoji`,
-        { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
-      );
-      return;
-    }
-
-    if (data === "video_btn") {
-      if (!process.env.HUGGINGFACE_API_TOKEN) {
-        await editMsg(bot, query,
-          `🎬 Video generation is not configured.\n\nThe bot owner needs to set up a HuggingFace API token.`,
-          backToImgKeyboard()
-        );
-        return;
-      }
-      setPending(userId, "video_input");
-      await editMsg(bot, query,
-        `🎬 Generate Video\n\nDescribe the short video you want:\n\n• a cat playing piano in jazz style\n• sunset timelapse over the ocean\n• rocket launching into space\n• waves crashing on a beach\n\n⚠️ Takes 2-5 minutes. Stay tuned!`,
-        backToImgKeyboard()
-      );
-      return;
-    }
-
-    if (data === "video_generate_btn") {
-      setPending(userId, "video_input");
-      await bot.answerCallbackQuery(query.id);
-      await bot.sendMessage(chatId,
-        `🎬 Describe your next video:\n\n• a dog running through a field\n• city at night with neon lights\n• aurora borealis time-lapse`,
         { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
       );
       return;
@@ -1637,17 +1592,6 @@ export async function handleCallbackQuery(
       return;
     }
 
-    if (data === "own_vid_models") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const config = await getOrCreateBotConfig();
-      const active = config.videoModels.find((m) => m.id === config.activeVideoModel);
-      await editMsg(bot, query,
-        `🎬 Video Models\n━━━━━━━━━━━━━━\nActive: ${active?.name || config.activeVideoModel}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
-        ownerVideoModelsKeyboard(config.videoModels, config.activeVideoModel)
-      );
-      return;
-    }
-
     if (data.startsWith("own_set_chat_")) {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
       const idx = parseInt(data.replace("own_set_chat_", ""));
@@ -1676,22 +1620,6 @@ export async function handleCallbackQuery(
       await editMsg(bot, query,
         `🖼 Image Models\n━━━━━━━━━━━━━━\nActive: ${model.name}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
         ownerImageModelsKeyboard(config.imageModels, config.activeImageModel)
-      );
-      return;
-    }
-
-    if (data.startsWith("own_set_vid_")) {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const idx = parseInt(data.replace("own_set_vid_", ""));
-      const config = await getOrCreateBotConfig();
-      const model = config.videoModels[idx];
-      if (!model) { await answer(bot, query.id, "Model not found."); return; }
-      config.activeVideoModel = model.id;
-      await config.save();
-      await answer(bot, query.id, `✅ Switched to ${model.name}`);
-      await editMsg(bot, query,
-        `🎬 Video Models\n━━━━━━━━━━━━━━\nActive: ${model.name}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
-        ownerVideoModelsKeyboard(config.videoModels, config.activeVideoModel)
       );
       return;
     }
@@ -1729,22 +1657,6 @@ export async function handleCallbackQuery(
       return;
     }
 
-    if (data.startsWith("own_del_vid_")) {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const idx = parseInt(data.replace("own_del_vid_", ""));
-      const config = await getOrCreateBotConfig();
-      if (config.videoModels.length <= 1) { await answer(bot, query.id, "Cannot delete the only model."); return; }
-      const removed = config.videoModels.splice(idx, 1)[0];
-      if (config.activeVideoModel === removed?.id) config.activeVideoModel = config.videoModels[0].id;
-      await config.save();
-      await answer(bot, query.id, `🗑 Removed ${removed?.name}`);
-      await editMsg(bot, query,
-        `🎬 Video Models\n━━━━━━━━━━━━━━\nActive: ${config.videoModels.find((m) => m.id === config.activeVideoModel)?.name}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
-        ownerVideoModelsKeyboard(config.videoModels, config.activeVideoModel)
-      );
-      return;
-    }
-
     if (data === "own_add_chat") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
       setPending(userId, "owner_add_chat_step1");
@@ -1761,122 +1673,6 @@ export async function handleCallbackQuery(
       await editMsg(bot, query,
         `🖼 Add Image Model — Step 1 of 2\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nWhat do you want to call this model?\n\nExamples: FLUX Dev, SD 3, Playground v3\n\nJust type the display name:`,
         backToOwnerKeyboard()
-      );
-      return;
-    }
-
-    if (data === "own_add_vid") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      setPending(userId, "owner_add_vid_step1");
-      await editMsg(bot, query,
-        `🎬 Add Video Model — Step 1 of 2\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nWhat do you want to call this model?\n\nExamples: ModelScope, I2VGen XL\n\nJust type the display name:`,
-        backToOwnerKeyboard()
-      );
-      return;
-    }
-
-    if (data === "own_add_voice") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      setPending(userId, "owner_add_voice_step1");
-      await editMsg(bot, query,
-        `🔊 Add Voice — Step 1 of 2\n━━━━━━━━━━━━━━━━━━━━━━━\nWhat do you want to call this voice?\n\nExamples: Crystal, Deep Male, Soft Female\n\nJust type the display name:`,
-        backToOwnerKeyboard()
-      );
-      return;
-    }
-
-    if (data === "own_asr_models") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const config = await getOrCreateBotConfig();
-      const active = config.asrModels.find((m) => m.id === config.activeAsrModel);
-      await editMsg(bot, query,
-        `🎙 Speech Recognition (ASR)\n━━━━━━━━━━━━━━━━━━━━━━━━\nActive: ${active?.name || config.activeAsrModel}\n\nThis model transcribes voice messages into text.\nTap to activate. 🗑 to remove.`,
-        ownerAsrModelsKeyboard(config.asrModels, config.activeAsrModel)
-      );
-      return;
-    }
-
-    if (data.startsWith("own_set_asr_")) {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const idx = parseInt(data.replace("own_set_asr_", ""));
-      const config = await getOrCreateBotConfig();
-      const model = config.asrModels[idx];
-      if (!model) { await answer(bot, query.id, "Model not found."); return; }
-      config.activeAsrModel = model.id;
-      await config.save();
-      await answer(bot, query.id, `✅ ASR switched to ${model.name}`);
-      await editMsg(bot, query,
-        `🎙 Speech Recognition (ASR)\n━━━━━━━━━━━━━━━━━━━━━━━━\nActive: ${model.name} ✅\n\nTap to activate. 🗑 to remove.`,
-        ownerAsrModelsKeyboard(config.asrModels, config.activeAsrModel)
-      );
-      return;
-    }
-
-    if (data.startsWith("own_del_asr_")) {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const idx = parseInt(data.replace("own_del_asr_", ""));
-      const config = await getOrCreateBotConfig();
-      if (config.asrModels.length <= 1) { await answer(bot, query.id, "Cannot delete the only ASR model."); return; }
-      const removed = config.asrModels.splice(idx, 1)[0];
-      if (config.activeAsrModel === removed?.id) config.activeAsrModel = config.asrModels[0].id;
-      await config.save();
-      await answer(bot, query.id, `🗑 Removed ${removed?.name}`);
-      await editMsg(bot, query,
-        `🎙 Speech Recognition (ASR)\n━━━━━━━━━━━━━━━━━━━━━━━━\nActive: ${config.asrModels.find((m) => m.id === config.activeAsrModel)?.name}\n\nTap to activate. 🗑 to remove.`,
-        ownerAsrModelsKeyboard(config.asrModels, config.activeAsrModel)
-      );
-      return;
-    }
-
-    if (data === "own_add_asr") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      setPending(userId, "owner_add_asr_step1");
-      await editMsg(bot, query,
-        `🎙 Add ASR Model — Step 1 of 2\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nWhat do you want to call this model?\n\nExamples: Whisper Large, Fast Whisper\n\nJust type the display name:`,
-        backToOwnerKeyboard()
-      );
-      return;
-    }
-
-    if (data === "own_voice_models") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const config = await getOrCreateBotConfig();
-      const active = config.voiceModels.find((m) => m.id === config.activeVoiceModel);
-      await editMsg(bot, query,
-        `🔊 Voice Models\n━━━━━━━━━━━━━━\nActive: ${active?.name || config.activeVoiceModel}\n\nTap to set as default. 🗑 to remove.\nAdd new with ➕.`,
-        ownerVoiceModelsKeyboard(config.voiceModels, config.activeVoiceModel)
-      );
-      return;
-    }
-
-    if (data.startsWith("own_set_voice_")) {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const idx = parseInt(data.replace("own_set_voice_", ""));
-      const config = await getOrCreateBotConfig();
-      const model = config.voiceModels[idx];
-      if (!model) { await answer(bot, query.id, "Voice not found."); return; }
-      config.activeVoiceModel = model.id;
-      await config.save();
-      await answer(bot, query.id, `✅ Voice switched to ${model.name}`);
-      await editMsg(bot, query,
-        `🔊 Voice Models\n━━━━━━━━━━━━━━\nActive: ${model.name}\n\nTap to set as default. 🗑 to remove.\nAdd new with ➕.`,
-        ownerVoiceModelsKeyboard(config.voiceModels, config.activeVoiceModel)
-      );
-      return;
-    }
-
-    if (data.startsWith("own_del_voice_")) {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const idx = parseInt(data.replace("own_del_voice_", ""));
-      const config = await getOrCreateBotConfig();
-      if (config.voiceModels.length <= 1) { await answer(bot, query.id, "Cannot delete the only voice."); return; }
-      const removed = config.voiceModels.splice(idx, 1)[0];
-      if (config.activeVoiceModel === removed?.id) config.activeVoiceModel = config.voiceModels[0].id;
-      await config.save();
-      await answer(bot, query.id, `🗑 Removed ${removed?.name}`);
-      await editMsg(bot, query,
-        `🔊 Voice Models\n━━━━━━━━━━━━━━\nActive: ${config.voiceModels.find((m) => m.id === config.activeVoiceModel)?.name}\n\nTap to set as default. 🗑 to remove.\nAdd new with ➕.`,
-        ownerVoiceModelsKeyboard(config.voiceModels, config.activeVoiceModel)
       );
       return;
     }
@@ -2056,80 +1852,6 @@ export async function handleCallbackQuery(
       return;
     }
 
-    // ── User: Voice Settings ──────────────────────────────────────────────
-
-    if (data === "voice_panel") {
-      const config = await getOrCreateBotConfig();
-      const currentVoice = config.voiceModels.find(
-        (m) => m.id === (user.settings?.voiceName || config.activeVoiceModel)
-      );
-      const voiceEnabled = user.settings?.voiceEnabled ?? false;
-      await editMsg(bot, query,
-        `🔊 Voice Replies\n━━━━━━━━━━━━━━\n` +
-        `Status: ${voiceEnabled ? "ON — I'll send a voice note with every reply" : "OFF — text only"}\n` +
-        `Current voice: ${currentVoice?.name || "Nova"}\n\n` +
-        `${voiceEnabled ? "Pick your voice and tap ▶️ Preview to hear a sample:" : "Turn on to enable voice replies:"}`,
-        voiceSettingsKeyboard(voiceEnabled, user.settings?.voiceName || config.activeVoiceModel, config.voiceModels)
-      );
-      return;
-    }
-
-    if (data === "voice_toggle") {
-      user.settings.voiceEnabled = !user.settings.voiceEnabled;
-      await user.save();
-      const config = await getOrCreateBotConfig();
-      const voiceEnabled = user.settings.voiceEnabled;
-      await answer(bot, query.id, voiceEnabled ? "🔊 Voice replies turned ON!" : "🔇 Voice replies turned OFF");
-      await editMsg(bot, query,
-        `🔊 Voice Replies\n━━━━━━━━━━━━━━\n` +
-        `Status: ${voiceEnabled ? "ON — I'll send a voice note with every reply" : "OFF — text only"}\n` +
-        `Current voice: ${config.voiceModels.find((m) => m.id === (user.settings.voiceName || config.activeVoiceModel))?.name || "Nova"}\n\n` +
-        `${voiceEnabled ? "Pick your voice and tap ▶️ Preview to hear a sample:" : "Turn on to enable voice replies:"}`,
-        voiceSettingsKeyboard(voiceEnabled, user.settings.voiceName || config.activeVoiceModel, config.voiceModels)
-      );
-      return;
-    }
-
-    if (data.startsWith("voice_pick_")) {
-      const idx = parseInt(data.replace("voice_pick_", ""));
-      const config = await getOrCreateBotConfig();
-      const voice = config.voiceModels[idx];
-      if (!voice) { await answer(bot, query.id, "Voice not found."); return; }
-      user.settings.voiceName = voice.id;
-      await user.save();
-      await answer(bot, query.id, `✅ Voice set to ${voice.name}`);
-      await editMsg(bot, query,
-        `🔊 Voice Replies\n━━━━━━━━━━━━━━\n` +
-        `Status: ${user.settings.voiceEnabled ? "ON" : "OFF"}\n` +
-        `Current voice: ${voice.name} ✅\n\n` +
-        `Tap ▶️ Preview to hear how this voice sounds:`,
-        voiceSettingsKeyboard(user.settings.voiceEnabled, voice.id, config.voiceModels)
-      );
-      return;
-    }
-
-    if (data.startsWith("voice_preview_")) {
-      const idx = parseInt(data.replace("voice_preview_", ""));
-      const config = await getOrCreateBotConfig();
-      const voice = config.voiceModels[idx];
-      if (!voice) { await answer(bot, query.id, "Voice not found."); return; }
-      await answer(bot, query.id, `Generating preview for ${voice.name}...`);
-      const isEdgeVoice = voice.id.startsWith("edge:");
-      if (!isEdgeVoice && !process.env.HUGGINGFACE_API_TOKEN) {
-        await bot.sendMessage(chatId, `⚠️ ${voice.name} requires a HuggingFace API token.\n\nTry one of the Edge TTS voices — they work without any API key!`);
-        return;
-      }
-      const audio = await textToSpeech(VOICE_PREVIEW_TEXT, voice.id);
-      if (audio) {
-        await bot.sendVoice(chatId, audio, { caption: `🎙 ${voice.name} — voice preview` });
-      } else {
-        await bot.sendMessage(chatId,
-          `Could not generate preview for ${voice.name}. ${isEdgeVoice ? "Edge TTS may be temporarily unavailable." : "The model may be loading — try again in a moment."}`
-        );
-      }
-      return;
-    }
-
     // ── Premium Emoji Toggle (owner only) ────────────────────────────────
 
     if (data === "owner_premoji_on" || data === "owner_premoji_off") {
@@ -2177,167 +1899,6 @@ export async function handleCallbackQuery(
           ],
           [{ text: "⬅️ Back to Owner Panel", callback_data: "owner_panel" }],
         ]}
-      );
-      return;
-    }
-
-    // ── Provider Control Panel (owner only) ──────────────────────────────
-
-    if (data === "prov_main") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      await editMsg(bot, query,
-        `⚡ Provider Control\n━━━━━━━━━━━━━━━━━━\nManage AI provider routing and availability.\nOnly the owner can access this panel.`,
-        providerMainKeyboard()
-      );
-      return;
-    }
-
-    if (data === "prov_switch_menu") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const status = await getProviderStatus();
-      await editMsg(bot, query,
-        `🔄 Switch Provider\n━━━━━━━━━━━━━━━━━\nCurrent global provider: ${status.globalProvider}\n\nSelect a provider to make it global default:`,
-        providerSwitchKeyboard()
-      );
-      return;
-    }
-
-    if (data === "prov_set_openrouter" || data === "prov_set_huggingface" || data === "prov_set_auto") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const provider = data.replace("prov_set_", "") as "openrouter" | "huggingface" | "auto";
-      await setGlobalProvider(provider);
-      await answer(bot, query.id, `✅ Global provider set to: ${provider}`);
-      await editMsg(bot, query,
-        `✅ Provider Switched!\n━━━━━━━━━━━━━━━━━━\nGlobal provider: ${provider}\n\nAll AI requests will now route through ${provider === "auto" ? "the smart auto-routing system" : provider}.`,
-        providerMainKeyboard()
-      );
-      return;
-    }
-
-    if (data === "prov_status") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const status = await getProviderStatus();
-      const enabledList = Object.entries(status.enabledProviders)
-        .map(([k, v]) => `${v ? "✅" : "⛔"} ${k}`)
-        .join("\n");
-      const routingList = Object.entries(status.taskRouting)
-        .map(([task, prov]) => `• ${task} → ${prov}`)
-        .join("\n");
-      await editMsg(bot, query,
-        `📊 Provider Status\n━━━━━━━━━━━━━━━━━\n` +
-        `🌐 Global Provider: ${status.globalProvider}\n\n` +
-        `📡 Enabled Providers:\n${enabledList}\n\n` +
-        `⚙️ Task Routing:\n${routingList}\n\n` +
-        `🕒 Last Used: ${status.lastUsedProvider}\n` +
-        `❌ Last Error: ${status.lastError || "none"}`,
-        providerStatusKeyboard()
-      );
-      return;
-    }
-
-    if (data === "prov_routing_menu") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const status = await getProviderStatus();
-      await editMsg(bot, query,
-        `⚙️ Task Routing\n━━━━━━━━━━━━━━\nConfigure which provider handles each task type.\nTap a task to change its provider:`,
-        providerRoutingKeyboard(status.taskRouting)
-      );
-      return;
-    }
-
-    if (data === "prov_route_text" || data === "prov_route_code" || data === "prov_route_image" || data === "prov_route_video") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const task = data.replace("prov_route_", "");
-      const status = await getProviderStatus();
-      const current = (status.taskRouting as Record<string, string>)[task] || "openrouter";
-      await editMsg(bot, query,
-        `⚙️ Route: ${task.toUpperCase()}\n━━━━━━━━━━━━━━━━━\nCurrent: ${current}\n\nSelect new provider for ${task} tasks:`,
-        providerRoutePickKeyboard(task, current)
-      );
-      return;
-    }
-
-    if (data.startsWith("prov_routeset_")) {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const parts = data.replace("prov_routeset_", "").split("_");
-      const task = parts[0] as "text" | "code" | "image" | "video";
-      const provider = parts.slice(1).join("_") as "openrouter" | "huggingface" | "auto";
-      await setTaskRoute(task, provider);
-      await answer(bot, query.id, `✅ ${task} → ${provider}`);
-      const status = await getProviderStatus();
-      await editMsg(bot, query,
-        `⚙️ Task Routing\n━━━━━━━━━━━━━━\n✅ ${task} → ${provider} updated!\n\nConfigure which provider handles each task:`,
-        providerRoutingKeyboard(status.taskRouting)
-      );
-      return;
-    }
-
-    if (data === "prov_route_reset") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      await resetTaskRouting();
-      await answer(bot, query.id, "✅ Task routing reset to defaults");
-      const status = await getProviderStatus();
-      await editMsg(bot, query,
-        `⚙️ Task Routing\n━━━━━━━━━━━━━━\n✅ Reset to defaults!\n\nText/Code → OpenRouter\nImage/Video → HuggingFace`,
-        providerRoutingKeyboard(status.taskRouting)
-      );
-      return;
-    }
-
-    if (data === "prov_enable_menu") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const status = await getProviderStatus();
-      const enabledList = Object.entries(status.enabledProviders)
-        .map(([k, v]) => `${v ? "✅" : "⛔"} ${k}`)
-        .join("  |  ");
-      await editMsg(bot, query,
-        `🚀 Enable Provider\n━━━━━━━━━━━━━━━━━\nCurrent: ${enabledList}\n\nSelect a provider to enable:`,
-        providerEnableKeyboard()
-      );
-      return;
-    }
-
-    if (data === "prov_disable_menu") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const status = await getProviderStatus();
-      const enabledList = Object.entries(status.enabledProviders)
-        .map(([k, v]) => `${v ? "✅" : "⛔"} ${k}`)
-        .join("  |  ");
-      await editMsg(bot, query,
-        `⛔ Disable Provider\n━━━━━━━━━━━━━━━━━━\nCurrent: ${enabledList}\n\nSelect a provider to disable:`,
-        providerDisableKeyboard()
-      );
-      return;
-    }
-
-    if (data === "prov_enable_openrouter" || data === "prov_enable_huggingface") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const provider = data.replace("prov_enable_", "") as "openrouter" | "huggingface";
-      await toggleProvider(provider, true);
-      await answer(bot, query.id, `✅ ${provider} enabled`);
-      await editMsg(bot, query,
-        `✅ ${provider} has been enabled.\n\nAll tasks routed to ${provider} will now work.`,
-        providerMainKeyboard()
-      );
-      return;
-    }
-
-    if (data === "prov_disable_openrouter" || data === "prov_disable_huggingface") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const provider = data.replace("prov_disable_", "") as "openrouter" | "huggingface";
-      const status = await getProviderStatus();
-      const otherEnabled = provider === "openrouter"
-        ? status.enabledProviders.huggingface
-        : status.enabledProviders.openrouter;
-      if (!otherEnabled) {
-        await answer(bot, query.id, "⚠️ Cannot disable both providers at once!");
-        return;
-      }
-      await toggleProvider(provider, false);
-      await answer(bot, query.id, `⛔ ${provider} disabled`);
-      await editMsg(bot, query,
-        `⛔ ${provider} has been disabled.\n\nTasks will fall back to the other provider automatically.`,
-        providerMainKeyboard()
       );
       return;
     }
