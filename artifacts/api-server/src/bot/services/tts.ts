@@ -55,8 +55,8 @@ export async function textToSpeech(
           }
         );
 
-        if (!response.data || response.data.byteLength < 100) {
-          logger.warn({ model }, "TTS returned empty/tiny response");
+        if (!response.data || response.data.byteLength < 50) {
+          logger.warn({ model, bytes: response.data?.byteLength }, "TTS returned empty/tiny response");
           break;
         }
 

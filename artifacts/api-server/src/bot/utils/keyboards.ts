@@ -30,18 +30,24 @@ export function mainMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
   };
 }
 
-export function buildResultKeyboard(repoUrl?: string, canDeploy = false): TelegramBot.InlineKeyboardMarkup {
+export function buildResultKeyboard(
+  repoUrl?: string,
+  canDeployVercel = false,
+  canDeployRender = false
+): TelegramBot.InlineKeyboardMarkup {
   const buttons: TelegramBot.InlineKeyboardButton[][] = [];
   if (repoUrl) {
     buttons.push([{ text: "🔗 Open on GitHub", url: repoUrl }]);
   }
-  if (canDeploy) {
-    buttons.push([{ text: "🚀 Deploy to Vercel", callback_data: "deploy_live" }]);
-  }
+  const deployRow: TelegramBot.InlineKeyboardButton[] = [];
+  if (canDeployVercel) deployRow.push({ text: "⚡ Deploy to Vercel", callback_data: "deploy_live" });
+  if (canDeployRender) deployRow.push({ text: "🟣 Deploy to Render", callback_data: "deploy_render" });
+  if (deployRow.length > 0) buttons.push(deployRow);
   buttons.push([
+    { text: "📁 My Projects", callback_data: "my_projects" },
     { text: "🌐 Build Another", callback_data: "build_menu" },
-    { text: "⬅️ Menu", callback_data: "main_menu" },
   ]);
+  buttons.push([{ text: "⬅️ Menu", callback_data: "main_menu" }]);
   return { inline_keyboard: buttons };
 }
 
@@ -180,6 +186,9 @@ export function imageMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
       ],
       [
         { text: "🎵 Generate Music", callback_data: "music_btn" },
+        { text: "🎬 Generate Video", callback_data: "video_btn" },
+      ],
+      [
         { text: "🖼️ Create Sticker", callback_data: "sticker_btn" },
       ],
       [{ text: "⬅️ Back", callback_data: "main_menu" }],

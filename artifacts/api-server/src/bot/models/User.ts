@@ -37,6 +37,8 @@ export interface IUser extends Document {
     tokenEncrypted?: string;
     username?: string;
   };
+  vercelTokenEncrypted?: string;
+  renderTokenEncrypted?: string;
   projects: Array<{
     name: string;
     repoUrl: string;
@@ -91,6 +93,8 @@ const UserSchema = new Schema<IUser>(
       tokenEncrypted: { type: String, select: false },
       username: { type: String },
     },
+    vercelTokenEncrypted: { type: String, select: false },
+    renderTokenEncrypted: { type: String, select: false },
     projects: [
       {
         name: { type: String },
