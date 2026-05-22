@@ -85,7 +85,8 @@ export async function generateVideo(
         break;
       }
     }
-    if (onStatus) await onStatus(`🔄 Trying next video model...`);
+    const isLast = modelId === VIDEO_MODELS[VIDEO_MODELS.length - 1];
+    if (!isLast && onStatus) await onStatus(`🔄 Trying next video model...`);
   }
 
   return null;

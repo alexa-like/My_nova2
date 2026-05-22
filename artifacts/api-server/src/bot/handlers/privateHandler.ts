@@ -1713,6 +1713,10 @@ async function handlePendingText(
         await handleVideoGeneration(bot, chatId, user, input, e);
         break;
       }
+      case "build_input": {
+        await handleBuildRequest(bot, chatId, user, input, e);
+        break;
+      }
       default:
         await bot.sendMessage(chatId, "Something went wrong. Try again from the menu.", { reply_markup: mainMenuKeyboard() });
     }
@@ -2049,6 +2053,8 @@ async function handleBuildRequest(
     user.projects = user.projects ?? [];
     user.projects.push({ name: project.name, repoUrl: repoInfo.htmlUrl, deployUrl: undefined, createdAt: new Date() } as any);
     await user.save();
+
+    cacheUserBuild(user.userId, project, prompt, repoInfo.htmlUrl);
 
     await bot.sendMessage(chatId,
       `🚀 Your project is ready!\n\n` +

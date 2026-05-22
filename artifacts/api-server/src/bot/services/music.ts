@@ -89,7 +89,8 @@ export async function generateMusic(
         break;
       }
     }
-    if (onStatus) await onStatus(`🔄 Trying next model...`);
+    const isLast = modelId === MUSIC_MODELS[MUSIC_MODELS.length - 1];
+    if (!isLast && onStatus) await onStatus(`🔄 Trying next model...`);
   }
 
   return null;

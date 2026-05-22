@@ -10,21 +10,18 @@ const MAX_SUMMARY_TRIGGER = 30;
 // Tried in order when the primary model returns 402/429/500/503.
 // Large context first → smaller/faster models as last resort.
 const FREE_FALLBACK_MODELS = [
-  "deepseek/deepseek-v4-flash:free",                               // 1M ctx — default primary
-  "meta-llama/llama-3.3-70b-instruct:free",                        // 131K ctx — proven reliable
-  "qwen/qwen3-coder:free",                                          // 1M ctx — 480B params
-  "nvidia/nemotron-3-super-120b-a12b:free",                         // 1M ctx — 120B NVIDIA
-  "nousresearch/hermes-3-llama-3.1-405b:free",                      // 131K ctx — 405B hermes
-  "openai/gpt-oss-120b:free",                                       // 131K ctx — OpenAI OSS
-  "openai/gpt-oss-20b:free",                                        // 131K ctx — smaller OSS
-  "google/gemma-4-31b-it:free",                                     // 262K ctx — Google
-  "qwen/qwen3-next-80b-a3b-instruct:free",                          // 262K ctx — Qwen
-  "minimax/minimax-m2.5:free",                                       // 204K ctx — MiniMax
-  "nvidia/nemotron-3-nano-30b-a3b:free",                            // 256K ctx — NVIDIA nano
-  "z-ai/glm-4.5-air:free",                                          // 131K ctx — Z.ai
-  "arcee-ai/trinity-large-thinking:free",                            // 262K ctx — thinking
-  "google/gemma-4-26b-a4b-it:free",                                 // 262K ctx — Google
+  "deepseek/deepseek-v3-base:free",                                  // 64K ctx — DeepSeek V3
+  "meta-llama/llama-3.3-70b-instruct:free",                         // 131K ctx — proven reliable
+  "deepseek/deepseek-r1:free",                                       // 164K ctx — reasoning
+  "deepseek/deepseek-r1-distill-llama-70b:free",                    // 131K ctx — distilled
+  "nousresearch/hermes-3-llama-3.1-405b:free",                      // 131K ctx — hermes
+  "qwen/qwen-2.5-72b-instruct:free",                                 // 131K ctx — Qwen 2.5
+  "google/gemma-2-27b-it:free",                                      // 8K ctx — Google Gemma 2
+  "google/gemma-2-9b-it:free",                                       // 8K ctx — fast Gemma 2
+  "mistralai/mistral-7b-instruct:free",                              // 32K ctx — Mistral
+  "mistralai/mixtral-8x7b-instruct:free",                           // 32K ctx — Mixtral MoE
   "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",   // 32K — uncensored
+  "meta-llama/llama-3.1-8b-instruct:free",                          // 131K — fast llama
   "meta-llama/llama-3.2-3b-instruct:free",                          // 131K — tiny/fastest
 ];
 

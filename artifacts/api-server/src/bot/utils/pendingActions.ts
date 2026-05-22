@@ -29,6 +29,7 @@ export type PendingTextAction =
   | "github_set_username"
   | "github_set_token"
   | "video_input"
+  | "build_input"
   | "vercel_set_token"
   | "render_set_token";
 

@@ -806,20 +806,22 @@ export async function handleCallbackQuery(
 
     if (data === "build_menu") {
       const hasGitHub = !!(process.env.GITHUB_TOKEN && process.env.GITHUB_USERNAME);
-      await editMsg(bot, query,
+      setPending(userId, "build_input");
+      await bot.answerCallbackQuery(query.id);
+      await bot.sendMessage(chatId,
         `🌐 AI Website & App Builder\n\n` +
-        `Generate complete, working projects from a description.\n\n` +
-        `Usage: /build <describe what you want>\n\n` +
+        `Describe what you want to build and I'll generate a complete, working project!\n\n` +
         `Examples:\n` +
-        `• /build portfolio website for a photographer\n` +
-        `• /build Netflix clone with movie cards\n` +
-        `• /build todo app with dark mode\n` +
-        `• /build React dashboard with live charts\n` +
-        `• /build real-time chat app with Node.js\n\n` +
+        `• portfolio website for a photographer\n` +
+        `• Netflix clone with movie cards\n` +
+        `• todo app with dark mode\n` +
+        `• React dashboard with live charts\n` +
+        `• real-time chat app with Node.js\n\n` +
         (hasGitHub
-          ? `✅ GitHub connected — your project will be pushed to a live repo automatically!`
-          : `📁 Files will be sent to you directly.\n💡 Set GITHUB_TOKEN + GITHUB_USERNAME for GitHub deployment.`),
-        backToMainKeyboard()
+          ? `✅ GitHub connected — project will be pushed to a repo automatically!`
+          : `📁 Files will be sent to you directly.\n\nWhat do you want to build? Type your idea below:`) +
+        (hasGitHub ? `\n\nWhat do you want to build? Type your idea below:` : ``),
+        { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
       );
       return;
     }

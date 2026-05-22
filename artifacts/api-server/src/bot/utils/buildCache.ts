@@ -4,13 +4,14 @@ export interface CachedBuild {
   project: GeneratedProject;
   prompt: string;
   savedAt: number;
+  repoUrl?: string;
 }
 
 const cache = new Map<number, CachedBuild>();
 const TTL_MS = 45 * 60 * 1000; // 45 minutes
 
-export function cacheUserBuild(userId: number, project: GeneratedProject, prompt: string): void {
-  cache.set(userId, { project, prompt, savedAt: Date.now() });
+export function cacheUserBuild(userId: number, project: GeneratedProject, prompt: string, repoUrl?: string): void {
+  cache.set(userId, { project, prompt, savedAt: Date.now(), repoUrl });
 }
 
 export function getCachedBuild(userId: number): CachedBuild | null {
