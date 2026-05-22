@@ -358,6 +358,16 @@ export async function handleVoiceMessage(
       return;
     }
 
+    if (!process.env.HUGGINGFACE_API_TOKEN) {
+      stopTyping();
+      await bot.editMessageText(
+        e
+          ? "🎙️ Voice transcription isn't set up yet.\n\nThe bot owner needs to add a free HuggingFace token (huggingface.co → Settings → Access Tokens).\n\nFor now, please type your message!"
+          : "Voice transcription is not configured. HUGGINGFACE_API_TOKEN is missing. Please type your message.",
+        { chat_id: chatId, message_id: statusMsg.message_id }
+      );
+      return;
+    }
     const transcription = await transcribeVoice(audioBuffer);
     if (!transcription) {
       stopTyping();
@@ -2283,6 +2293,15 @@ async function handleVideoGeneration(
     await bot.sendMessage(chatId,
       `Daily video limit reached (${videoLimit}/day).` +
       (user.premium.active ? "" : " Upgrade to /premium for more videos.")
+    );
+    return;
+  }
+  if (!process.env.HUGGINGFACE_API_TOKEN) {
+    await bot.sendMessage(chatId,
+      e
+        ? "🎬 Video generation isn't set up yet.\n\nThe bot owner needs to add a free HuggingFace API token (huggingface.co → Settings → Access Tokens)."
+        : "Video generation is not configured. HUGGINGFACE_API_TOKEN is missing.",
+      { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
     );
     return;
   }
