@@ -1059,12 +1059,19 @@ export async function handlePrivateMessage(
       return;
     }
     if (parts.toLowerCase().startsWith("cancel")) {
-      const id = parts.split(/\s+/)[1];
-      if (!id) {
+      const shortId = parts.split(/\s+/)[1];
+      if (!shortId) {
         await bot.sendMessage(chatId, "Usage: /remind cancel <reminder_id>\nUse /reminders to see IDs.");
         return;
       }
-      const cancelled = await cancelReminder(id, user.userId);
+      // Display shows last 6 chars of ObjectId — resolve to full _id before cancelling
+      const allReminders = await listUserReminders(user.userId);
+      const target = allReminders.find((r) => (r._id as any).toString().slice(-6) === shortId);
+      if (!target) {
+        await bot.sendMessage(chatId, "Reminder not found. Use /reminders to see your current reminders and their IDs.");
+        return;
+      }
+      const cancelled = await cancelReminder((target._id as any).toString(), user.userId);
       await bot.sendMessage(chatId, cancelled ? "✅ Reminder cancelled." : "Reminder not found or already sent.");
       return;
     }

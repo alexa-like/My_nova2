@@ -5,7 +5,7 @@ const ALG = "aes-256-gcm";
 function getKey(): Buffer {
   const raw =
     process.env.ENCRYPTION_KEY ||
-    process.env.BOT_TOKEN ||
+    process.env.TELEGRAM_BOT_TOKEN ||
     "nova-default-enc-key-change-me!!";
   return scryptSync(raw, "nova-salt-v1", 32) as Buffer;
 }
