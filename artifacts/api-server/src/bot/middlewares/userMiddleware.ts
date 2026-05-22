@@ -1,6 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import { User, IUser } from "../models/User.js";
 import { getOrCreateBotConfig } from "../models/BotConfig.js";
+import { track } from "../services/analytics.js";
 
 export async function ensureUser(msg: TelegramBot.Message): Promise<IUser> {
   const from = msg.from!;
@@ -25,6 +26,7 @@ export async function ensureUser(msg: TelegramBot.Message): Promise<IUser> {
         : { active: false },
     });
     await user.save();
+    track("new_user", user.userId).catch(() => {});
     return user;
   }
 

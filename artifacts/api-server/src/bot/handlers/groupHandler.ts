@@ -4,6 +4,7 @@ import { GroupSettings } from "../models/GroupSettings.js";
 import { chat } from "../services/ai.js";
 import { isRateLimited, isFloodDetected } from "../utils/rateLimiter.js";
 import { safeSend, startTypingLoop } from "../utils/helpers.js";
+import { track } from "../services/analytics.js";
 import { logger } from "../../lib/logger.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -816,6 +817,7 @@ export async function handleGroupMessage(
         const dbUser = await User.findOne({ userId: target.userId });
         if (dbUser) { dbUser.banned = true; await dbUser.save(); }
         await bot.sendMessage(chatId, `${name} has been banned.`);
+        track("ban", target.userId, chatId).catch(() => {});
       } catch (err: any) {
         logger.error({ err: err?.message, userId: target.userId }, "Ban failed");
         await bot.sendMessage(chatId, `Failed to ban ${name}. Make sure I am an admin with ban permission.`);
@@ -881,6 +883,7 @@ export async function handleGroupMessage(
           : `You have been muted in ${groupName}.`;
         await tryDM(bot, target.userId, dmMuteText);
         await bot.sendMessage(chatId, `${name} has been muted${durationLabel}.`);
+        track("mute", target.userId, chatId).catch(() => {});
       } catch (err: any) {
         const msg400 = err?.message || "";
         if (msg400.includes("supergroup")) {

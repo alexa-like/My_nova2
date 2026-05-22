@@ -3,7 +3,7 @@ import { IUser, User } from "../models/User.js";
 import { RedeemCode } from "../models/RedeemCode.js";
 import { Memory } from "../models/Memory.js";
 import { GroupSettings } from "../models/GroupSettings.js";
-import { BotConfig, getOrCreateBotConfig } from "../models/BotConfig.js";
+import { getOrCreateBotConfig } from "../models/BotConfig.js";
 import { addDays, formatDate } from "../utils/helpers.js";
 import { parseDuration } from "../models/RedeemCode.js";
 import { setPending } from "../utils/pendingActions.js";

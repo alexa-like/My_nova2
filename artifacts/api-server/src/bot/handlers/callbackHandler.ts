@@ -2,7 +2,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { User } from "../models/User.js";
 import { Memory } from "../models/Memory.js";
 import { GroupSettings } from "../models/GroupSettings.js";
-import { chat } from "../services/ai.js";
+import { chat, clearMemory } from "../services/ai.js";
 import { formatDate, startTypingLoop } from "../utils/helpers.js";
 import { getImageLimit } from "../services/image.js";
 import { setPending } from "../utils/pendingActions.js";
@@ -406,7 +406,6 @@ export async function handleCallbackQuery(
     }
 
     if (data === "forget_memory") {
-      const { clearMemory } = await import("../services/ai.js");
       await clearMemory(userId, query.message!.chat.id);
       await editMsg(bot, query,
         `🧹 Memory cleared! I've forgotten our conversation history. Fresh start.`,
@@ -416,8 +415,6 @@ export async function handleCallbackQuery(
     }
 
     if (data === "list_reminders") {
-      const { listUserReminders } = await import("../services/reminder.js");
-      const { formatDate } = await import("../utils/helpers.js");
       const reminders = await listUserReminders(userId);
       if (reminders.length === 0) {
         await editMsg(bot, query,
@@ -918,6 +915,9 @@ export async function handleCallbackQuery(
       const premiumLine = user.premium.active
         ? `✅ Premium — expires ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}`
         : "🆓 Free Plan";
+      const spCfg = await getOrCreateBotConfig();
+      const spMusicLimit = user.premium.active ? spCfg.usageLimits.premiumMusic : spCfg.usageLimits.freeMusic;
+      const spMusicStr = spMusicLimit < 0 ? "∞" : String(spMusicLimit);
       await editMsg(bot, query,
         `👤 Your Profile\n\n` +
         `Name: ${user.firstName || "N/A"}\n` +
@@ -929,6 +929,7 @@ export async function handleCallbackQuery(
         `Mood: ${user.mood || "not set"}\n` +
         `Messages today: ${user.usage.messages}\n` +
         `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}\n` +
+        `Music today: ${user.usage.music ?? 0}/${spMusicStr}\n` +
         `Member since: ${formatDate(user.firstSeen)}`,
         backToSettingsKeyboard()
       );
@@ -1329,14 +1330,15 @@ export async function handleCallbackQuery(
 
     // ── Show Profile ──────────────────────────────────────────────────────
     if (data === "show_profile") {
-      const { formatDate } = await import("../utils/helpers.js");
-      const { getImageLimit } = await import("../services/image.js");
       const name = user.firstName || user.username || "Friend";
       const premiumLine = user.premium.active
         ? `✨ Premium — expires ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}`
         : "Free";
       const builds2 = user.usage.builds ?? 0;
       const daysSinceJoin = Math.floor((Date.now() - user.firstSeen.getTime()) / 86400000);
+      const profCfg = await getOrCreateBotConfig();
+      const profMusicLimit = user.premium.active ? profCfg.usageLimits.premiumMusic : profCfg.usageLimits.freeMusic;
+      const profMusicStr = profMusicLimit < 0 ? "∞" : String(profMusicLimit);
       await editMsg(bot, query,
         `👤 Your Profile\n\n` +
         `Name: ${name}\n` +
@@ -1353,6 +1355,7 @@ export async function handleCallbackQuery(
         `── Usage ──\n` +
         `Messages today: ${user.usage.messages}\n` +
         `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}\n` +
+        `Music today: ${user.usage.music ?? 0}/${profMusicStr}\n` +
         `Total builds: ${builds2}\n` +
         `Groups: ${user.groups.length}\n` +
         `Warnings: ${user.warnings}`,
@@ -1363,8 +1366,6 @@ export async function handleCallbackQuery(
 
     // ── Show Stats ────────────────────────────────────────────────────────
     if (data === "show_stats") {
-      const { formatDate } = await import("../utils/helpers.js");
-      const { getImageLimit } = await import("../services/image.js");
       const name = user.firstName || user.username || "Friend";
       const premiumLine = user.premium.active
         ? `✨ Premium${user.premium.expiresAt ? ` (expires ${formatDate(user.premium.expiresAt)})` : ""}`
@@ -1372,6 +1373,9 @@ export async function handleCallbackQuery(
       const imageLimit = getImageLimit(user.premium.active);
       const daysSinceJoin = Math.floor((Date.now() - user.firstSeen.getTime()) / 86400000);
       const builds2 = user.usage.builds ?? 0;
+      const statsCfgCb = await getOrCreateBotConfig();
+      const statsMusicLimit = user.premium.active ? statsCfgCb.usageLimits.premiumMusic : statsCfgCb.usageLimits.freeMusic;
+      const statsMusicStr = statsMusicLimit < 0 ? "∞" : String(statsMusicLimit);
       await editMsg(bot, query,
         `📊 Your Stats\n\n` +
         `👤 ${name}\n` +
@@ -1380,7 +1384,8 @@ export async function handleCallbackQuery(
         `💎 Plan: ${premiumLine}\n\n` +
         `── Today ──\n` +
         `💬 Messages: ${user.usage.messages}\n` +
-        `🖼️ Images: ${user.usage.images}/${imageLimit}\n\n` +
+        `🖼️ Images: ${user.usage.images}/${imageLimit}\n` +
+        `🎵 Music: ${user.usage.music ?? 0}/${statsMusicStr}\n\n` +
         `── All Time ──\n` +
         `🔨 Builds: ${builds2}\n` +
         `👥 Groups: ${user.groups.length}\n` +
@@ -1853,7 +1858,6 @@ export async function handleCallbackQuery(
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
       const enable = data === "owner_premoji_on";
       try {
-        const { getOrCreateBotConfig } = await import("../models/BotConfig.js");
         const { setPremiumEmojiEnabled } = await import("../utils/premiumEmoji.js");
         const config = await getOrCreateBotConfig();
         config.premiumEmojiEnabled = enable;

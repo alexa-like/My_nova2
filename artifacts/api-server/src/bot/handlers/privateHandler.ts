@@ -41,6 +41,7 @@ import { downloadTelegramDocument, extractTextFromDocument } from "../services/d
 import { createReminder, listUserReminders, cancelReminder } from "../services/reminder.js";
 import { parseDurationToMs } from "../models/Reminder.js";
 import { isPremiumEmojiEnabled, applyPremiumEmojiSafe } from "../utils/premiumEmoji.js";
+import { track } from "../services/analytics.js";
 import { logger } from "../../lib/logger.js";
 
 // ── Per-user build/deploy cooldown (3 min) ────────────────────────────────────
@@ -611,6 +612,7 @@ export async function handlePrivateMessage(
     user.premium.expiresAt = expiresAt;
     user.premium.plan = redeemCode.duration;
     await user.save();
+    track("premium_redeemed", user.userId, chatId).catch(() => {});
     await bot.sendMessage(chatId,
       `Code redeemed successfully!\n\nYou are now a Premium member!\nDuration: ${redeemCode.duration}\nExpires: ${expiresAt ? formatDate(expiresAt) : "Never"}`
     );
@@ -1658,6 +1660,7 @@ export async function handlePhotoMessage(
 
     user.usage.images += 1;
     await user.save();
+    track("image_edit", user.userId, chatId).catch(() => {});
 
     await bot.sendPhoto(chatId, result, {
       caption: `Done! (${pending.type.replace("img_", "").replace("_", " ")})`,
@@ -2133,6 +2136,7 @@ async function handleStickerGeneration(
     }
     user.usage.images += 1;
     await user.save();
+    track("image_gen", user.userId, chatId, { type: "sticker" }).catch(() => {});
     await bot.sendPhoto(chatId, imageBuffer, {
       caption: `🖼️ Sticker: ${prompt.substring(0, 80)}\n\n💡 Save this image → open Telegram Settings → Stickers → Create your own!`,
       reply_markup: { inline_keyboard: [[{ text: "🖼️ Make Another", callback_data: "sticker_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] },
@@ -2252,6 +2256,7 @@ async function handleImageGeneration(
 
     user.usage.images += 1;
     await user.save();
+    track("image_gen", user.userId, chatId).catch(() => {});
     await bot.sendPhoto(chatId, imageBuffer, { caption: prompt });
   } catch (err) {
     stopImgTyping();
