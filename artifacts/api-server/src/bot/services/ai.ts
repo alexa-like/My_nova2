@@ -211,7 +211,8 @@ async function callOpenRouter(
   messages: { role: string; content: string }[],
   maxTokens: number,
   temperature: number,
-  timeoutMs = 25000
+  timeoutMs = 25000,
+  signal?: AbortSignal
 ): Promise<string> {
   const response = await axios.post(
     "https://openrouter.ai/api/v1/chat/completions",
@@ -224,6 +225,7 @@ async function callOpenRouter(
         "X-Title": "Nova AI Bot",
       },
       timeout: timeoutMs,
+      signal,
     }
   );
   const reply = response.data?.choices?.[0]?.message?.content;
@@ -244,7 +246,7 @@ async function chatPremiumFast(
   const controllers = PREMIUM_RACE_MODELS.map(() => new AbortController());
 
   const racePromises = PREMIUM_RACE_MODELS.map((model, idx) =>
-    callOpenRouter(apiKey, model, messages, maxTokens, temperature, 12000)
+    callOpenRouter(apiKey, model, messages, maxTokens, temperature, 12000, controllers[idx].signal)
       .then((reply) => {
         controllers.forEach((c, i) => { if (i !== idx) c.abort(); });
         return reply;

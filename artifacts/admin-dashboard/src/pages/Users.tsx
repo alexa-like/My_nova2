@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, type User } from "@/lib/api";
 import { timeAgo } from "@/lib/utils";
-import { Search, Crown, Ban, Trash2, RefreshCw } from "lucide-react";
+import { Search, Crown, Ban, Trash2, RefreshCw, X } from "lucide-react";
 
 export default function Users() {
   const [users, setUsers] = useState<User[]>([]);
@@ -14,6 +14,16 @@ export default function Users() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [actionMsg, setActionMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Premium-days inline modal
+  const [premiumTarget, setPremiumTarget] = useState<User | null>(null);
+  const [premiumDays, setPremiumDays] = useState("30");
+
+  const showMsg = (type: "success" | "error", text: string) => {
+    setActionMsg({ type, text });
+    setTimeout(() => setActionMsg(null), 3500);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -43,27 +53,48 @@ export default function Users() {
     try {
       if (user.banned) await api.unbanUser(user.userId);
       else await api.banUser(user.userId);
+      showMsg("success", user.banned ? `Unbanned ${user.firstName || user.userId}` : `Banned ${user.firstName || user.userId}`);
       await load();
     } catch (err: any) {
-      alert(err.message);
+      showMsg("error", err.message);
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handlePremium = async (user: User) => {
+  const handlePremiumOpen = (user: User) => {
+    if (user.premium.active) {
+      handleRevokePremium(user);
+    } else {
+      setPremiumDays("30");
+      setPremiumTarget(user);
+    }
+  };
+
+  const handleRevokePremium = async (user: User) => {
     setActionLoading(user.userId);
     try {
-      if (user.premium.active) {
-        await api.setPremium(user.userId, false);
-      } else {
-        const days = prompt("Grant premium for how many days? (0 = lifetime)", "30");
-        if (days === null) return;
-        await api.setPremium(user.userId, true, Number(days) || undefined);
-      }
+      await api.setPremium(user.userId, false);
+      showMsg("success", `Premium revoked for ${user.firstName || user.userId}`);
       await load();
     } catch (err: any) {
-      alert(err.message);
+      showMsg("error", err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleGrantPremium = async () => {
+    if (!premiumTarget) return;
+    const days = Number(premiumDays);
+    setActionLoading(premiumTarget.userId);
+    setPremiumTarget(null);
+    try {
+      await api.setPremium(premiumTarget.userId, true, days === 0 ? undefined : days);
+      showMsg("success", `Premium granted to ${premiumTarget.firstName || premiumTarget.userId}${days === 0 ? " (lifetime)" : ` for ${days} days`}`);
+      await load();
+    } catch (err: any) {
+      showMsg("error", err.message);
     } finally {
       setActionLoading(null);
     }
@@ -74,9 +105,9 @@ export default function Users() {
     setActionLoading(user.userId);
     try {
       await api.clearMemory(user.userId);
-      alert("Memory cleared.");
+      showMsg("success", "Memory cleared.");
     } catch (err: any) {
-      alert(err.message);
+      showMsg("error", err.message);
     } finally {
       setActionLoading(null);
     }
@@ -84,6 +115,44 @@ export default function Users() {
 
   return (
     <div className="p-6 space-y-5">
+      {/* Premium days modal */}
+      {premiumTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-80 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white">Grant Premium</h3>
+              <button onClick={() => setPremiumTarget(null)} className="text-gray-500 hover:text-white">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs text-gray-400">
+              Granting premium to <span className="text-white font-medium">{premiumTarget.firstName || premiumTarget.userId}</span>
+            </p>
+            <div>
+              <p className="text-xs text-gray-500 mb-2">Days (0 = lifetime)</p>
+              <input
+                type="number"
+                min={0}
+                value={premiumDays}
+                onChange={(e) => setPremiumDays(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") handleGrantPremium(); if (e.key === "Escape") setPremiumTarget(null); }}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setPremiumTarget(null)} className="px-3 py-2 text-sm text-gray-400 hover:text-white transition-colors">Cancel</button>
+              <button
+                onClick={handleGrantPremium}
+                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                Grant
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-white">Users</h1>
@@ -121,6 +190,17 @@ export default function Users() {
 
       {error && (
         <div className="bg-red-950 border border-red-800 rounded-xl p-4 text-red-400 text-sm">{error}</div>
+      )}
+
+      {actionMsg && (
+        <div className={`rounded-xl p-3 text-sm flex items-center justify-between ${
+          actionMsg.type === "success"
+            ? "bg-green-950 border border-green-800 text-green-400"
+            : "bg-red-950 border border-red-800 text-red-400"
+        }`}>
+          <span>{actionMsg.text}</span>
+          <button onClick={() => setActionMsg(null)} className="ml-3 opacity-60 hover:opacity-100"><X size={14} /></button>
+        </div>
       )}
 
       <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
@@ -176,7 +256,7 @@ export default function Users() {
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <button
-                      onClick={() => handlePremium(user)}
+                      onClick={() => handlePremiumOpen(user)}
                       disabled={actionLoading === user.userId || user.isOwner}
                       title={user.premium.active ? "Remove premium" : "Grant premium"}
                       className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${

@@ -50,7 +50,7 @@ export default function Groups() {
       await api.deleteGroup(chatId);
       await load();
     } catch (err: any) {
-      alert(err.message);
+      setError(err.message);
     } finally {
       setDeleting(null);
     }

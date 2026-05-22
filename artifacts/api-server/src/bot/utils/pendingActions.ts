@@ -25,7 +25,6 @@ export type PendingTextAction =
   | "music_input"
   | "search_input"
   | "sticker_input"
-  | "fun_truth_reply"
   | "github_set_username"
   | "github_set_token"
   | "video_input"

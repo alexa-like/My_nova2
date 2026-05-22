@@ -204,12 +204,18 @@ router.post("/admin/broadcast", async (req, res) => {
   try {
     const filter = premiumOnly ? { banned: false, "premium.active": true } : { banned: false };
     const users = await User.find(filter).select("userId");
-    let sent = 0, failed = 0;
-    for (const u of users) {
-      try { await bot.sendMessage(u.userId, message); sent++; } catch { failed++; }
-      await new Promise((r) => setTimeout(r, 40));
-    }
-    res.json({ success: true, sent, failed, total: users.length });
+    const total = users.length;
+    // Fire-and-forget — respond immediately so the HTTP request does not time out
+    res.json({ success: true, queued: true, total });
+    // Background broadcast with Telegram-safe 40 ms spacing (~25 msgs/sec)
+    ;(async () => {
+      let sent = 0, failed = 0;
+      for (const u of users) {
+        try { await bot.sendMessage(u.userId, message); sent++; } catch { failed++; }
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      logger.info({ sent, failed, total }, "Broadcast complete");
+    })().catch((err) => logger.error({ err }, "Broadcast background error"));
   } catch (err) {
     logger.error({ err }, "Broadcast error");
     res.status(500).json({ error: "Broadcast failed" });
@@ -225,9 +231,11 @@ router.get("/admin/codes", async (_req, res) => {
 });
 
 // ── POST /api/admin/codes ───────────────────────────────────────────────────
+const VALID_DURATION = /^(\d+[dwmy]|lifetime)$/i;
 router.post("/admin/codes", async (req, res) => {
   const { code, duration } = req.body as { code: string; duration: string };
   if (!code?.trim() || !duration?.trim()) { res.status(400).json({ error: "code and duration are required" }); return; }
+  if (!VALID_DURATION.test(duration.trim())) { res.status(400).json({ error: "Invalid duration. Use format: 30d, 7d, 1m, 1y, or lifetime" }); return; }
   try {
     const existing = await RedeemCode.findOne({ code: code.toUpperCase() });
     if (existing) { res.status(409).json({ error: "Code already exists" }); return; }
@@ -242,6 +250,7 @@ router.post("/admin/codes/generate", async (req, res) => {
   const { count, duration } = req.body as { count: number; duration: string };
   const n = Math.min(100, Math.max(1, Number(count) || 1));
   if (!duration?.trim()) { res.status(400).json({ error: "duration is required" }); return; }
+  if (!VALID_DURATION.test(duration.trim())) { res.status(400).json({ error: "Invalid duration. Use format: 30d, 7d, 1m, 1y, or lifetime" }); return; }
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   const rand = (len: number) => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
   const created = [];

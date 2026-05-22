@@ -94,7 +94,7 @@ const UsageLimitsSchema = new Schema(
 const BotConfigSchema = new Schema<IBotConfig>(
   {
     // ── Defaults: all verified free models (May 2025) ──────────────────────────
-    activeChatModel:  { type: String, default: "deepseek/deepseek-v4-flash:free" },
+    activeChatModel:  { type: String, default: "meta-llama/llama-3.1-8b-instruct:free" },
     activeImageModel: { type: String, default: "black-forest-labs/FLUX.1-schnell" },
     activeVideoModel: { type: String, default: "ByteDance/AnimateDiff-Lightning" },
     activeVoiceModel: { type: String, default: "edge:en-US-AriaNeural" },
