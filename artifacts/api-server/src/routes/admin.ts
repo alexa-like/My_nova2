@@ -13,23 +13,113 @@ import { logger } from "../lib/logger.js";
 
 const router = Router();
 
+// ── IP-based brute-force protection ──────────────────────────────────────────
+// Tracks failed auth attempts per IP. After MAX_FAILURES within WINDOW_MS,
+// the IP is locked out for LOCKOUT_MS regardless of the key provided.
+const MAX_FAILURES  = 10;
+const WINDOW_MS     = 60_000;      // 1 minute rolling window
+const LOCKOUT_MS    = 15 * 60_000; // 15 minute lockout after too many failures
+
+interface FailRecord { count: number; windowStart: number; lockedUntil: number }
+const failMap = new Map<string, FailRecord>();
+
+function getIp(req: import("express").Request): string {
+  return (
+    (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ||
+    req.socket.remoteAddress ||
+    "unknown"
+  );
+}
+
+function recordFailure(ip: string): FailRecord {
+  const now = Date.now();
+  const rec = failMap.get(ip) ?? { count: 0, windowStart: now, lockedUntil: 0 };
+  // Reset window if it has expired (and not currently locked)
+  if (now - rec.windowStart >= WINDOW_MS && rec.lockedUntil <= now) {
+    rec.count = 0;
+    rec.windowStart = now;
+  }
+  rec.count++;
+  if (rec.count >= MAX_FAILURES) rec.lockedUntil = now + LOCKOUT_MS;
+  failMap.set(ip, rec);
+  return rec;
+}
+
+// Clean stale entries every 30 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, rec] of failMap.entries()) {
+    if (rec.lockedUntil <= now && now - rec.windowStart >= WINDOW_MS) {
+      failMap.delete(ip);
+    }
+  }
+}, 30 * 60_000);
+
+// ── Constant-time string comparison (prevents timing attacks) ─────────────────
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    // Still run the loop to avoid timing differences
+    let dummy = 0;
+    for (let i = 0; i < a.length; i++) dummy |= a.charCodeAt(i) ^ 0;
+    return false;
+  }
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 function adminAuth(
   req: import("express").Request,
   res: import("express").Response,
   next: import("express").NextFunction
 ): void {
+  const ip = getIp(req);
+  const now = Date.now();
+
+  // Check lockout first
+  const rec = failMap.get(ip);
+  if (rec && rec.lockedUntil > now) {
+    const retryAfterSec = Math.ceil((rec.lockedUntil - now) / 1000);
+    res.setHeader("Retry-After", String(retryAfterSec));
+    res.status(429).json({
+      error: "Too many failed attempts. Try again later.",
+      retryAfter: retryAfterSec,
+    });
+    return;
+  }
+
   const adminKey = process.env.ADMIN_API_KEY;
   if (!adminKey) {
     res.status(503).json({ error: "Admin dashboard not configured (ADMIN_API_KEY not set)" });
     return;
   }
-  const provided =
+
+  const provided = String(
     req.headers["x-admin-key"] ||
-    req.headers.authorization?.replace(/^Bearer\s+/i, "");
-  if (provided !== adminKey) {
-    res.status(401).json({ error: "Unauthorized" });
+    req.headers.authorization?.replace(/^Bearer\s+/i, "") ||
+    ""
+  );
+
+  if (!safeEqual(provided, adminKey)) {
+    const updated = recordFailure(ip);
+    const remaining = MAX_FAILURES - updated.count;
+    if (updated.lockedUntil > now) {
+      res.setHeader("Retry-After", String(Math.ceil(LOCKOUT_MS / 1000)));
+      res.status(429).json({
+        error: "Too many failed attempts. Locked out for 15 minutes.",
+        retryAfter: Math.ceil(LOCKOUT_MS / 1000),
+      });
+    } else {
+      res.status(401).json({
+        error: "Unauthorized",
+        attemptsRemaining: Math.max(0, remaining),
+      });
+    }
     return;
   }
+
+  // Successful auth — clear any failure record for this IP
+  failMap.delete(ip);
   next();
 }
 
