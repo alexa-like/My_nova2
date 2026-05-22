@@ -2290,7 +2290,12 @@ async function handleVideoGeneration(
   e: boolean
 ): Promise<void> {
   if (!process.env.HUGGINGFACE_API_TOKEN) {
-    await bot.sendMessage(chatId, e ? "🎬 Video generation isn't configured yet. Ask the owner to set up a HuggingFace API token!" : "Video generation is not configured yet.");
+    await bot.sendMessage(chatId,
+      e
+        ? "🎬 Video generation isn't set up yet.\n\nThe bot owner needs to add a free HuggingFace API token (huggingface.co → Settings → Access Tokens)."
+        : "Video generation is not configured. HUGGINGFACE_API_TOKEN is missing.",
+      { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+    );
     return;
   }
   // Per-day video limit check
@@ -2300,15 +2305,6 @@ async function handleVideoGeneration(
     await bot.sendMessage(chatId,
       `Daily video limit reached (${videoLimit}/day).` +
       (user.premium.active ? "" : " Upgrade to /premium for more videos.")
-    );
-    return;
-  }
-  if (!process.env.HUGGINGFACE_API_TOKEN) {
-    await bot.sendMessage(chatId,
-      e
-        ? "🎬 Video generation isn't set up yet.\n\nThe bot owner needs to add a free HuggingFace API token (huggingface.co → Settings → Access Tokens)."
-        : "Video generation is not configured. HUGGINGFACE_API_TOKEN is missing.",
-      { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
     );
     return;
   }

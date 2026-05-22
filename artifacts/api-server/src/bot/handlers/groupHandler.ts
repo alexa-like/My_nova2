@@ -341,11 +341,12 @@ export async function handleGroupMessage(
     try {
       const admins = await bot.getChatAdministrators(chatId);
       const adminList = admins.filter(a => !a.user.is_bot).map(a =>
-        `[${a.user.first_name}](tg://user?id=${a.user.id})`
+        `<a href="tg://user?id=${a.user.id}">${a.user.first_name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</a>`
       ).join(" ");
+      const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       await bot.sendMessage(chatId,
-        `🚨 Report\n\nReporter: ${reporter}\nReported: ${reportedName}\nReason: ${reason}\n\nAdmins notified: ${adminList}`,
-        { parse_mode: "Markdown" }
+        `🚨 Report\n\nReporter: ${esc(reporter)}\nReported: ${esc(reportedName)}\nReason: ${esc(reason)}\n\nAdmins notified: ${adminList}`,
+        { parse_mode: "HTML" }
       );
     } catch {
       await bot.sendMessage(chatId, `Report filed: ${reportedName} reported by ${reporter}. Reason: ${reason}`);
@@ -918,7 +919,7 @@ export async function handleGroupMessage(
 
     if (cmd === "/warn") {
       let dbUser = await User.findOne({ userId: target.userId });
-      if (!dbUser) { dbUser = new User({ userId: target.userId, username: target.displayName.replace("@", ""), firstName: target.displayName }); await dbUser.save(); }
+      if (!dbUser) { dbUser = new User({ userId: target.userId, username: target.displayName.replace(/^@/, ""), firstName: target.displayName.replace(/^@/, "") }); await dbUser.save(); }
       dbUser.warnings += 1;
       await dbUser.save();
       const reason = args.filter(a => !a.startsWith("@") && !/^\d+$/.test(a)).join(" ");
