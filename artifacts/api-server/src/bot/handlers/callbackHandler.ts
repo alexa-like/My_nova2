@@ -1349,8 +1349,7 @@ export async function handleCallbackQuery(
         `Language: ${user.settings.language || "en"}\n` +
         `Mood: ${user.mood || "Not set"}\n` +
         `Emojis: ${user.settings.emoji ? "On" : "Off"}\n` +
-        `Reply length: ${user.settings.length}\n` +
-        `Voice replies: ${user.settings.voiceEnabled ? "On" : "Off"}\n\n` +
+        `Reply length: ${user.settings.length}\n\n` +
         `── Usage ──\n` +
         `Messages today: ${user.usage.messages}\n` +
         `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}\n` +
@@ -1386,7 +1385,6 @@ export async function handleCallbackQuery(
         `🔨 Builds: ${builds2}\n` +
         `👥 Groups: ${user.groups.length}\n` +
         `🎭 Style: ${user.settings.style}\n` +
-        `🔊 Voice: ${user.settings.voiceEnabled ? "On" : "Off"}\n` +
         `🌐 Language: ${user.settings.language || "en"}`,
         { inline_keyboard: [[{ text: "👤 Profile", callback_data: "show_profile" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] }
       );
@@ -1432,10 +1430,7 @@ export async function handleCallbackQuery(
         `🖼 Total images: ${usage.imgs}\n` +
         `🔧 Maintenance: ${getMaintenance() ? "🔴 ON" : "🟢 OFF"}\n\n` +
         `🧠 Chat: ${config.chatModels.find((m) => m.id === config.activeChatModel)?.name || config.activeChatModel}\n` +
-        `🖼 Image: ${config.imageModels.find((m) => m.id === config.activeImageModel)?.name || config.activeImageModel}\n` +
-        `🎬 Video: ${config.videoModels.find((m) => m.id === config.activeVideoModel)?.name || config.activeVideoModel}\n` +
-        `🔊 Voice: ${config.voiceModels.find((m) => m.id === config.activeVoiceModel)?.name || config.activeVoiceModel}\n` +
-        `🎙 ASR: ${config.asrModels?.find((m) => m.id === config.activeAsrModel)?.name || config.activeAsrModel || "Whisper Large v3"}`,
+        `🖼 Image: ${config.imageModels.find((m) => m.id === config.activeImageModel)?.name || config.activeImageModel}`,
         backToOwnerKeyboard()
       );
       return;

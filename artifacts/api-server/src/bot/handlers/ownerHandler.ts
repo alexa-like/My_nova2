@@ -436,15 +436,14 @@ export async function handleOwnerMessage(
       `Core APIs:\n` +
       `${ok(hasTG)} Telegram Bot Token\n` +
       `${ok(hasOR)} OpenRouter (AI chat)\n` +
-      `${ok(hasHF)} HuggingFace (images/video/music)\n` +
+      `${ok(hasHF)} HuggingFace (images & music)\n` +
       `${ok(hasMongo)} MongoDB (database)\n\n` +
       `Build & Deploy:\n` +
       `${ok(hasGH)} GitHub (repo push — /build)\n` +
       `${ok(hasVercel)} Vercel (auto-deploy — /deploy)\n\n` +
       `Active Models:\n` +
       `🧠 ${config.activeChatModel}\n` +
-      `🖼 ${config.activeImageModel}\n` +
-      `🎬 ${config.activeVideoModel}\n\n` +
+      `🖼 ${config.activeImageModel}\n\n` +
       `Missing secrets can be added in Replit → Secrets panel.`,
       { reply_markup: backToOwnerKeyboard() }
     );

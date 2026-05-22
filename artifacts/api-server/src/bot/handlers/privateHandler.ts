@@ -426,7 +426,6 @@ export async function handlePrivateMessage(
       `👤 /profile — Your profile\n` +
       `📊 /stats — Your usage stats\n` +
       `⚙️ /settings — Your preferences\n` +
-      `🔊 /voice — Voice reply settings\n` +
       `🤖 /model — Choose AI model\n` +
       `💎 /premium — Check premium status\n` +
       `🎁 /redeem — Redeem a code\n` +
@@ -460,12 +459,10 @@ export async function handlePrivateMessage(
       `Language: ${user.settings.language || "en"}\n` +
       `Mood: ${user.mood || "Not set"}\n` +
       `Emojis: ${user.settings.emoji ? "On" : "Off"}\n` +
-      `Reply length: ${user.settings.length}\n` +
-      `Voice replies: ${user.settings.voiceEnabled ? "On" : "Off"}\n\n` +
+      `Reply length: ${user.settings.length}\n\n` +
       `── Usage ──\n` +
       `Messages today: ${user.usage.messages}\n` +
       `Images today: ${user.usage.images}/${await getImageLimit(user.premium.active)}\n` +
-      `Videos today: ${user.usage.videos ?? 0}\n` +
       `Music today: ${user.usage.music ?? 0}\n` +
       `Total builds: ${builds}\n` +
       `Groups: ${user.groups.length}\n` +
@@ -580,9 +577,7 @@ export async function handlePrivateMessage(
     const daysSinceJoin = Math.floor((Date.now() - user.firstSeen.getTime()) / 86400000);
     const builds = user.usage.builds ?? 0;
     const statsCfg = await getOrCreateBotConfig();
-    const videoLimit = user.premium.active ? statsCfg.usageLimits.premiumVideos : statsCfg.usageLimits.freeVideos;
     const musicLimit = user.premium.active ? statsCfg.usageLimits.premiumMusic : statsCfg.usageLimits.freeMusic;
-    const videoLimitStr = videoLimit < 0 ? "∞" : String(videoLimit);
     const musicLimitStr = musicLimit < 0 ? "∞" : String(musicLimit);
     await bot.sendMessage(chatId,
       `📊 Your Stats\n\n` +
@@ -593,13 +588,11 @@ export async function handlePrivateMessage(
       `── Today ──\n` +
       `💬 Messages: ${user.usage.messages}\n` +
       `🖼️ Images: ${user.usage.images}/${imageLimit >= 999999 ? "∞" : imageLimit}\n` +
-      `🎬 Videos: ${user.usage.videos ?? 0}/${videoLimitStr}\n` +
       `🎵 Music: ${user.usage.music ?? 0}/${musicLimitStr}\n\n` +
       `── All Time ──\n` +
       `🔨 Builds: ${builds}\n` +
       `👥 Groups: ${user.groups.length}\n` +
       `🎭 Style: ${user.settings.style}\n` +
-      `🔊 Voice: ${user.settings.voiceEnabled ? "On" : "Off"}\n` +
       `🌐 Language: ${user.settings.language || "en"}`,
       { reply_markup: { inline_keyboard: [[{ text: "👤 Profile", callback_data: "show_profile" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
     );
