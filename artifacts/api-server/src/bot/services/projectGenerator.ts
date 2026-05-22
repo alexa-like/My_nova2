@@ -88,114 +88,136 @@ function extractJson(raw: string): string {
 
 // ── Main generator ─────────────────────────────────────────────────────────────
 
+// ── Models proven to generate valid structured JSON for code projects ─────────
+// Ordered by code-generation quality. These bypass activeChatModel because the
+// active chat model is optimised for speed (8B), not reliable JSON code output.
+const CODE_MODELS = [
+  "meta-llama/llama-3.3-70b-instruct:free",          // 70B — best balance of quality+availability
+  "deepseek/deepseek-r1-distill-llama-70b:free",      // reasoning model — excellent structured output
+  "qwen/qwen-2.5-72b-instruct:free",                  // Qwen 72B — very good at code + JSON
+  "nousresearch/hermes-3-llama-3.1-405b:free",        // 405B — high quality, sometimes slow
+  "mistralai/mixtral-8x7b-instruct:free",             // Mixtral — reliable fallback
+];
+
 export async function generateProject(
   userRequest: string,
   apiKey: string
 ): Promise<GeneratedProject> {
-  const config = await getOrCreateBotConfig();
-  const model = config.activeChatModel || "meta-llama/llama-3.3-70b-instruct";
+  logger.info({ userRequest }, "Generating project — trying code models in order");
 
-  logger.info({ userRequest, model }, "Generating project");
+  let lastError = "AI service failed. Please try again.";
 
-  let raw: string;
-  try {
-    const response = await axios.post(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        model,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an expert full-stack web developer. You ONLY output raw JSON — never any markdown, never any explanation text. Just the JSON object.",
-          },
-          {
-            role: "user",
-            content: buildPrompt(userRequest),
-          },
-        ],
-        max_tokens: 8000,
-        temperature: 0.2,
-        top_p: 0.9,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": process.env.APP_URL || "https://nova-bot.replit.app",
-          "X-Title": "Nova AI Bot — Project Builder",
+  for (const model of CODE_MODELS) {
+    let raw = "";
+    try {
+      logger.info({ model }, "Attempting project generation");
+      const response = await axios.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          model,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are an expert full-stack web developer. You ONLY output raw JSON — never any markdown, never any explanation text. Just the JSON object.",
+            },
+            {
+              role: "user",
+              content: buildPrompt(userRequest),
+            },
+          ],
+          max_tokens: 4096,   // safe limit for all free models
+          temperature: 0.2,
+          top_p: 0.9,
         },
-        timeout: 120000,
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": process.env.APP_URL || "https://nova-bot.replit.app",
+            "X-Title": "Nova AI Bot — Project Builder",
+          },
+          timeout: 120000,
+        }
+      );
+      raw = response.data?.choices?.[0]?.message?.content || "";
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 401) {
+        throw new Error("AI service authentication failed. Check your OPENROUTER_API_KEY.");
       }
-    );
-    raw = response.data?.choices?.[0]?.message?.content || "";
-  } catch (err: any) {
-    logger.error({ err: err?.message }, "OpenRouter request failed for project generation");
-    throw new Error(
-      err?.response?.status === 401
-        ? "AI service authentication failed. Check your OPENROUTER_API_KEY."
-        : "AI service timed out. Please try again."
-    );
+      if (status === 402 || status === 429 || status === 500 || status === 503) {
+        logger.warn({ model, status }, "Model unavailable for project generation — trying next");
+        lastError = "AI service timed out. Please try again.";
+        continue;
+      }
+      logger.warn({ model, err: err?.message }, "Project generation request failed — trying next model");
+      lastError = "AI service timed out. Please try again.";
+      continue;
+    }
+
+    if (!raw || raw.trim().length < 10) {
+      logger.warn({ model }, "Model returned empty response — trying next");
+      lastError = "AI returned an empty response. Please try again.";
+      continue;
+    }
+
+    let jsonStr: string;
+    try {
+      jsonStr = extractJson(raw);
+    } catch {
+      logger.warn({ model, rawPreview: raw.substring(0, 200) }, "Could not extract JSON — trying next model");
+      lastError = "The AI returned an unexpected format. Please try again.";
+      continue;
+    }
+
+    let parsed: GeneratedProject;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      logger.warn({ model, jsonPreview: jsonStr.substring(0, 200) }, "JSON parse failed — trying next model");
+      lastError = "Failed to parse the generated project. Please try again.";
+      continue;
+    }
+
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.files) || parsed.files.length === 0) {
+      logger.warn({ model }, "Project has invalid structure — trying next model");
+      lastError = "AI generated an empty or invalid project. Try a more specific description.";
+      continue;
+    }
+
+    // Sanitize and validate files
+    parsed.files = parsed.files
+      .filter((f) => f && typeof f.path === "string" && typeof f.content === "string")
+      .map((f) => ({
+        path: f.path
+          .replace(/^\/+/, "")
+          .replace(/\.\.\//g, "")
+          .replace(/[<>:"|?*]/g, ""),
+        content:
+          typeof f.content === "string" ? f.content : JSON.stringify(f.content, null, 2),
+      }))
+      .filter((f) => f.path.length > 0 && f.content.length > 0);
+
+    if (parsed.files.length === 0) {
+      logger.warn({ model }, "All generated files were invalid — trying next model");
+      lastError = "All generated files were invalid. Please try again.";
+      continue;
+    }
+
+    parsed.name = parsed.name || "nova-project";
+    parsed.description = parsed.description || `A ${parsed.type || "web"} project generated by Nova AI`;
+    parsed.type = (["static", "react", "nodejs", "fullstack"] as ProjectType[]).includes(parsed.type)
+      ? parsed.type
+      : "static";
+    parsed.deploymentTip = parsed.deploymentTip || "Deploy on Netlify for free: app.netlify.com/drop";
+
+    logger.info({ model, name: parsed.name, type: parsed.type, files: parsed.files.length }, "Project generation complete");
+    return parsed;
   }
 
-  if (!raw || raw.trim().length < 10) {
-    throw new Error("AI returned an empty response. Please try again.");
-  }
-
-  let jsonStr: string;
-  try {
-    jsonStr = extractJson(raw);
-  } catch {
-    logger.error({ rawPreview: raw.substring(0, 300) }, "Could not extract JSON from model output");
-    throw new Error("The AI returned an unexpected format. Please try again.");
-  }
-
-  let parsed: GeneratedProject;
-  try {
-    parsed = JSON.parse(jsonStr);
-  } catch (err) {
-    logger.error({ err, jsonPreview: jsonStr.substring(0, 300) }, "JSON parse failed");
-    throw new Error("Failed to parse the generated project. Please try again.");
-  }
-
-  // Validate structure
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error("Generated project has invalid structure.");
-  }
-  if (!Array.isArray(parsed.files) || parsed.files.length === 0) {
-    throw new Error("AI generated an empty project. Try a more specific description.");
-  }
-
-  // Sanitize and validate files
-  parsed.files = parsed.files
-    .filter((f) => f && typeof f.path === "string" && typeof f.content === "string")
-    .map((f) => ({
-      path: f.path
-        .replace(/^\/+/, "")        // no leading slash
-        .replace(/\.\.\//g, "")     // no directory traversal
-        .replace(/[<>:"|?*]/g, ""), // no invalid chars
-      content:
-        typeof f.content === "string" ? f.content : JSON.stringify(f.content, null, 2),
-    }))
-    .filter((f) => f.path.length > 0 && f.content.length > 0);
-
-  if (parsed.files.length === 0) {
-    throw new Error("All generated files were invalid. Please try again.");
-  }
-
-  parsed.name = parsed.name || "nova-project";
-  parsed.description = parsed.description || `A ${parsed.type || "web"} project generated by Nova AI`;
-  parsed.type = (["static", "react", "nodejs", "fullstack"] as ProjectType[]).includes(parsed.type)
-    ? parsed.type
-    : "static";
-  parsed.deploymentTip = parsed.deploymentTip || "Deploy on Netlify for free: app.netlify.com/drop";
-
-  logger.info(
-    { name: parsed.name, type: parsed.type, files: parsed.files.length },
-    "Project generation complete"
-  );
-
-  return parsed;
+  // All models failed
+  throw new Error(lastError);
 }
 
 // ── Project type label ─────────────────────────────────────────────────────────

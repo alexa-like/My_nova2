@@ -1,4 +1,5 @@
 import axios from "axios";
+import { spawn } from "child_process";
 import { getOrCreateBotConfig } from "../models/BotConfig.js";
 import { logger } from "../../lib/logger.js";
 
@@ -19,6 +20,49 @@ const RETRY_DELAY_MS = 8000;
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ── Convert any audio buffer to OGG OPUS using ffmpeg ─────────────────────────
+// HuggingFace TTS models return WAV/FLAC. Telegram sendVoice requires OGG OPUS.
+// ffmpeg is available in the Replit/Nix runtime.
+async function convertToOggOpus(inputBuffer: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const ff = spawn("ffmpeg", [
+      "-loglevel", "error",
+      "-i", "pipe:0",        // read from stdin
+      "-c:a", "libopus",     // encode as Opus
+      "-b:a", "24k",         // low bitrate — voice is fine at 24k
+      "-vbr", "on",
+      "-application", "voip",
+      "-f", "ogg",           // OGG container
+      "pipe:1",              // write to stdout
+    ]);
+
+    const chunks: Buffer[] = [];
+    const errChunks: Buffer[] = [];
+
+    ff.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+    ff.stderr.on("data", (chunk: Buffer) => errChunks.push(chunk));
+
+    ff.on("close", (code) => {
+      if (code !== 0) {
+        const errText = Buffer.concat(errChunks).toString("utf-8");
+        logger.warn({ code, err: errText.slice(0, 200) }, "ffmpeg OGG conversion failed");
+        reject(new Error(`ffmpeg exited with code ${code}`));
+        return;
+      }
+      const result = Buffer.concat(chunks);
+      if (result.byteLength < 100) {
+        reject(new Error("ffmpeg produced empty output"));
+        return;
+      }
+      resolve(result);
+    });
+
+    ff.on("error", reject);
+    ff.stdin.write(inputBuffer);
+    ff.stdin.end();
+  });
 }
 
 export async function textToSpeech(
@@ -59,13 +103,23 @@ export async function textToSpeech(
           }
         );
 
-        if (!response.data || response.data.byteLength < 50) {
-          logger.warn({ model, bytes: response.data?.byteLength }, "TTS returned empty/tiny response");
+        const rawBuf = Buffer.from(response.data);
+        if (!rawBuf || rawBuf.byteLength < 50) {
+          logger.warn({ model, bytes: rawBuf?.byteLength }, "TTS returned empty/tiny response");
           break;
         }
 
-        logger.info({ model, bytes: response.data.byteLength }, "TTS audio generated");
-        return Buffer.from(response.data);
+        logger.info({ model, bytes: rawBuf.byteLength }, "TTS audio generated — converting to OGG OPUS");
+
+        // Convert WAV/FLAC → OGG OPUS so Telegram sendVoice accepts it
+        try {
+          const ogg = await convertToOggOpus(rawBuf);
+          logger.info({ model, oggBytes: ogg.byteLength }, "OGG OPUS conversion successful");
+          return ogg;
+        } catch (convErr: any) {
+          logger.warn({ convErr: convErr?.message }, "OGG conversion failed — returning raw audio");
+          return rawBuf; // return raw anyway, sendAudio fallback handles it
+        }
       } catch (err: any) {
         const status = err?.response?.status;
         if (status === 503 && attempt === 1) {

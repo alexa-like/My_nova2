@@ -38,6 +38,7 @@ export async function transcribeVoice(
           Authorization: `Bearer ${token}`,
           "Content-Type": "audio/ogg",
           Accept: "application/json",
+          "X-Wait-For-Model": "true",  // wait for cold-start instead of immediate 503
         },
         timeout: 90000,
       });
