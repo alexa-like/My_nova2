@@ -257,6 +257,11 @@ export function settingsMenuKeyboard(user: IUser): TelegramBot.InlineKeyboardMar
   const moodLabel = user.mood ? `😶 Mood: ${user.mood}` : "😶 Set Mood";
   const voiceLabel = user.settings?.voiceEnabled ? "🔊 Voice: ON" : "🔇 Voice: OFF";
   const githubLabel = user.github?.username ? `🔑 GitHub: @${user.github.username}` : "🔑 GitHub";
+  const vercelConnected = !!(user as any).vercelTokenEncrypted;
+  const renderConnected = !!(user as any).renderTokenEncrypted;
+  const deployLabel = vercelConnected || renderConnected
+    ? `🚀 Deployments ✅`
+    : "🚀 Deployments";
   return {
     inline_keyboard: [
       [
@@ -282,10 +287,61 @@ export function settingsMenuKeyboard(user: IUser): TelegramBot.InlineKeyboardMar
         { text: "🧹 Clear Memory", callback_data: "settings_clear_memory" },
         { text: "💎 Premium", callback_data: "settings_premium" },
       ],
-      [{ text: githubLabel, callback_data: "settings_github" }],
+      [
+        { text: githubLabel, callback_data: "settings_github" },
+        { text: deployLabel, callback_data: "settings_deployments" },
+      ],
       [{ text: "⬅️ Back", callback_data: "main_menu" }],
     ],
   };
+}
+
+export function deploymentsKeyboard(
+  hasVercel: boolean,
+  hasRender: boolean
+): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: hasVercel ? "⚡ Vercel: Connected ✅" : "⚡ Vercel: Not set",
+          callback_data: "vercel_set_token",
+        },
+      ],
+      ...(hasVercel ? [[{ text: "🗑 Remove Vercel Token", callback_data: "vercel_remove_token" }]] : []),
+      [
+        {
+          text: hasRender ? "🟣 Render: Connected ✅" : "🟣 Render: Not set",
+          callback_data: "render_set_token",
+        },
+      ],
+      ...(hasRender ? [[{ text: "🗑 Remove Render Token", callback_data: "render_remove_token" }]] : []),
+      [{ text: "📁 My Projects", callback_data: "my_projects" }],
+      [{ text: "⬅️ Back to Settings", callback_data: "settings_menu" }],
+    ],
+  };
+}
+
+export function projectsListKeyboard(
+  projects: Array<{ name: string; deployUrl?: string; _id?: any }>,
+  page = 0
+): TelegramBot.InlineKeyboardMarkup {
+  const PAGE_SIZE = 5;
+  const slice = projects.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const rows: TelegramBot.InlineKeyboardButton[][] = slice.map((p, i) => {
+    const globalIdx = page * PAGE_SIZE + i;
+    const row: TelegramBot.InlineKeyboardButton[] = [
+      { text: `📦 ${p.name}`, callback_data: `proj_open_${globalIdx}` },
+      { text: "🗑", callback_data: `proj_del_${globalIdx}` },
+    ];
+    return row;
+  });
+  const nav: TelegramBot.InlineKeyboardButton[] = [];
+  if (page > 0) nav.push({ text: "◀️ Prev", callback_data: `proj_page_${page - 1}` });
+  if ((page + 1) * PAGE_SIZE < projects.length) nav.push({ text: "▶️ Next", callback_data: `proj_page_${page + 1}` });
+  if (nav.length > 0) rows.push(nav);
+  rows.push([{ text: "⬅️ Back", callback_data: "settings_deployments" }]);
+  return { inline_keyboard: rows };
 }
 
 export function githubSettingsKeyboard(

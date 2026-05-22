@@ -38,7 +38,7 @@ import {
   uniqueRepoName,
 } from "../services/github.js";
 import { cacheUserBuild, getCachedBuild } from "../utils/buildCache.js";
-import { deployToVercel } from "../services/deploy.js";
+import { deployToVercel, deployToRender, autoFixProjectFiles } from "../services/deploy.js";
 import { downloadTelegramDocument, extractTextFromDocument } from "../services/document.js";
 import { createReminder, listUserReminders, cancelReminder } from "../services/reminder.js";
 import { parseDurationToMs } from "../models/Reminder.js";
@@ -77,6 +77,30 @@ async function resolveGitHubCreds(
 
   if (token && username) return { token, username };
   return null;
+}
+
+async function resolveVercelToken(user: IUser): Promise<string | null> {
+  try {
+    const fresh = await User.findOne({ userId: user.userId }).select("+vercelTokenEncrypted");
+    const enc = (fresh as any)?.vercelTokenEncrypted as string | undefined;
+    if (enc) {
+      const dec = decrypt(enc);
+      if (dec) return dec;
+    }
+  } catch {}
+  return process.env.VERCEL_TOKEN ?? null;
+}
+
+async function resolveRenderToken(user: IUser): Promise<string | null> {
+  try {
+    const fresh = await User.findOne({ userId: user.userId }).select("+renderTokenEncrypted");
+    const enc = (fresh as any)?.renderTokenEncrypted as string | undefined;
+    if (enc) {
+      const dec = decrypt(enc);
+      if (dec) return dec;
+    }
+  } catch {}
+  return process.env.RENDER_API_KEY ?? null;
 }
 
 async function sendAIReply(
@@ -1050,13 +1074,13 @@ export async function handlePrivateMessage(
   // /deploy [description] — generate + deploy to Vercel, or deploy last build
   if (text.startsWith("/deploy")) {
     const prompt = text.replace(/^\/deploy\s*/i, "").trim();
-    const vercelToken = process.env.VERCEL_TOKEN;
+    const vercelToken = await resolveVercelToken(user);
     if (!vercelToken) {
       await bot.sendMessage(chatId,
-        `🚀 Vercel deployment not configured.\n\n` +
-        `Set the VERCEL_TOKEN secret to enable one-click deployment.\n` +
-        `Get your token at vercel.com/account/tokens (takes 30 seconds).`,
-        { reply_markup: backToMainKeyboard() }
+        `🚀 No Vercel token found.\n\n` +
+        `Add your token in ⚙️ Settings → 🚀 Deployments, or set VERCEL_TOKEN in Replit Secrets.\n` +
+        `Get a token at: vercel.com → Settings → Tokens`,
+        { reply_markup: { inline_keyboard: [[{ text: "⚙️ Set Vercel Token", callback_data: "settings_deployments" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
       );
       return;
     }
@@ -1596,6 +1620,46 @@ async function handlePendingText(
         );
         break;
       }
+      case "vercel_set_token": {
+        const tok = input.trim();
+        try { if (messageId) await bot.deleteMessage(chatId, messageId); } catch {}
+        if (!tok || tok.length < 10) {
+          await bot.sendMessage(chatId,
+            "❌ That doesn't look like a valid Vercel token. Please try again from ⚙️ Settings → 🚀 Deployments.",
+            { reply_markup: { inline_keyboard: [[{ text: "⬅️ Deployments", callback_data: "settings_deployments" }]] } }
+          );
+          break;
+        }
+        const encVercel = encrypt(tok);
+        await User.updateOne({ userId: user.userId }, { vercelTokenEncrypted: encVercel });
+        await bot.sendMessage(chatId,
+          `✅ Vercel token saved securely!\n\n🔒 Encrypted with AES-256. Nova will use it when you run /deploy.\n\nTo remove it: ⚙️ Settings → 🚀 Deployments → Remove Vercel Token`,
+          { reply_markup: { inline_keyboard: [[{ text: "⚙️ Deployments", callback_data: "settings_deployments" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+        );
+        break;
+      }
+      case "render_set_token": {
+        const tok = input.trim();
+        try { if (messageId) await bot.deleteMessage(chatId, messageId); } catch {}
+        if (!tok || tok.length < 10) {
+          await bot.sendMessage(chatId,
+            "❌ That doesn't look like a valid Render API key. Please try again from ⚙️ Settings → 🚀 Deployments.",
+            { reply_markup: { inline_keyboard: [[{ text: "⬅️ Deployments", callback_data: "settings_deployments" }]] } }
+          );
+          break;
+        }
+        const encRender = encrypt(tok);
+        await User.updateOne({ userId: user.userId }, { renderTokenEncrypted: encRender });
+        await bot.sendMessage(chatId,
+          `✅ Render API key saved securely!\n\n🔒 Encrypted with AES-256. Nova will use it when deploying to Render.\n\nTo remove it: ⚙️ Settings → 🚀 Deployments → Remove Render Token`,
+          { reply_markup: { inline_keyboard: [[{ text: "⚙️ Deployments", callback_data: "settings_deployments" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+        );
+        break;
+      }
+      case "video_input": {
+        await handleVideoGeneration(bot, chatId, user, input, e);
+        break;
+      }
       default:
         await bot.sendMessage(chatId, "Something went wrong. Try again from the menu.", { reply_markup: mainMenuKeyboard() });
     }
@@ -1784,6 +1848,16 @@ async function handleBuildRequest(
     return;
   }
 
+  // Project limit for free users
+  const FREE_PROJECT_LIMIT = 2;
+  if (!user.premium.active && (user.projects?.length ?? 0) >= FREE_PROJECT_LIMIT) {
+    await bot.sendMessage(chatId,
+      `📁 You've reached the free project limit (${FREE_PROJECT_LIMIT} projects).\n\nDelete a project to make room, or upgrade to Premium for unlimited projects.`,
+      { reply_markup: { inline_keyboard: [[{ text: "📁 My Projects", callback_data: "my_projects" }, { text: "💎 Go Premium", callback_data: "settings_premium" }]] } }
+    );
+    return;
+  }
+
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     await bot.sendMessage(chatId, "AI service is not configured. Ask the bot owner to set up OPENROUTER_API_KEY.");
@@ -1821,7 +1895,10 @@ async function handleBuildRequest(
 
   const label = typeLabel(project.type);
   const fileCount = project.files.length;
-  const canDeploy = !!process.env.VERCEL_TOKEN;
+  const vercelTok = await resolveVercelToken(user);
+  const renderTok = await resolveRenderToken(user);
+  const canDeploy = !!vercelTok;
+  const canDeployRender = !!renderTok;
   cacheUserBuild(user.userId, project, prompt);
 
   // ── Step 2a: GitHub push ────────────────────────────────────────────────────
@@ -1904,6 +1981,8 @@ async function handleBuildRequest(
     try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
 
     user.usage.builds = (user.usage.builds ?? 0) + 1;
+    user.projects = user.projects ?? [];
+    user.projects.push({ name: project.name, repoUrl: repoInfo.htmlUrl, deployUrl: undefined, createdAt: new Date() } as any);
     await user.save();
 
     await bot.sendMessage(chatId,
@@ -1913,13 +1992,15 @@ async function handleBuildRequest(
       `🔗 ${repoInfo.htmlUrl}\n\n` +
       `${fileCount} files · ${label}\n\n` +
       `💡 ${project.deploymentTip}`,
-      { reply_markup: buildResultKeyboard(repoInfo.htmlUrl, canDeploy) }
+      { reply_markup: buildResultKeyboard(repoInfo.htmlUrl, canDeploy, canDeployRender) }
     );
     return;
   }
 
   // ── Step 2b: No GitHub — send files directly ────────────────────────────────
   user.usage.builds = (user.usage.builds ?? 0) + 1;
+  user.projects = user.projects ?? [];
+  user.projects.push({ name: project.name, repoUrl: undefined, deployUrl: undefined, createdAt: new Date() } as any);
   await user.save();
 
   stopTyping();
@@ -1933,7 +2014,7 @@ async function handleBuildRequest(
     `Sending files now 👇\n\n` +
     `💡 ${project.deploymentTip}\n\n` +
     `💡 Tip: Go to ⚙️ Settings → 🔑 GitHub to connect your GitHub account for auto-push next time.`,
-    { reply_markup: buildResultKeyboard(undefined, canDeploy) }
+    { reply_markup: buildResultKeyboard(undefined, canDeploy, canDeployRender) }
   );
   await sendProjectFiles(bot, chatId, project, e);
 }
@@ -2044,13 +2125,42 @@ async function handleDeployToVercel(
         },
       }
     );
-  } catch (err: any) {
-    logger.error({ err }, "Vercel deployment failed");
+  } catch (firstErr: any) {
+    logger.warn({ err: firstErr }, "Vercel deployment failed — attempting auto-fix");
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (apiKey) {
+      try {
+        await updateStatus(`⚠️ Deploy failed — running AI auto-fix...\n\n${firstErr.message.substring(0, 80)}`);
+        const fixed = await autoFixProjectFiles(project.files, firstErr.message, project.description, apiKey);
+        if (fixed) {
+          project.files = fixed;
+          await updateStatus(`🔧 Auto-fix applied — retrying deployment...`);
+          const retryResult = await deployToVercel(vercelToken, project.name, fixed, async (msg) => updateStatus(msg));
+          try { if (statusMsgId) await bot.deleteMessage(chatId, statusMsgId); } catch {}
+          await bot.sendMessage(chatId,
+            `🚀 Live (after auto-fix)!\n\n📦 ${project.name}\n🌐 ${retryResult.url}`,
+            {
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: "🌐 Open Live Site", url: retryResult.url }],
+                  [{ text: "🔍 Vercel Dashboard", url: retryResult.inspectorUrl }],
+                  [{ text: "🌐 Build Another", callback_data: "build_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+                ],
+              },
+            }
+          );
+          return;
+        }
+      } catch (fixErr) {
+        logger.warn({ err: fixErr }, "Auto-fix retry also failed");
+      }
+    }
+    logger.error({ err: firstErr }, "Vercel deployment failed");
     try {
       if (statusMsgId) await bot.deleteMessage(chatId, statusMsgId);
     } catch {}
     await bot.sendMessage(chatId,
-      `❌ Deployment failed: ${err.message}\n\n` +
+      `❌ Deployment failed: ${firstErr.message}\n\n` +
       `Files are still cached — run /deploy to retry.`,
       { reply_markup: backToMainKeyboard() }
     );
@@ -2092,30 +2202,39 @@ async function handleVideoGeneration(
   e: boolean
 ): Promise<void> {
   if (!process.env.HUGGINGFACE_API_TOKEN) {
-    await bot.sendMessage(chatId, e ? "🎬 Video generation isn't configured yet. Ask the owner to set it up!" : "Video generation is not configured yet.");
+    await bot.sendMessage(chatId, e ? "🎬 Video generation isn't configured yet. Ask the owner to set up a HuggingFace API token!" : "Video generation is not configured yet.");
     return;
   }
   const sentMsg = await bot.sendMessage(chatId,
-    e ? "🎬 Generating your video... This can take 1-3 minutes, hang tight!" : "Generating your video..."
+    e ? "🎬 Starting video generation...\n\nThis takes 2-5 minutes. I'll update you as it progresses!" : "🎬 Generating video..."
   );
   const stopTyping = startTypingLoop(bot, chatId, "upload_video");
+  const onStatus = async (msg: string) => {
+    try { await bot.editMessageText(msg, { chat_id: chatId, message_id: sentMsg.message_id }); } catch {}
+  };
   try {
-    const videoBuffer = await generateVideo(prompt);
+    const videoBuffer = await generateVideo(prompt, onStatus);
     stopTyping();
     try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
     if (!videoBuffer) {
       await bot.sendMessage(chatId,
-        e ? "🎬 Video generation failed. The model may be warming up — try again in a minute!" : "Video generation failed. Try again in a minute.",
-        { reply_markup: { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] } }
+        e ? "🎬 Video generation failed. The model may be warming up or overloaded — try again in a minute!" : "Video generation failed. Try again in a minute.",
+        { reply_markup: { inline_keyboard: [[{ text: "🎬 Try Again", callback_data: "video_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
       );
       return;
     }
-    await bot.sendVideo(chatId, videoBuffer, { caption: prompt.substring(0, 800) });
+    await bot.sendVideo(chatId, videoBuffer, {
+      caption: `🎬 ${prompt.substring(0, 800)}`,
+      reply_markup: { inline_keyboard: [[{ text: "🎬 Generate Another", callback_data: "video_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] },
+    });
   } catch (err) {
     stopTyping();
     logger.error({ err }, "Video generation error");
     try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-    await bot.sendMessage(chatId, "Video generation failed. Please try again later.");
+    await bot.sendMessage(chatId,
+      e ? "🎬 Video generation failed. Please try again later." : "Video generation failed. Please try again later.",
+      { reply_markup: { inline_keyboard: [[{ text: "🎬 Try Again", callback_data: "video_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+    );
   }
 }
 
@@ -2133,11 +2252,14 @@ async function handleMusicGeneration(
     return;
   }
   const sentMsg = await bot.sendMessage(chatId,
-    e ? "🎵 Generating your music... This takes 30-60 seconds. Hang tight!" : "Generating your music..."
+    e ? "🎵 Generating your music... This takes 30-90 seconds. Hang tight!" : "🎵 Generating music..."
   );
   const stopTyping = startTypingLoop(bot, chatId);
+  const onStatus = async (msg: string) => {
+    try { await bot.editMessageText(msg, { chat_id: chatId, message_id: sentMsg.message_id }); } catch {}
+  };
   try {
-    const audioBuffer = await generateMusic(prompt);
+    const audioBuffer = await generateMusic(prompt, onStatus);
     stopTyping();
     try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
     if (!audioBuffer) {

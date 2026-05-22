@@ -20,7 +20,8 @@ import {
   resetTaskRouting,
 } from "../services/providerRouter.js";
 import { getCachedBuild } from "../utils/buildCache.js";
-import { deployToVercel } from "../services/deploy.js";
+import { deployToVercel, deployToRender } from "../services/deploy.js";
+import { decrypt } from "../utils/crypto.js";
 import { typeLabel } from "../services/projectGenerator.js";
 import {
   mainMenuKeyboard,
@@ -65,6 +66,8 @@ import {
   providerStatusKeyboard,
   providerRoutePickKeyboard,
   githubSettingsKeyboard,
+  deploymentsKeyboard,
+  projectsListKeyboard,
 } from "../utils/keyboards.js";
 import { logger } from "../../lib/logger.js";
 
@@ -651,11 +654,43 @@ export async function handleCallbackQuery(
       return;
     }
 
+    if (data === "video_btn") {
+      if (!process.env.HUGGINGFACE_API_TOKEN) {
+        await editMsg(bot, query,
+          `🎬 Video generation is not configured.\n\nThe bot owner needs to set up a HuggingFace API token.`,
+          backToImgKeyboard()
+        );
+        return;
+      }
+      setPending(userId, "video_input");
+      await editMsg(bot, query,
+        `🎬 Generate Video\n\nDescribe the short video you want:\n\n• a cat playing piano in jazz style\n• sunset timelapse over the ocean\n• rocket launching into space\n• waves crashing on a beach\n\n⚠️ Takes 2-5 minutes. Stay tuned!`,
+        backToImgKeyboard()
+      );
+      return;
+    }
+
+    if (data === "video_generate_btn") {
+      setPending(userId, "video_input");
+      await bot.answerCallbackQuery(query.id);
+      await bot.sendMessage(chatId,
+        `🎬 Describe your next video:\n\n• a dog running through a field\n• city at night with neon lights\n• aurora borealis time-lapse`,
+        { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
+      );
+      return;
+    }
+
     if (data === "deploy_live") {
-      const vercelToken = process.env.VERCEL_TOKEN;
+      // Resolve Vercel token: user's saved token > env var
+      let vercelToken = process.env.VERCEL_TOKEN;
+      try {
+        const fresh = await User.findOne({ userId }).select("+vercelTokenEncrypted");
+        const enc = (fresh as any)?.vercelTokenEncrypted as string | undefined;
+        if (enc) { const dec = decrypt(enc); if (dec) vercelToken = dec; }
+      } catch {}
       if (!vercelToken) {
         await editMsg(bot, query,
-          "🚀 Vercel deployment not configured.\n\nSet VERCEL_TOKEN in Replit Secrets to enable auto-deployment.",
+          "🚀 No Vercel token found.\n\nAdd your Vercel token via ⚙️ Settings → 🚀 Deployments, or set VERCEL_TOKEN in Replit Secrets.",
           backToMainKeyboard()
         );
         return;
@@ -700,6 +735,69 @@ export async function handleCallbackQuery(
         try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
         await bot.sendMessage(chatId,
           `❌ Deployment failed: ${err.message}\n\nRun /deploy to retry.`,
+          { reply_markup: backToMainKeyboard() }
+        );
+      }
+      return;
+    }
+
+    if (data === "deploy_render") {
+      // Resolve Render token: user's saved token > env var
+      let renderToken = process.env.RENDER_API_KEY;
+      try {
+        const fresh = await User.findOne({ userId }).select("+renderTokenEncrypted");
+        const enc = (fresh as any)?.renderTokenEncrypted as string | undefined;
+        if (enc) { const dec = decrypt(enc); if (dec) renderToken = dec; }
+      } catch {}
+      if (!renderToken) {
+        await editMsg(bot, query,
+          "🟣 No Render token found.\n\nAdd your Render API key via ⚙️ Settings → 🚀 Deployments.\n\nGet it at: https://dashboard.render.com/u/settings → API Keys",
+          backToMainKeyboard()
+        );
+        return;
+      }
+      const cached = getCachedBuild(userId);
+      if (!cached) {
+        await editMsg(bot, query,
+          "⏳ Build session expired. Run /build first to generate a project.",
+          backToMainKeyboard()
+        );
+        return;
+      }
+      // Render requires a GitHub repo URL
+      const repoUrl = (cached as any).repoUrl as string | undefined;
+      if (!repoUrl) {
+        await editMsg(bot, query,
+          "🟣 Render deployment requires your project to be on GitHub.\n\nRun /build with GitHub connected (⚙️ Settings → 🔑 GitHub), then deploy to Render.",
+          backToMainKeyboard()
+        );
+        return;
+      }
+      await bot.answerCallbackQuery(query.id, { text: "Starting Render deployment..." });
+      const statusMsg = await bot.sendMessage(chatId, `🟣 Deploying to Render...\n\n📦 ${cached.project.name}`);
+      let statusMsgId = statusMsg.message_id;
+      const updateStatus = async (text: string) => {
+        try { await bot.editMessageText(text, { chat_id: chatId, message_id: statusMsgId }); } catch {}
+      };
+      try {
+        const result = await deployToRender(renderToken, cached.project.name, repoUrl, updateStatus);
+        try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
+        await bot.sendMessage(chatId,
+          `🟣 Deployed to Render!\n\n📦 ${cached.project.name}\n\n🌐 ${result.url}`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: "🌐 Open Live Site", url: result.url }],
+                [{ text: "📊 Render Dashboard", url: result.inspectorUrl }],
+                [{ text: "🌐 Build Another", callback_data: "build_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+              ],
+            },
+          }
+        );
+      } catch (err: any) {
+        try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
+        await bot.sendMessage(chatId,
+          `❌ Render deployment failed: ${err.message}`,
           { reply_markup: backToMainKeyboard() }
         );
       }
@@ -1045,6 +1143,136 @@ export async function handleCallbackQuery(
       await editMsg(bot, query,
         `🗑 Username removed.`,
         githubSettingsKeyboard(false, undefined)
+      );
+      return;
+    }
+
+    if (data === "settings_deployments") {
+      const fresh = await User.findOne({ userId }).select("+vercelTokenEncrypted +renderTokenEncrypted");
+      const hasVercel = !!(fresh as any)?.vercelTokenEncrypted;
+      const hasRender = !!(fresh as any)?.renderTokenEncrypted;
+      await editMsg(bot, query,
+        `🚀 Deployment Tokens\n\n` +
+        `Connect your own Vercel or Render accounts. Your tokens are AES-256 encrypted and never visible.\n\n` +
+        `⚡ Vercel: ${hasVercel ? "✅ Connected" : "❌ Not set"}\n` +
+        `🟣 Render: ${hasRender ? "✅ Connected" : "❌ Not set"}\n\n` +
+        `Get your Vercel token at: vercel.com → Settings → Tokens\n` +
+        `Get your Render key at: dashboard.render.com → Account Settings → API Keys`,
+        deploymentsKeyboard(hasVercel, hasRender)
+      );
+      return;
+    }
+
+    if (data === "vercel_set_token") {
+      setPending(userId, "vercel_set_token");
+      await editMsg(bot, query,
+        `⚡ Set Vercel Token\n\nSend your Vercel access token.\n\n` +
+        `⚠️ Message will be deleted after saving for security.\n\n` +
+        `How to get one:\nvercel.com → Settings → Tokens → Create Token`,
+        { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "settings_deployments" }]] }
+      );
+      return;
+    }
+
+    if (data === "vercel_remove_token") {
+      await User.updateOne({ userId }, { $unset: { vercelTokenEncrypted: 1 } });
+      await editMsg(bot, query,
+        `🗑 Vercel token removed.`,
+        deploymentsKeyboard(false, !!(await User.findOne({ userId }).select("+renderTokenEncrypted") as any)?.renderTokenEncrypted)
+      );
+      return;
+    }
+
+    if (data === "render_set_token") {
+      setPending(userId, "render_set_token");
+      await editMsg(bot, query,
+        `🟣 Set Render API Key\n\nSend your Render API key.\n\n` +
+        `⚠️ Message will be deleted after saving for security.\n\n` +
+        `How to get one:\ndashboard.render.com → Account Settings → API Keys → Create API Key`,
+        { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "settings_deployments" }]] }
+      );
+      return;
+    }
+
+    if (data === "render_remove_token") {
+      await User.updateOne({ userId }, { $unset: { renderTokenEncrypted: 1 } });
+      await editMsg(bot, query,
+        `🗑 Render token removed.`,
+        deploymentsKeyboard(!!(await User.findOne({ userId }).select("+vercelTokenEncrypted") as any)?.vercelTokenEncrypted, false)
+      );
+      return;
+    }
+
+    if (data === "my_projects") {
+      const fresh = await User.findOne({ userId });
+      const projects = (fresh?.projects ?? []) as Array<{ name: string; deployUrl?: string; repoUrl?: string; _id?: any }>;
+      if (projects.length === 0) {
+        await editMsg(bot, query,
+          `📁 My Projects\n\nYou have no saved projects yet.\n\nUse /build to generate a project!`,
+          { inline_keyboard: [[{ text: "🌐 Build a Project", callback_data: "build_menu" }, { text: "⬅️ Back", callback_data: "settings_deployments" }]] }
+        );
+        return;
+      }
+      await editMsg(bot, query,
+        `📁 My Projects\n\nYou have ${projects.length} project${projects.length !== 1 ? "s" : ""}.\nFree users: 2 max · Premium: unlimited\n\nTap 🗑 to delete a project:`,
+        projectsListKeyboard(projects)
+      );
+      return;
+    }
+
+    if (data.startsWith("proj_page_")) {
+      const page = parseInt(data.replace("proj_page_", ""), 10) || 0;
+      const fresh = await User.findOne({ userId });
+      const projects = (fresh?.projects ?? []) as Array<{ name: string; deployUrl?: string }>;
+      await editMsg(bot, query,
+        `📁 My Projects (page ${page + 1})\n\n${projects.length} total:`,
+        projectsListKeyboard(projects, page)
+      );
+      return;
+    }
+
+    if (data.startsWith("proj_open_")) {
+      const idx = parseInt(data.replace("proj_open_", ""), 10);
+      const fresh = await User.findOne({ userId });
+      const projects = (fresh?.projects ?? []) as Array<{ name: string; deployUrl?: string; repoUrl?: string }>;
+      const proj = projects[idx];
+      if (!proj) {
+        await bot.answerCallbackQuery(query.id, { text: "Project not found." });
+        return;
+      }
+      const links: TelegramBot.InlineKeyboardButton[] = [];
+      if (proj.deployUrl) links.push({ text: "🌐 Open Site", url: proj.deployUrl });
+      if (proj.repoUrl) links.push({ text: "🔗 GitHub", url: proj.repoUrl });
+      await editMsg(bot, query,
+        `📦 ${proj.name}\n${proj.deployUrl ? `🌐 ${proj.deployUrl}` : "No deploy URL saved"}\n${proj.repoUrl ? `🔗 ${proj.repoUrl}` : ""}`,
+        {
+          inline_keyboard: [
+            ...(links.length ? [links] : []),
+            [{ text: "🗑 Delete", callback_data: `proj_del_${idx}` }],
+            [{ text: "⬅️ Back", callback_data: "my_projects" }],
+          ],
+        }
+      );
+      return;
+    }
+
+    if (data.startsWith("proj_del_")) {
+      const idx = parseInt(data.replace("proj_del_", ""), 10);
+      const fresh = await User.findOne({ userId });
+      const projects = (fresh?.projects ?? []) as Array<{ name: string }>;
+      if (idx < 0 || idx >= projects.length) {
+        await bot.answerCallbackQuery(query.id, { text: "Project not found." });
+        return;
+      }
+      const projName = projects[idx].name;
+      projects.splice(idx, 1);
+      await User.updateOne({ userId }, { projects });
+      const updatedProjects = projects as Array<{ name: string; deployUrl?: string }>;
+      await editMsg(bot, query,
+        `🗑 Deleted: ${projName}\n\n${updatedProjects.length} project${updatedProjects.length !== 1 ? "s" : ""} remaining.`,
+        updatedProjects.length > 0
+          ? projectsListKeyboard(updatedProjects)
+          : { inline_keyboard: [[{ text: "🌐 Build a Project", callback_data: "build_menu" }, { text: "⬅️ Back", callback_data: "settings_deployments" }]] }
       );
       return;
     }

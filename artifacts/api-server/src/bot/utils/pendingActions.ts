@@ -27,7 +27,10 @@ export type PendingTextAction =
   | "sticker_input"
   | "fun_truth_reply"
   | "github_set_username"
-  | "github_set_token";
+  | "github_set_token"
+  | "video_input"
+  | "vercel_set_token"
+  | "render_set_token";
 
 export type PendingPhotoAction =
   | "img_edit"
