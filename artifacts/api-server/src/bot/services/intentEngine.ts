@@ -6,11 +6,9 @@
 
 export type IntentType =
   | "image"
-  | "video"
   | "music"
   | "sticker"
   | "search"
-  | "tts"
   | "summarize"
   | "translate"
   | "build"
@@ -57,19 +55,6 @@ export function detectImageIntent(text: string): string | null {
   return result?.prompt ?? null;
 }
 
-// ── Video ──────────────────────────────────────────────────────────────────────
-const VIDEO_PATTERNS: PatternSet = [
-  { pattern: /^(?:generate|create|make|produce)\s+(?:a\s+|me\s+a\s+|me\s+)?(?:short\s+)?(?:video|clip|animation|reel)\s+(?:of|about|showing|depicting|with|for)?\s*(.+)/i, extract: (m) => m[1] },
-  { pattern: /^(?:can you|could you|please)\s+(?:generate|create|make)\s+(?:a\s+)?(?:short\s+)?(?:video|clip|animation)\s+(?:of|about|showing|with|for)?\s*(.+)/i, extract: (m) => m[1] },
-  { pattern: /^(?:video|clip|animation)\s+(?:of\s+|showing\s+|about\s+)(.+)/i, extract: (m) => m[1] },
-  { pattern: /^(?:animate|film)\s+(?:me\s+)?(.+)/i, extract: (m) => m[1] },
-];
-
-export function detectVideoIntent(text: string): string | null {
-  const result = matchPatterns(text.trim(), VIDEO_PATTERNS);
-  return result?.prompt ?? null;
-}
-
 // ── Music ──────────────────────────────────────────────────────────────────────
 const MUSIC_PATTERNS: PatternSet = [
   { pattern: /^(?:generate|create|make|compose|produce|write)\s+(?:some\s+|me\s+|me\s+some\s+)?(?:music|audio|a song|a beat|a track|a melody|a tune)\s*(?:that|with|about|like|for|of)?\s*(.*)/i, extract: (m) => m[1] || m.input || "" },
@@ -112,20 +97,6 @@ const SEARCH_PATTERNS: PatternSet = [
 
 export function detectSearchIntent(text: string): string | null {
   const result = matchPatterns(text.trim(), SEARCH_PATTERNS);
-  return result?.prompt ?? null;
-}
-
-// ── TTS (Text-to-Speech) ───────────────────────────────────────────────────────
-const TTS_PATTERNS: PatternSet = [
-  { pattern: /^(?:convert|turn|change)\s+(?:this\s+)?(?:text|message)?\s*(?:to|into)\s+(?:speech|voice|audio)\s*:?\s*(.*)/i, extract: (m) => m[1] },
-  { pattern: /^(?:say|speak|read(?:\s+out)?(?:\s+loud)?|voice)\s+(?:this\s+|out\s+loud\s+)?:?\s*(.+)/i, extract: (m) => m[1] },
-  { pattern: /^(?:text\s*to\s*speech|tts)\s*:?\s*(.+)/i, extract: (m) => m[1] },
-  { pattern: /^(?:make|create)\s+(?:a\s+)?(?:voice|audio)\s+(?:for|of|from)\s+(.+)/i, extract: (m) => m[1] },
-  { pattern: /^(?:read|narrate)\s+(?:this|the following)\s*:?\s*(.+)/i, extract: (m) => m[1] },
-];
-
-export function detectTTSIntent(text: string): string | null {
-  const result = matchPatterns(text.trim(), TTS_PATTERNS);
   return result?.prompt ?? null;
 }
 
@@ -186,9 +157,6 @@ export function classifyIntent(text: string): IntentResult {
   const imagePrompt = detectImageIntent(t);
   if (imagePrompt) return { intent: "image", confidence: 0.92, params: { prompt: imagePrompt } };
 
-  const videoPrompt = detectVideoIntent(t);
-  if (videoPrompt) return { intent: "video", confidence: 0.9, params: { prompt: videoPrompt } };
-
   const musicPrompt = detectMusicIntent(t);
   if (musicPrompt) return { intent: "music", confidence: 0.9, params: { prompt: musicPrompt } };
 
@@ -197,9 +165,6 @@ export function classifyIntent(text: string): IntentResult {
 
   const searchQuery = detectSearchIntent(t);
   if (searchQuery) return { intent: "search", confidence: 0.88, params: { query: searchQuery } };
-
-  const ttsText = detectTTSIntent(t);
-  if (ttsText) return { intent: "tts", confidence: 0.9, params: { text: ttsText } };
 
   const summarizeText = detectSummarizeIntent(t);
   if (summarizeText !== null) return { intent: "summarize", confidence: 0.88, params: { content: summarizeText } };
