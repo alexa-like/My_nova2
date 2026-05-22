@@ -17,8 +17,14 @@ import { logger } from "../lib/logger.js";
 // ── In-memory captcha store ─────────────────────────────────────────────────
 interface CaptchaChallenge {
   answer: number;
-  messageId: number;
+  question: string;
+  choices: number[];      // the 4 shuffled answer options
+  chatId: number;         // group chat ID
+  messageId: number;      // group "Verify" message ID
+  dmChatId?: number;      // private chat ID where the question was sent
+  dmMessageId?: number;   // private chat message ID for the question
   expiresAt: number;
+  attempts: number;       // wrong answer count — max 3 before removal
 }
 const captchaStore = new Map<string, CaptchaChallenge>(); // key: `chatId:userId`
 
@@ -206,6 +212,45 @@ export async function startBot(): Promise<void> {
         // Private chats: only process text messages beyond this point
         if (!msg.text) return;
 
+        // Captcha verification — triggered when member clicks "Verify I'm human" in the group
+        if (msg.text.startsWith("/start captcha_")) {
+          const payload = msg.text.slice("/start captcha_".length);
+          const parts = payload.split("_");
+          if (parts.length === 2) {
+            const groupChatId = parseInt(parts[0], 10);
+            const targetUserId = parseInt(parts[1], 10);
+            if (msg.from!.id !== targetUserId) {
+              await bot!.sendMessage(msg.chat.id, "This verification link is not for you.");
+              return;
+            }
+            const captchaKey = `${groupChatId}:${targetUserId}`;
+            const challenge = captchaStore.get(captchaKey);
+            if (!challenge || Date.now() > challenge.expiresAt) {
+              captchaStore.delete(captchaKey);
+              await bot!.sendMessage(msg.chat.id, "This verification has expired. Please leave and rejoin the group to get a new one.");
+              return;
+            }
+            if (challenge.dmMessageId) {
+              await bot!.sendMessage(msg.chat.id, "Your verification question is already above. Please answer it.");
+              return;
+            }
+            // Send the math question with answer choices in DM
+            const callbackPrefix = `captcha:${groupChatId}:${targetUserId}:`;
+            const keyboard = {
+              inline_keyboard: [
+                challenge.choices.map(c => ({ text: String(c), callback_data: `${callbackPrefix}${c}` })),
+              ],
+            };
+            const dmMsg = await bot!.sendMessage(msg.chat.id,
+              `Verification Challenge\n\nSolve this to join the group:\n\n${challenge.question} = ?\n\nTap the correct answer. You have 3 attempts.`,
+              { reply_markup: keyboard }
+            );
+            challenge.dmChatId = msg.chat.id;
+            challenge.dmMessageId = dmMsg.message_id;
+            return;
+          }
+        }
+
         const cmd = msg.text.trim().split(/\s+/)[0].split("@")[0];
         if (isOwner(user) && OWNER_CMDS.has(cmd)) {
           await handleOwnerMessage(
@@ -257,19 +302,19 @@ export async function startBot(): Promise<void> {
           try { await bot!.deleteMessage(chatId, msg.message_id); } catch {}
         }
 
-        // Captcha verification — uses inline keyboard buttons so muted users can answer
+        // Captcha verification — member clicks a button that opens a DM to solve a math question
         if (groupSettings?.captchaEnabled) {
           const captcha = generateCaptcha();
           const captchaKey = `${chatId}:${member.id}`;
 
-          // Mute the new member immediately
+          // Mute immediately — muted users can still tap URL buttons
           try {
             await bot!.restrictChatMember(chatId, member.id, {
               permissions: { can_send_messages: false, can_send_other_messages: false },
             });
           } catch {}
 
-          // Generate 4 answer choices (correct + 3 distractors)
+          // Pre-generate shuffled choices so they stay consistent if the user re-opens the DM
           const correctAnswer = captcha.answer;
           const wrongAnswers = new Set<number>();
           while (wrongAnswers.size < 3) {
@@ -279,61 +324,47 @@ export async function startBot(): Promise<void> {
           }
           const choices = [...wrongAnswers, correctAnswer].sort(() => Math.random() - 0.5);
 
-          const callbackPrefix = `captcha:${chatId}:${member.id}:`;
-          const keyboard = {
-            inline_keyboard: [
-              choices.map(c => ({
-                text: String(c),
-                callback_data: `${callbackPrefix}${c}`,
-              })),
-            ],
-          };
-
-          // Try to send via DM first, fall back to group inline keyboard
-          let sentViaDM = false;
-          try {
-            await bot!.sendMessage(member.id,
-              `👋 Welcome to *${groupName}*!\n\n` +
-              `To verify you're human, tap the correct answer below:\n\n` +
-              `🔢 *What is: ${captcha.question} = ?*\n\nYou have 2 minutes.`,
-              { parse_mode: "Markdown", reply_markup: keyboard }
-            );
-            sentViaDM = true;
-            await bot!.sendMessage(chatId,
-              `👋 Welcome, ${name}! I sent you a DM with a verification challenge. Please check your messages.`
-            );
-          } catch {
-            // User hasn't started the bot — show inline keyboard in group (muted users can still tap buttons)
-          }
-
-          let challengeMsg: { message_id: number } = { message_id: 0 };
-          if (!sentViaDM) {
-            challengeMsg = await bot!.sendMessage(chatId,
-              `👋 Welcome, ${name}!\n\n` +
-              `Tap the correct answer to verify you're human:\n\n` +
-              `🔢 *What is: ${captcha.question} = ?*`,
-              { parse_mode: "Markdown", reply_markup: keyboard }
-            );
-          }
-
           captchaStore.set(captchaKey, {
             answer: captcha.answer,
-            messageId: challengeMsg.message_id,
-            expiresAt: Date.now() + 2 * 60 * 1000,
+            question: captcha.question,
+            choices,
+            chatId,
+            messageId: 0,
+            expiresAt: Date.now() + 5 * 60 * 1000,
+            attempts: 0,
           });
 
+          // Group message: URL button opens DM with the bot (works even for muted users)
+          const verifyUrl = `https://t.me/${botUsername}?start=captcha_${chatId}_${member.id}`;
+          try {
+            const challengeMsg = await bot!.sendMessage(chatId,
+              `👋 Welcome, ${name}!\n\n` +
+              `To send messages here you need to verify you are human.\n\n` +
+              `Tap the button below — it opens a private chat where you answer one quick math question.\n\n` +
+              `⏳ You have 5 minutes and 3 attempts.`,
+              {
+                reply_markup: {
+                  inline_keyboard: [[{ text: "✅ Verify I'm human", url: verifyUrl }]],
+                },
+              }
+            );
+            const entry = captchaStore.get(captchaKey);
+            if (entry) entry.messageId = challengeMsg.message_id;
+          } catch {}
+
+          // Auto-remove after 5 minutes if they never verify
           setTimeout(async () => {
-            const remaining = captchaStore.get(captchaKey);
-            if (remaining) {
+            const pending = captchaStore.get(captchaKey);
+            if (pending) {
               captchaStore.delete(captchaKey);
               try {
-                if (remaining.messageId) await bot!.deleteMessage(chatId, remaining.messageId);
+                if (pending.messageId) await bot!.deleteMessage(chatId, pending.messageId).catch(() => {});
                 await bot!.banChatMember(chatId, member.id);
                 await bot!.unbanChatMember(chatId, member.id);
-                await bot!.sendMessage(chatId, `⏰ ${name} was removed for not completing the verification.`);
+                await bot!.sendMessage(chatId, `⏰ ${name} was removed for not completing verification in time.`);
               } catch {}
             }
-          }, 2 * 60 * 1000);
+          }, 5 * 60 * 1000);
           continue;
         }
 
@@ -417,10 +448,11 @@ export async function startBot(): Promise<void> {
           }
 
           if (answer === challenge.answer) {
+            // ── Correct answer ───────────────────────────────────────────────
             captchaStore.delete(captchaKey);
-            await bot!.answerCallbackQuery(query.id, { text: "✅ Verified! Welcome to the group." });
+            await bot!.answerCallbackQuery(query.id, { text: "✅ Correct! You are now verified." });
             try {
-              // Restore permissions
+              // Restore full permissions in the group
               await bot!.restrictChatMember(chatId, userId, {
                 permissions: {
                   can_send_messages: true,
@@ -429,24 +461,74 @@ export async function startBot(): Promise<void> {
                   can_send_polls: true,
                 },
               });
-              // Delete challenge message
+              // Clean up the group "Verify" message
               if (challenge.messageId) {
                 await bot!.deleteMessage(chatId, challenge.messageId).catch(() => {});
               }
-              // Delete DM challenge if sent via DM
-              if (query.message?.chat.type === "private") {
-                await bot!.deleteMessage(query.message.chat.id, query.message.message_id).catch(() => {});
+              // Update DM to show success
+              if (challenge.dmChatId && challenge.dmMessageId) {
+                await bot!.editMessageText(
+                  "✅ Verified! You can now send messages in the group.",
+                  { chat_id: challenge.dmChatId, message_id: challenge.dmMessageId }
+                ).catch(() => {});
               }
-              // Send welcome message
+              // Post welcome message in the group
               const name = query.from.first_name || query.from.username || "User";
               const groupSettings2 = await GroupSettings.findOne({ chatId });
               const welcomeText = groupSettings2?.welcomeMessage
                 ? groupSettings2.welcomeMessage.replace(/\{name\}/g, name).replace(/\{group\}/g, "the group")
-                : `✅ Welcome, ${name}! You've been verified.`;
+                : `✅ Welcome, ${name}! You have been verified.`;
               await bot!.sendMessage(chatId, welcomeText);
             } catch {}
           } else {
-            await bot!.answerCallbackQuery(query.id, { text: "❌ Wrong answer. Try again.", show_alert: true });
+            // ── Wrong answer ─────────────────────────────────────────────────
+            challenge.attempts += 1;
+            const remaining = 3 - challenge.attempts;
+
+            if (remaining <= 0) {
+              // 3 wrong answers — remove from group
+              captchaStore.delete(captchaKey);
+              await bot!.answerCallbackQuery(query.id, {
+                text: "❌ Too many wrong answers. You have been removed from the group.",
+                show_alert: true,
+              });
+              try {
+                if (challenge.messageId) await bot!.deleteMessage(chatId, challenge.messageId).catch(() => {});
+                await bot!.banChatMember(chatId, userId);
+                await bot!.unbanChatMember(chatId, userId);
+                const name = query.from.first_name || query.from.username || "User";
+                await bot!.sendMessage(chatId, `${name} failed verification (3 wrong answers) and was removed.`);
+                // Update DM to explain removal
+                if (challenge.dmChatId && challenge.dmMessageId) {
+                  await bot!.editMessageText(
+                    "❌ You used all 3 attempts and have been removed from the group.\n\nYou may rejoin and try again.",
+                    { chat_id: challenge.dmChatId, message_id: challenge.dmMessageId }
+                  ).catch(() => {});
+                }
+              } catch {}
+            } else {
+              // Still has attempts left — show popup and update DM message
+              await bot!.answerCallbackQuery(query.id, {
+                text: `❌ Wrong answer. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.`,
+                show_alert: true,
+              });
+              if (challenge.dmChatId && challenge.dmMessageId) {
+                const callbackPrefix = `captcha:${chatId}:${userId}:`;
+                await bot!.editMessageText(
+                  `Verification Challenge\n\nSolve this to join the group:\n\n${challenge.question} = ?\n\n` +
+                  `❌ Wrong answer. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.`,
+                  {
+                    chat_id: challenge.dmChatId,
+                    message_id: challenge.dmMessageId,
+                    reply_markup: {
+                      inline_keyboard: [
+                        challenge.choices.map(c => ({ text: String(c), callback_data: `${callbackPrefix}${c}` })),
+                      ],
+                    },
+                  }
+                ).catch(() => {});
+              }
+            }
           }
           return;
         }
