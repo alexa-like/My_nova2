@@ -1,10 +1,13 @@
 import axios from "axios";
 import { logger } from "../../lib/logger.js";
 
-// Models ordered by reliability
+// Models ordered by reliability — AnimateDiff-Lightning is the fastest free model;
+// Wan2.1 is higher quality; damo/zeroscope kept as last-resort legacy fallbacks
 const VIDEO_MODELS = [
-  "cerspense/zeroscope_v2_576w",
+  "ByteDance/AnimateDiff-Lightning",
+  "Wan-AI/Wan2.1-T2V-1.3B",
   "damo-vilab/text-to-video-ms-1.7b",
+  "cerspense/zeroscope_v2_576w",
 ];
 
 const COLD_START_DELAY_MS = 15000;

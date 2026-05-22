@@ -6,6 +6,31 @@ import { logger } from "../../lib/logger.js";
 const MAX_HISTORY = 20;
 const MAX_SUMMARY_TRIGGER = 30;
 
+// ── Free-tier fallback chain (tried in order when primary model fails) ────────
+const FREE_FALLBACK_MODELS = [
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "deepseek/deepseek-v4-flash:free",
+  "openai/gpt-oss-20b:free",
+  "nousresearch/hermes-3-llama-3.1-405b:free",
+  "meta-llama/llama-3.2-3b-instruct:free",
+];
+
+// ── Auto-detect queries that need real-time web context ───────────────────────
+const CURRENT_INFO_PATTERNS = [
+  /\b(today|right now|currently|at the moment|live|real.?time)\b/i,
+  /\b(latest|recent|breaking|new)\b.{0,30}\b(news|event|score|result|election|winner|update)\b/i,
+  /\b(news|what.?s happening|what happened|trending|viral)\b/i,
+  /\bprice of\b|\bhow much (is|does|did|cost)\b|\bcurrent (price|rate|exchange)\b/i,
+  /\b(weather|temperature|forecast)\b/i,
+  /\bwho (is|won|leads?|currently is)\b|\bwho.?s the (current|new)\b/i,
+  /\b(bitcoin|crypto|eth|ethereum|stock market|nasdaq|s&p|dow)\b/i,
+  /\b(released?|launched?|announced?|dropped?)\b.{0,20}\b(today|this week|recently|just)\b/i,
+];
+
+function needsCurrentInfo(text: string): boolean {
+  return CURRENT_INFO_PATTERNS.some(p => p.test(text));
+}
+
 type Style = "friendly" | "funny" | "serious" | "balanced";
 
 function buildSystemPrompt(
@@ -154,6 +179,32 @@ ${moodInstruction ? `- ${moodInstruction}` : ""}
 ${premiumNote ? `\n${premiumNote}` : ""}`;
 }
 
+// ── Single OpenRouter request — throws on HTTP error ─────────────────────────
+async function callOpenRouter(
+  apiKey: string,
+  model: string,
+  messages: { role: string; content: string }[],
+  maxTokens: number,
+  temperature: number
+): Promise<string> {
+  const response = await axios.post(
+    "https://openrouter.ai/api/v1/chat/completions",
+    { model, messages, max_tokens: maxTokens, temperature },
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.APP_URL || "https://nova-bot.replit.app",
+        "X-Title": "Nova AI Bot",
+      },
+      timeout: 30000,
+    }
+  );
+  const reply = response.data?.choices?.[0]?.message?.content;
+  if (!reply) throw new Error("Empty response from model");
+  return reply;
+}
+
 export async function chat(
   userId: number,
   chatId: number,
@@ -172,7 +223,7 @@ export async function chat(
   if (!apiKey) return "AI service is not configured.";
 
   const config = await getOrCreateBotConfig();
-  const model = preferredModel || config.activeChatModel;
+  const primaryModel = preferredModel || config.activeChatModel;
 
   let memory = await Memory.findOne({ userId, chatId });
   if (!memory) {
@@ -180,7 +231,6 @@ export async function chat(
   }
 
   memory.messages.push({ role: "user", content: userMessage, ts: new Date() });
-
   if (memory.messages.length > MAX_SUMMARY_TRIGGER) {
     memory.messages = memory.messages.slice(-MAX_HISTORY);
   }
@@ -194,48 +244,80 @@ export async function chat(
     settings.language
   );
 
+  // ── Auto-inject real-time web search context for time-sensitive queries ─────
+  let webContext = "";
+  if (needsCurrentInfo(userMessage)) {
+    try {
+      const { webSearch, formatSearchResults } = await import("./webSearch.js");
+      const results = await webSearch(userMessage.substring(0, 200));
+      if (results.length > 0) {
+        webContext = `\n\n[LIVE WEB SEARCH RESULTS — use these for current facts]\n${formatSearchResults(userMessage, results)}\n[End of live search]`;
+        logger.info({ results: results.length }, "Auto-injected web search context into AI chat");
+      }
+    } catch (err) {
+      logger.warn({ err }, "Auto web-search injection failed — proceeding without it");
+    }
+  }
+
   const historyMessages = memory.messages.slice(-MAX_HISTORY).map((m) => ({
     role: m.role,
     content: m.content,
   }));
 
-  try {
-    const response = await axios.post(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...historyMessages,
-        ],
-        max_tokens: settings.length === "short" ? 300 : 800,
-        temperature: settings.style === "funny" ? 0.92 : 0.78,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": process.env.APP_URL || "https://nova-bot.replit.app",
-          "X-Title": "Nova AI Bot",
-        },
-        timeout: 30000,
-      }
-    );
-
-    const reply =
-      response.data?.choices?.[0]?.message?.content ||
-      "I had a little brain glitch — try again!";
-
-    memory.messages.push({ role: "assistant", content: reply, ts: new Date() });
-    await memory.save();
-
-    return reply;
-  } catch (err) {
-    logger.error({ err }, "OpenRouter API error");
-    return settings.emoji
-      ? "Oops, my brain glitched! 😅 Try again in a moment."
-      : "Oops, something went wrong. Try again in a moment.";
+  // Append web context to the last user message so the AI sees it as fresh data
+  const messagesPayload = [...historyMessages];
+  if (webContext && messagesPayload.length > 0) {
+    const last = messagesPayload[messagesPayload.length - 1];
+    if (last.role === "user") {
+      messagesPayload[messagesPayload.length - 1] = {
+        role: "user",
+        content: last.content + webContext,
+      };
+    }
   }
+
+  const fullMessages = [
+    { role: "system", content: systemPrompt },
+    ...messagesPayload,
+  ];
+
+  const maxTokens = settings.length === "short" ? 300 : 800;
+  const temperature = settings.style === "funny" ? 0.92 : 0.78;
+
+  // ── Try primary model, fall back through free models on payment/rate errors ─
+  const modelsToTry = [
+    primaryModel,
+    ...FREE_FALLBACK_MODELS.filter(m => m !== primaryModel),
+  ];
+
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const model = modelsToTry[i];
+    try {
+      const reply = await callOpenRouter(apiKey, model, fullMessages, maxTokens, temperature);
+
+      if (i > 0) {
+        logger.info({ primaryModel, usedModel: model }, "Chat fell back to free model successfully");
+      }
+
+      memory.messages.push({ role: "assistant", content: reply, ts: new Date() });
+      await memory.save();
+      return reply;
+    } catch (err: any) {
+      const status = err?.response?.status;
+      // Retryable: 402 payment required, 429 rate limited, 500/503 server errors
+      if (status === 402 || status === 429 || status === 500 || status === 503) {
+        logger.warn({ model, status, attempt: i + 1, total: modelsToTry.length }, "Model unavailable — trying next free fallback");
+        continue;
+      }
+      // Hard errors (401 bad key, 400 invalid) — stop retrying
+      logger.error({ err, model, status }, "OpenRouter hard error — stopping retries");
+      break;
+    }
+  }
+
+  return settings.emoji
+    ? "Oops, my brain glitched! 😅 Try again in a moment."
+    : "Oops, something went wrong. Try again in a moment.";
 }
 
 export async function clearMemory(

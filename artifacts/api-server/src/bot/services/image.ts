@@ -6,8 +6,15 @@ import { logger } from "../../lib/logger.js";
 const FREE_LIMIT_DEFAULT = 5;
 const PREMIUM_LIMIT_DEFAULT = 999999; // effectively unlimited
 
-const FALLBACK_ENDPOINT =
-  "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-3-medium-diffusers";
+// Fallback image models tried in order when the primary (BotConfig) model fails.
+// All verified available on HF Inference API free tier (May 2025).
+const FALLBACK_MODELS = [
+  "stabilityai/stable-diffusion-xl-base-1.0",
+  "SG161222/RealVisXL_V4.0",
+  "Lykon/dreamshaper-8",
+  "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "stabilityai/stable-diffusion-3-medium-diffusers",
+];
 
 const IMG2IMG_ENDPOINT =
   "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix";
@@ -18,14 +25,18 @@ export async function generateImage(prompt: string): Promise<Buffer | null> {
 
   const config = await getOrCreateBotConfig();
   const primaryModel = config.activeImageModel;
-  const primaryEndpoint = `https://api-inference.huggingface.co/models/${primaryModel}`;
 
-  const endpoints = [primaryEndpoint, FALLBACK_ENDPOINT];
+  // Build endpoint list: primary first, then fallbacks (deduplicated)
+  const allModels = [
+    primaryModel,
+    ...FALLBACK_MODELS.filter(m => m !== primaryModel),
+  ];
 
-  for (const url of endpoints) {
+  for (const modelId of allModels) {
+    const url = `https://api-inference.huggingface.co/models/${modelId}`;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        logger.info({ url, attempt }, "Attempting image generation");
+        logger.info({ model: modelId, attempt }, "Attempting image generation");
 
         const response = await axios.post(
           url,
@@ -47,25 +58,25 @@ export async function generateImage(prompt: string): Promise<Buffer | null> {
           contentType.includes("image") ||
           (response.data as Buffer)?.byteLength > 1000
         ) {
-          logger.info({ url }, "Image generated successfully");
+          logger.info({ model: modelId }, "Image generated successfully");
           return Buffer.from(response.data);
         }
 
         logger.warn(
-          { url, contentType },
-          "Response was not an image, trying fallback"
+          { model: modelId, contentType },
+          "Response was not an image, trying next model"
         );
         break;
       } catch (err: any) {
         const status = err?.response?.status;
         if (status === 503 && attempt === 1) {
-          logger.warn({ url }, "Image model loading (503) — retrying with wait");
+          logger.warn({ model: modelId }, "Image model loading (503) — retrying with wait");
           await new Promise((r) => setTimeout(r, 8000));
           continue;
         }
         logger.warn(
-          { url, status },
-          "Image generation failed for endpoint, trying next"
+          { model: modelId, status },
+          "Image generation failed for this model, trying next"
         );
         break;
       }

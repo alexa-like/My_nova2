@@ -5,10 +5,9 @@ import { logger } from "../../lib/logger.js";
 export const VOICE_PREVIEW_TEXT = "Hey there! I'm Nova, your AI assistant. This is exactly how I sound!";
 
 export const VOICE_DESCRIPTIONS: Record<string, string> = {
-  "facebook/mms-tts-eng":                    "Nova — clean, natural, and clear",
-  "espnet/kan-bayashi_ljspeech_vits":        "Crystal — smooth and expressive",
-  "facebook/fastspeech2-en-ljspeech":       "Echo — warm and steady",
-  "suno/bark-small":                         "Bark — expressive and dynamic (slower)",
+  "facebook/mms-tts-eng":             "Nova — clean, natural, and clear",
+  "espnet/kan-bayashi_ljspeech_vits": "Crystal — smooth and expressive",
+  "suno/bark-small":                  "Bark — expressive and dynamic (slower)",
 };
 
 const FALLBACK_TTS = "facebook/mms-tts-eng";
