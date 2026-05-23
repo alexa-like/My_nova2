@@ -1477,7 +1477,8 @@ export async function handleGroupMessage(
     const sentMsg = await bot.sendMessage(chatId, "🔍 Analyzing image...");
     const stopDescribeTyping = startTypingLoop(bot, chatId, "upload_photo");
     try {
-      const { downloadTelegramPhoto, analyzeImage } = await import("./privateHandler.js");
+      const { downloadTelegramPhoto } = await import("../services/image.js");
+      const { analyzeImage } = await import("../services/imageAnalysis.js");
       const imageBuffer = await downloadTelegramPhoto(bot, photo.file_id);
       if (!imageBuffer) {
         stopDescribeTyping();

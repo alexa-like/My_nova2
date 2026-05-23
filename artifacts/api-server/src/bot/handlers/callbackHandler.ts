@@ -905,9 +905,6 @@ export async function handleCallbackQuery(
       const premiumLine = user.premium.active
         ? `✅ Premium — expires ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}`
         : "🆓 Free Plan";
-      const spCfg = await getOrCreateBotConfig();
-      const spMusicLimit = user.premium.active ? spCfg.usageLimits.premiumMusic : spCfg.usageLimits.freeMusic;
-      const spMusicStr = spMusicLimit < 0 ? "∞" : String(spMusicLimit);
       await editMsg(bot, query,
         `👤 Your Profile\n\n` +
         `Name: ${user.firstName || "N/A"}\n` +
@@ -919,7 +916,6 @@ export async function handleCallbackQuery(
         `Mood: ${user.mood || "not set"}\n` +
         `Messages today: ${user.usage.messages}\n` +
         `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}\n` +
-        `Music today: ${user.usage.music ?? 0}/${spMusicStr}\n` +
         `Member since: ${formatDate(user.firstSeen)}`,
         backToSettingsKeyboard()
       );
@@ -1326,9 +1322,6 @@ export async function handleCallbackQuery(
         : "Free";
       const builds2 = user.usage.builds ?? 0;
       const daysSinceJoin = Math.floor((Date.now() - user.firstSeen.getTime()) / 86400000);
-      const profCfg = await getOrCreateBotConfig();
-      const profMusicLimit = user.premium.active ? profCfg.usageLimits.premiumMusic : profCfg.usageLimits.freeMusic;
-      const profMusicStr = profMusicLimit < 0 ? "∞" : String(profMusicLimit);
       await editMsg(bot, query,
         `👤 Your Profile\n\n` +
         `Name: ${name}\n` +
@@ -1345,7 +1338,6 @@ export async function handleCallbackQuery(
         `── Usage ──\n` +
         `Messages today: ${user.usage.messages}\n` +
         `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}\n` +
-        `Music today: ${user.usage.music ?? 0}/${profMusicStr}\n` +
         `Total builds: ${builds2}\n` +
         `Groups: ${user.groups.length}\n` +
         `Warnings: ${user.warnings}`,
@@ -1363,9 +1355,6 @@ export async function handleCallbackQuery(
       const imageLimit = getImageLimit(user.premium.active);
       const daysSinceJoin = Math.floor((Date.now() - user.firstSeen.getTime()) / 86400000);
       const builds2 = user.usage.builds ?? 0;
-      const statsCfgCb = await getOrCreateBotConfig();
-      const statsMusicLimit = user.premium.active ? statsCfgCb.usageLimits.premiumMusic : statsCfgCb.usageLimits.freeMusic;
-      const statsMusicStr = statsMusicLimit < 0 ? "∞" : String(statsMusicLimit);
       await editMsg(bot, query,
         `📊 Your Stats\n\n` +
         `👤 ${name}\n` +
@@ -1374,8 +1363,7 @@ export async function handleCallbackQuery(
         `💎 Plan: ${premiumLine}\n\n` +
         `── Today ──\n` +
         `💬 Messages: ${user.usage.messages}\n` +
-        `🖼️ Images: ${user.usage.images}/${imageLimit}\n` +
-        `🎵 Music: ${user.usage.music ?? 0}/${statsMusicStr}\n\n` +
+        `🖼️ Images: ${user.usage.images}/${imageLimit >= 999999 ? "∞" : imageLimit}\n\n` +
         `── All Time ──\n` +
         `🔨 Builds: ${builds2}\n` +
         `👥 Groups: ${user.groups.length}\n` +
@@ -1931,8 +1919,6 @@ export async function handleCallbackQuery(
 
     if (data === "own_providers") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const config = await getOrCreateBotConfig();
-      const providers = config.providers || {};
       await editMsg(bot, query,
         `🔌 Providers\n━━━━━━━━━━━━━━━━\nManage AI provider routing for chat, image, and TTS.`,
         ownerProvidersKeyboard()
@@ -1943,7 +1929,7 @@ export async function handleCallbackQuery(
     if (data === "own_features") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
       const config = await getOrCreateBotConfig();
-      const features = config.features || {};
+      const features = config.features;
       await editMsg(bot, query,
         `⚙️ Features\n━━━━━━━━━━━━━━━━\nToggle bot capabilities on or off.`,
         ownerFeaturesKeyboard({
@@ -1986,13 +1972,13 @@ export async function handleCallbackQuery(
     if (data === "own_chat_providers") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
       const config = await getOrCreateBotConfig();
-      const providers = config.providers || {};
+      const p = config.providers;
       await editMsg(bot, query,
         `💬 Chat Providers\n━━━━━━━━━━━━━━━━\nChoose which AI provider handles each user type.`,
         ownerChatProvidersKeyboard({
-          freeChat: { provider: providers.freeChat || "pollinations", model: providers.freeChatModel || "" },
-          premiumChat: { provider: providers.premiumChat || "openrouter", model: providers.premiumChatModel || "" },
-          groupChat: { provider: providers.groupChat || "pollinations", model: providers.groupChatModel || "" },
+          freeChat:    { provider: p.freeChat.provider,    model: p.freeChat.model    },
+          premiumChat: { provider: p.premiumChat.provider, model: p.premiumChat.model },
+          groupChat:   { provider: p.groupChat.provider,   model: p.groupChat.model   },
         })
       );
       return;
@@ -2010,27 +1996,28 @@ export async function handleCallbackQuery(
 
     if (data.startsWith("own_chat_prov_")) {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const parts = data.replace("own_chat_prov_", "").split("_");
-      const slot = parts[0];
-      const prov = parts.slice(1).join("_");
+      // format: own_chat_prov_{slot}_{provider}  e.g. own_chat_prov_free_pollinations
+      const withoutPrefix = data.replace("own_chat_prov_", "");
+      const slotMatch = withoutPrefix.match(/^(free|premium|group)_(.+)$/);
+      if (!slotMatch) { await answer(bot, query.id, "Invalid action."); return; }
+      const slot = slotMatch[1] as "free" | "premium" | "group";
+      const prov = slotMatch[2] as "pollinations" | "openrouter";
       const config = await getOrCreateBotConfig();
-      if (!config.providers) config.providers = {} as any;
+      const slotKey = `${slot}Chat` as "freeChat" | "premiumChat" | "groupChat";
       if (prov === "pollinations") {
-        (config.providers as any)[`${slot}Chat`] = "pollinations";
-        (config.providers as any)[`${slot}ChatModel`] = "";
+        config.providers[slotKey] = { provider: "pollinations", model: "openai" };
         await config.save();
         await answer(bot, query.id, "✅ Switched to Pollinations");
+        const p = config.providers;
         await editMsg(bot, query,
           `💬 Chat Providers\n━━━━━━━━━━━━━━━━\nUpdated successfully.`,
           ownerChatProvidersKeyboard({
-            freeChat: { provider: config.providers.freeChat || "pollinations", model: config.providers.freeChatModel || "" },
-            premiumChat: { provider: config.providers.premiumChat || "openrouter", model: config.providers.premiumChatModel || "" },
-            groupChat: { provider: config.providers.groupChat || "pollinations", model: config.providers.groupChatModel || "" },
+            freeChat:    { provider: p.freeChat.provider,    model: p.freeChat.model    },
+            premiumChat: { provider: p.premiumChat.provider, model: p.premiumChat.model },
+            groupChat:   { provider: p.groupChat.provider,   model: p.groupChat.model   },
           })
         );
       } else {
-        (config.providers as any)[`${slot}Chat`] = "openrouter";
-        await config.save();
         await editMsg(bot, query,
           `💬 Pick OpenRouter Model\n━━━━━━━━━━━━━━━━\nChoose the model to use:`,
           ownerPickOpenRouterModelKeyboard(slot, config.chatModels)
@@ -2041,23 +2028,26 @@ export async function handleCallbackQuery(
 
     if (data.startsWith("own_chat_model_")) {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const parts = data.replace("own_chat_model_", "").split("_");
-      const slot = parts[0];
-      const idx = parseInt(parts[1]);
+      // format: own_chat_model_{slot}_{idx}  e.g. own_chat_model_premium_2
+      const withoutPrefix = data.replace("own_chat_model_", "");
+      const modelMatch = withoutPrefix.match(/^(free|premium|group)_(\d+)$/);
+      if (!modelMatch) { await answer(bot, query.id, "Invalid action."); return; }
+      const slot = modelMatch[1] as "free" | "premium" | "group";
+      const idx = parseInt(modelMatch[2]);
       const config = await getOrCreateBotConfig();
       const model = config.chatModels[idx];
       if (!model) { await answer(bot, query.id, "Model not found."); return; }
-      if (!config.providers) config.providers = {} as any;
-      (config.providers as any)[`${slot}Chat`] = "openrouter";
-      (config.providers as any)[`${slot}ChatModel`] = model.id;
+      const slotKey = `${slot}Chat` as "freeChat" | "premiumChat" | "groupChat";
+      config.providers[slotKey] = { provider: "openrouter", model: model.id };
       await config.save();
       await answer(bot, query.id, `✅ Set to ${model.name}`);
+      const p = config.providers;
       await editMsg(bot, query,
         `💬 Chat Providers\n━━━━━━━━━━━━━━━━\nUpdated successfully.`,
         ownerChatProvidersKeyboard({
-          freeChat: { provider: config.providers.freeChat || "pollinations", model: config.providers.freeChatModel || "" },
-          premiumChat: { provider: config.providers.premiumChat || "openrouter", model: config.providers.premiumChatModel || "" },
-          groupChat: { provider: config.providers.groupChat || "pollinations", model: config.providers.groupChatModel || "" },
+          freeChat:    { provider: p.freeChat.provider,    model: p.freeChat.model    },
+          premiumChat: { provider: p.premiumChat.provider, model: p.premiumChat.model },
+          groupChat:   { provider: p.groupChat.provider,   model: p.groupChat.model   },
         })
       );
       return;
@@ -2066,13 +2056,13 @@ export async function handleCallbackQuery(
     if (data === "own_img_providers") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
       const config = await getOrCreateBotConfig();
-      const providers = config.providers || {};
+      const p = config.providers;
       await editMsg(bot, query,
         `🖼 Image Providers\n━━━━━━━━━━━━━━━━\nChoose which provider generates images per user type.`,
         ownerImageProvidersKeyboard({
-          freeImage: providers.freeImage || "pollinations",
-          premiumImage: providers.premiumImage || "huggingface",
-          groupImage: providers.groupImage || "pollinations",
+          freeImage: p.freeImage,
+          premiumImage: p.premiumImage,
+          groupImage: p.groupImage,
         })
       );
       return;
@@ -2090,20 +2080,24 @@ export async function handleCallbackQuery(
 
     if (data.startsWith("own_img_prov_")) {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const parts = data.replace("own_img_prov_", "").split("_");
-      const slot = parts[0];
-      const prov = parts.slice(1).join("_");
+      // format: own_img_prov_{slot}_{provider}  e.g. own_img_prov_free_huggingface
+      const withoutPrefix = data.replace("own_img_prov_", "");
+      const imgMatch = withoutPrefix.match(/^(free|premium|group)_(.+)$/);
+      if (!imgMatch) { await answer(bot, query.id, "Invalid action."); return; }
+      const slot = imgMatch[1] as "free" | "premium" | "group";
+      const prov = imgMatch[2] as "huggingface" | "pollinations";
       const config = await getOrCreateBotConfig();
-      if (!config.providers) config.providers = {} as any;
-      (config.providers as any)[`${slot}Image`] = prov;
+      const imgKey = `${slot}Image` as "freeImage" | "premiumImage" | "groupImage";
+      config.providers[imgKey] = prov;
       await config.save();
       await answer(bot, query.id, `✅ Switched to ${prov}`);
+      const p = config.providers;
       await editMsg(bot, query,
         `🖼 Image Providers\n━━━━━━━━━━━━━━━━\nUpdated successfully.`,
         ownerImageProvidersKeyboard({
-          freeImage: config.providers.freeImage || "pollinations",
-          premiumImage: config.providers.premiumImage || "huggingface",
-          groupImage: config.providers.groupImage || "pollinations",
+          freeImage: p.freeImage,
+          premiumImage: p.premiumImage,
+          groupImage: p.groupImage,
         })
       );
       return;
@@ -2112,25 +2106,25 @@ export async function handleCallbackQuery(
     if (data === "own_tts_provider") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
       const config = await getOrCreateBotConfig();
-      const providers = config.providers || {};
+      const p = config.providers;
       await editMsg(bot, query,
         `🔊 TTS Provider\n━━━━━━━━━━━━━━━━\nSelect the text-to-speech provider and voice.`,
-        ownerTtsKeyboard(providers.tts || "huggingface", providers.ttsVoice || "nova")
+        ownerTtsKeyboard(p.tts, p.ttsVoice)
       );
       return;
     }
 
     if (data === "own_tts_prov_huggingface" || data === "own_tts_prov_openrouter") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const prov = data.replace("own_tts_prov_", "");
+      const prov = data.replace("own_tts_prov_", "") as "huggingface" | "openrouter";
       const config = await getOrCreateBotConfig();
-      if (!config.providers) config.providers = {} as any;
-      (config.providers as any).tts = prov;
+      config.providers.tts = prov;
       await config.save();
       await answer(bot, query.id, `✅ TTS set to ${prov}`);
+      const p = config.providers;
       await editMsg(bot, query,
         `🔊 TTS Provider\n━━━━━━━━━━━━━━━━\nUpdated.`,
-        ownerTtsKeyboard(config.providers.tts || "huggingface", config.providers.ttsVoice || "nova")
+        ownerTtsKeyboard(p.tts, p.ttsVoice)
       );
       return;
     }
@@ -2148,13 +2142,13 @@ export async function handleCallbackQuery(
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
       const voice = data.replace("own_tts_voice_", "");
       const config = await getOrCreateBotConfig();
-      if (!config.providers) config.providers = {} as any;
-      (config.providers as any).ttsVoice = voice;
+      config.providers.ttsVoice = voice;
       await config.save();
       await answer(bot, query.id, `✅ Voice set to ${voice}`);
+      const p = config.providers;
       await editMsg(bot, query,
         `🔊 TTS Provider\n━━━━━━━━━━━━━━━━\nVoice updated to ${voice}.`,
-        ownerTtsKeyboard(config.providers.tts || "huggingface", config.providers.ttsVoice || "nova")
+        ownerTtsKeyboard(p.tts, p.ttsVoice)
       );
       return;
     }

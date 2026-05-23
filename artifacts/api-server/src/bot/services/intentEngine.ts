@@ -6,7 +6,6 @@
 
 export type IntentType =
   | "image"
-  | "music"
   | "sticker"
   | "search"
   | "summarize"
@@ -53,26 +52,6 @@ const IMAGE_PATTERNS: PatternSet = [
 export function detectImageIntent(text: string): string | null {
   const result = matchPatterns(text.trim(), IMAGE_PATTERNS);
   return result?.prompt ?? null;
-}
-
-// ── Music ──────────────────────────────────────────────────────────────────────
-const MUSIC_PATTERNS: PatternSet = [
-  { pattern: /^(?:generate|create|make|compose|produce|write)\s+(?:some\s+|me\s+|me\s+some\s+)?(?:music|audio|a song|a beat|a track|a melody|a tune)\s*(?:that|with|about|like|for|of)?\s*(.*)/i, extract: (m) => m[1] || m.input || "" },
-  { pattern: /^(?:play|make)\s+(?:me\s+)?(?:some\s+)?(?:music|a song|a beat|a track)\s*(?:that|with|about|like|for|of)?\s*(.*)/i, extract: (m) => m[1] || m.input || "" },
-  { pattern: /^(?:generate|make|create)\s+(?:a\s+)?(?:lo-?fi|hip-?hop|jazz|classical|ambient|chill|upbeat|epic|sad|happy|calm|relaxing|energetic|electronic|pop|rock)\s+(?:music|beat|track|song|melody|vibe)?\s*(.*)/i, extract: (m) => m[0] },
-];
-
-export function detectMusicIntent(text: string): string | null {
-  const t = text.trim();
-  for (const { pattern } of MUSIC_PATTERNS) {
-    const m = t.match(pattern);
-    if (m) {
-      const captured = (m[1] || "").trim();
-      const fullPrompt = captured.length > 3 ? captured : t.replace(/^(?:generate|create|make|play|compose|produce|write|i want|i need)\s+(?:me\s+)?(?:some\s+)?/i, "").trim();
-      if (fullPrompt.length > 3) return fullPrompt;
-    }
-  }
-  return null;
 }
 
 // ── Sticker ────────────────────────────────────────────────────────────────────
@@ -156,9 +135,6 @@ export function classifyIntent(text: string): IntentResult {
 
   const imagePrompt = detectImageIntent(t);
   if (imagePrompt) return { intent: "image", confidence: 0.92, params: { prompt: imagePrompt } };
-
-  const musicPrompt = detectMusicIntent(t);
-  if (musicPrompt) return { intent: "music", confidence: 0.9, params: { prompt: musicPrompt } };
 
   const stickerPrompt = detectStickerIntent(t);
   if (stickerPrompt) return { intent: "sticker", confidence: 0.9, params: { prompt: stickerPrompt } };

@@ -436,7 +436,7 @@ export async function handleOwnerMessage(
       `Core APIs:\n` +
       `${ok(hasTG)} Telegram Bot Token\n` +
       `${ok(hasOR)} OpenRouter (AI chat)\n` +
-      `${ok(hasHF)} HuggingFace (images & music)\n` +
+      `${ok(hasHF)} HuggingFace (images, TTS & STT)\n` +
       `${ok(hasMongo)} MongoDB (database)\n\n` +
       `Build & Deploy:\n` +
       `${ok(hasGH)} GitHub (repo push — /build)\n` +
