@@ -101,12 +101,11 @@ function extractJson(raw: string): string {
 // ── Main generator ─────────────────────────────────────────────────────────────
 
 // ── Coding models ──────────────────────────────────────────────────────────────
-// Qwen3 Coder: purpose-built for code, fast, reliable structured JSON output.
-// Llama 3.3 70B: proven reliable fallback with strong JSON compliance.
 const CODE_MODELS = [
-  "qwen/qwen3-235b-a22b:free",
-  "qwen/qwen-2.5-72b-instruct:free",
   "meta-llama/llama-3.3-70b-instruct:free",
+  "qwen/qwen-2.5-72b-instruct:free",
+  "google/gemma-3-27b-it:free",
+  "mistralai/mistral-7b-instruct:free",
 ];
 
 export async function generateProject(
@@ -116,16 +115,17 @@ export async function generateProject(
 ): Promise<GeneratedProject> {
   logger.info({ userRequest }, "Generating project — trying code models in order");
 
-  let lastError = "AI service failed. Please try again.";
+  const failures: string[] = [];
 
   for (let modelIdx = 0; modelIdx < CODE_MODELS.length; modelIdx++) {
     const model = CODE_MODELS[modelIdx];
+    const shortName = model.split("/").pop() ?? model;
     let raw = "";
     try {
       if (modelIdx === 0) {
         onStatus?.("🔨 Building your project");
       } else {
-        onStatus?.(`🔄 Trying backup model (${modelIdx + 1}/${CODE_MODELS.length})`);
+        onStatus?.(`🔄 Trying model ${modelIdx + 1}/${CODE_MODELS.length}`);
       }
       logger.info({ model }, "Attempting project generation");
       const response = await axios.post(
@@ -143,7 +143,7 @@ export async function generateProject(
               content: buildPrompt(userRequest),
             },
           ],
-          max_tokens: 8192,   // enough for complex multi-file projects
+          max_tokens: 8192,
           temperature: 0.2,
           top_p: 0.9,
         },
@@ -154,28 +154,25 @@ export async function generateProject(
             "HTTP-Referer": process.env.APP_URL || "https://nova-bot.replit.app",
             "X-Title": "Nova AI Bot — Project Builder",
           },
-          timeout: 120000,
+          timeout: 90000,
         }
       );
       raw = response.data?.choices?.[0]?.message?.content || "";
     } catch (err: any) {
       const status = err?.response?.status;
+      const errMsg = err?.response?.data?.error?.message || err?.message || "unknown error";
       if (status === 401) {
-        throw new Error("AI service authentication failed. Check your OPENROUTER_API_KEY.");
+        throw new Error(`API key rejected (401). Check your OPENROUTER_API_KEY.`);
       }
-      if (status === 402 || status === 429 || status === 500 || status === 503) {
-        logger.warn({ model, status }, "Model unavailable for project generation — trying next");
-        lastError = "AI service timed out. Please try again.";
-        continue;
-      }
-      logger.warn({ model, err: err?.message }, "Project generation request failed — trying next model");
-      lastError = "AI service timed out. Please try again.";
+      const reason = status ? `HTTP ${status}` : (err.code === "ECONNABORTED" ? "timeout" : errMsg.slice(0, 60));
+      failures.push(`${shortName}: ${reason}`);
+      logger.warn({ model, status, errMsg }, "Model failed — trying next");
       continue;
     }
 
     if (!raw || raw.trim().length < 10) {
+      failures.push(`${shortName}: empty response`);
       logger.warn({ model }, "Model returned empty response — trying next");
-      lastError = "AI returned an empty response. Please try again.";
       continue;
     }
 
@@ -183,8 +180,8 @@ export async function generateProject(
     try {
       jsonStr = extractJson(raw);
     } catch {
+      failures.push(`${shortName}: bad format`);
       logger.warn({ model, rawPreview: raw.substring(0, 200) }, "Could not extract JSON — trying next model");
-      lastError = "The AI returned an unexpected format. Please try again.";
       continue;
     }
 
@@ -198,15 +195,15 @@ export async function generateProject(
         parsed = JSON.parse(repaired);
         logger.info({ model }, "JSON auto-repaired successfully");
       } catch {
+        failures.push(`${shortName}: JSON parse failed`);
         logger.warn({ model, jsonPreview: jsonStr.substring(0, 200) }, "JSON parse + repair both failed — trying next model");
-        lastError = "Failed to parse the generated project. Please try again.";
         continue;
       }
     }
 
     if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.files) || parsed.files.length === 0) {
+      failures.push(`${shortName}: invalid structure`);
       logger.warn({ model }, "Project has invalid structure — trying next model");
-      lastError = "AI generated an empty or invalid project. Try a more specific description.";
       continue;
     }
 
@@ -214,15 +211,14 @@ export async function generateProject(
     parsed.files = parsed.files
       .filter((f) => f && typeof f.path === "string" && typeof f.content === "string")
       .map((f) => {
-        // Normalize separators, strip leading slashes, remove any traversal sequences
         let safePath = f.path
           .replace(/\\/g, "/")
           .replace(/^\/+/, "")
           .replace(/[<>:"|?*\x00-\x1f]/g, "")
-          .replace(/\.{2,}/g, ".")     // collapse .. and ... into single dot
-          .replace(/\/\.+\//g, "/")    // remove hidden segments like /./ and /../
+          .replace(/\.{2,}/g, ".")
+          .replace(/\/\.+\//g, "/")
           .replace(/\/+/g, "/")
-          .replace(/^\.+\//, "")       // strip leading dots
+          .replace(/^\.+\//, "")
           .slice(0, 255);
         return {
           path: safePath,
@@ -232,8 +228,8 @@ export async function generateProject(
       .filter((f) => f.path.length > 0 && f.content.length > 0 && !f.path.startsWith("."));
 
     if (parsed.files.length === 0) {
+      failures.push(`${shortName}: all files invalid`);
       logger.warn({ model }, "All generated files were invalid — trying next model");
-      lastError = "All generated files were invalid. Please try again.";
       continue;
     }
 
@@ -248,8 +244,9 @@ export async function generateProject(
     return parsed;
   }
 
-  // All models failed
-  throw new Error(lastError);
+  // All models failed — include per-model failure reasons so the user can report them
+  const summary = failures.length > 0 ? `\n\nDetails: ${failures.join(" | ")}` : "";
+  throw new Error(`⚠️ All AI models failed to generate your project. Please try again in a moment.${summary}`);
 }
 
 // ── Project type label ─────────────────────────────────────────────────────────
