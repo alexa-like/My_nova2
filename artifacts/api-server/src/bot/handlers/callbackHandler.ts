@@ -16,6 +16,13 @@ import { deployToVercel, deployToRender } from "../services/deploy.js";
 import { decrypt } from "../utils/crypto.js";
 import { typeLabel } from "../services/projectGenerator.js";
 import {
+  createGitHubRepo,
+  pushAllFiles,
+  repoExists,
+  sanitizeRepoName,
+  uniqueRepoName,
+} from "../services/github.js";
+import {
   mainMenuKeyboard,
   funMenuKeyboard,
   gamesMenuKeyboard,
@@ -762,7 +769,17 @@ export async function handleCallbackQuery(
     }
 
     if (data === "build_menu") {
-      const hasGitHub = !!(process.env.GITHUB_TOKEN && process.env.GITHUB_USERNAME);
+      // Check user's personal GitHub token OR env-level token
+      let hasGitHub = false;
+      try {
+        const fresh = await User.findOne({ userId }).select("+github.tokenEncrypted");
+        const enc = (fresh as any)?.github?.tokenEncrypted as string | undefined;
+        const username = (fresh as any)?.github?.username || process.env.GITHUB_USERNAME;
+        let token = process.env.GITHUB_TOKEN;
+        if (enc) { const dec = decrypt(enc); if (dec) token = dec; }
+        hasGitHub = !!(token && username);
+      } catch {}
+
       setPending(userId, "build_input");
       await bot.answerCallbackQuery(query.id);
       await bot.sendMessage(chatId,
@@ -773,12 +790,140 @@ export async function handleCallbackQuery(
         `• Netflix clone with movie cards\n` +
         `• todo app with dark mode\n` +
         `• React dashboard with live charts\n` +
-        `• real-time chat app with Node.js\n\n` +
+        `• real-time chat app with Node.js\n` +
+        `• expense tracker with charts\n` +
+        `• quiz app with multiple choice questions\n\n` +
         (hasGitHub
-          ? `✅ GitHub connected — project will be pushed to a repo automatically!`
-          : `📁 Files will be sent to you directly.\n\nWhat do you want to build? Type your idea below:`) +
-        (hasGitHub ? `\n\nWhat do you want to build? Type your idea below:` : ``),
+          ? `✅ GitHub connected — project will be pushed to a repo automatically!\n\nWhat do you want to build? Type your idea below:`
+          : `💡 After generation you can push to GitHub or receive files on Telegram.\n\nWhat do you want to build? Type your idea below:`),
         { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
+      );
+      return;
+    }
+
+    if (data === "build_choice_telegram") {
+      await bot.answerCallbackQuery(query.id, { text: "Sending your files..." });
+      const cached = getCachedBuild(userId);
+      if (!cached) {
+        await bot.sendMessage(chatId, "⚠️ Project session expired. Please build again.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Build Again", callback_data: "build_menu" }]] } });
+        return;
+      }
+      await bot.sendMessage(chatId, `📦 Sending ${cached.project.files.length} files for *${cached.project.name}*...`, { parse_mode: "Markdown" });
+      for (const file of cached.project.files) {
+        try {
+          const buf = Buffer.from(file.content, "utf-8");
+          const filename = file.path.split("/").pop() || file.path;
+          await bot.sendDocument(chatId, buf, { caption: `📄 ${file.path}` }, { filename, contentType: "text/plain; charset=utf-8" });
+          await new Promise((r) => setTimeout(r, 350));
+        } catch {}
+      }
+      await bot.sendMessage(chatId,
+        `✅ All files sent!\n\n💡 ${cached.project.deploymentTip}\n\n💡 Connect GitHub in ⚙️ Settings → 🔑 GitHub for auto-push next time.`,
+        { reply_markup: { inline_keyboard: [
+          [{ text: "🔑 Connect GitHub", callback_data: "settings_github" }, { text: "🌐 Build Another", callback_data: "build_menu" }],
+          [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+        ]}}
+      );
+      return;
+    }
+
+    if (data === "build_choice_github") {
+      await bot.answerCallbackQuery(query.id);
+      const cached = getCachedBuild(userId);
+      if (!cached) {
+        await bot.sendMessage(chatId, "⚠️ Project session expired. Please build again.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Build Again", callback_data: "build_menu" }]] } });
+        return;
+      }
+
+      // Resolve GitHub credentials
+      let ghToken: string | undefined = process.env.GITHUB_TOKEN;
+      let ghUsername: string | undefined = process.env.GITHUB_USERNAME;
+      try {
+        const fresh = await User.findOne({ userId }).select("+github.tokenEncrypted");
+        const enc = (fresh as any)?.github?.tokenEncrypted as string | undefined;
+        const storedUsername = (fresh as any)?.github?.username as string | undefined;
+        if (enc) { const dec = decrypt(enc); if (dec) ghToken = dec; }
+        if (storedUsername) ghUsername = storedUsername;
+      } catch {}
+
+      if (!ghToken || !ghUsername) {
+        await bot.sendMessage(chatId,
+          `🔑 No GitHub account connected yet.\n\nConnect your GitHub token in Settings to push projects directly to your repos!`,
+          { reply_markup: { inline_keyboard: [
+            [{ text: "🔑 Connect GitHub", callback_data: "settings_github" }],
+            [{ text: "📱 Send to Telegram Instead", callback_data: "build_choice_telegram" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+          ]}}
+        );
+        return;
+      }
+
+      const rawName = sanitizeRepoName(cached.project.name);
+      let repoName = rawName;
+      try {
+        const exists = await repoExists(ghToken, ghUsername, rawName);
+        if (exists) repoName = uniqueRepoName(rawName);
+      } catch {}
+
+      const statusMsg = await bot.sendMessage(chatId, `📤 Creating GitHub repository...`);
+      const stopTyping = startTypingLoop(bot, chatId);
+
+      let repoInfo: Awaited<ReturnType<typeof createGitHubRepo>>;
+      try {
+        repoInfo = await createGitHubRepo(ghToken, repoName, cached.project.description);
+      } catch (err: any) {
+        stopTyping();
+        try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+        const reason = err?.response?.status === 401
+          ? "GitHub authentication failed. Check your token in ⚙️ Settings → 🔑 GitHub."
+          : err?.response?.status === 422
+          ? `A repo named "${repoName}" already exists on your account.`
+          : `GitHub error: ${err?.response?.data?.message || err.message}`;
+        await bot.sendMessage(chatId,
+          `⚠️ ${reason}\n\nSend files to Telegram instead?`,
+          { reply_markup: { inline_keyboard: [
+            [{ text: "📱 Send to Telegram", callback_data: "build_choice_telegram" }],
+            [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+          ]}}
+        );
+        return;
+      }
+
+      try {
+        await bot.editMessageText(`✅ Repository created! Uploading ${cached.project.files.length} files...`, { chat_id: chatId, message_id: statusMsg.message_id });
+      } catch {}
+
+      try {
+        await pushAllFiles(ghToken, ghUsername, repoInfo.name, cached.project.files, async (done, total) => {
+          try { await bot.editMessageText(`📤 Uploading files... ${done}/${total}`, { chat_id: chatId, message_id: statusMsg.message_id }); } catch {}
+        });
+      } catch {
+        stopTyping();
+        try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+        await bot.sendMessage(chatId, `⚠️ Upload failed partway. Repo: ${repoInfo.htmlUrl}\n\nSend remaining files to Telegram?`,
+          { reply_markup: { inline_keyboard: [
+            [{ text: "📱 Send to Telegram", callback_data: "build_choice_telegram" }],
+            [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+          ]}}
+        );
+        return;
+      }
+
+      stopTyping();
+      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+
+      try {
+        await User.findOneAndUpdate({ userId }, {
+          $push: { projects: { name: cached.project.name, repoUrl: repoInfo.htmlUrl, deployUrl: undefined, createdAt: new Date() } },
+          $inc: { "usage.builds": 1 },
+        });
+      } catch {}
+
+      await bot.sendMessage(chatId,
+        `🚀 Pushed to GitHub!\n\n📦 ${cached.project.name}\n${cached.project.description}\n\n🔗 ${repoInfo.htmlUrl}\n\n${cached.project.files.length} files · ${typeLabel(cached.project.type)}\n\n💡 ${cached.project.deploymentTip}`,
+        { reply_markup: { inline_keyboard: [
+          [{ text: "🔗 Open on GitHub", url: repoInfo.htmlUrl }],
+          [{ text: "🌐 Build Another", callback_data: "build_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+        ]}}
       );
       return;
     }

@@ -209,12 +209,22 @@ function detectSearchIntent(text: string): string | null {
 
 function detectBuildIntent(text: string): string | null {
   const t = text.trim();
-  if (t.length < 10 || t.startsWith("/")) return null;
+  if (t.length < 8 || t.startsWith("/")) return null;
   const patterns = [
-    /^(?:build|create|make|generate|code|develop)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:website|web\s*app|webapp|landing\s*page|portfolio|dashboard|blog|e-?commerce\s*(?:store|shop)?|store|shop|platform|tool|calculator|game|app|application)\b/i,
-    /^(?:i want|i need|can you build|can you make|can you create|could you build|could you make)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:website|web\s*app|webapp|landing\s*page|portfolio|dashboard|app|application)\b/i,
-    /^(?:build|develop|code)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:react|node(?:js|\.js)?|express|fullstack|full.stack)\s+(?:app|application|project|website)\b/i,
-    /^(?:clone|make a clone of|build a clone of)\s+(?:netflix|spotify|twitter|instagram|youtube|airbnb|amazon|reddit|facebook|tiktok|whatsapp|telegram)\b/i,
+    // Direct build commands
+    /^(?:build|create|make|generate|code|develop|design|write)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:website|web\s*app|webapp|landing\s*page|portfolio|dashboard|blog|e-?commerce\s*(?:store|shop)?|store|shop|platform|tool|calculator|game|app|application|project|site|page|frontend|backend)\b/i,
+    // Want/need phrasing
+    /^(?:i want|i need|i'd like|i would like|can you build|can you make|can you create|can you code|can you develop|could you build|could you make|could you create|please build|please make|please create|help me build|help me make|help me create)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:website|web\s*app|webapp|landing\s*page|portfolio|dashboard|app|application|site|tool|game|calculator|blog|store|shop|platform|project)\b/i,
+    // Tech-stack specific
+    /^(?:build|develop|code|create|make|generate)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:react|node(?:js|\.js)?|express|fullstack|full.stack|vue|angular|next(?:js|\.js)?|html|css|javascript|js|typescript|ts)\s+(?:app|application|project|website|site|tool|dashboard|page)\b/i,
+    // Clone requests
+    /^(?:clone|make a clone of|build a clone of|create a clone of|replicate)\s+(?:netflix|spotify|twitter|instagram|youtube|airbnb|amazon|reddit|facebook|tiktok|whatsapp|telegram|uber|discord|slack|github|trello|notion|figma)\b/i,
+    // Natural description (website/app anywhere in sentence)
+    /^.{0,60}\b(?:website|web\s*app|webapp|landing\s*page|portfolio website|personal site)\b.{0,60}$/i,
+    // "for me" phrasing
+    /^(?:build|create|make|generate|code|develop)\s+.{3,80}\s+(?:website|app|application|site|tool|game|dashboard|portfolio|blog|store)\s+for\s+(?:me|my|a)\b/i,
+    // Short direct commands (e.g. "portfolio website", "todo app")
+    /^(?:a\s+)?(?:portfolio|todo|task|weather|calculator|chat|quiz|flashcard|timer|countdown|expense|budget|recipe|fitness|music|photo|gallery|login|signup|landing|e-commerce|shop|store)\s+(?:website|site|app|page|tool|dashboard|tracker)\b/i,
   ];
   for (const pattern of patterns) {
     if (t.match(pattern)) return t;
@@ -2087,26 +2097,30 @@ async function handleBuildRequest(
     return;
   }
 
-  // ── Step 2b: No GitHub — send files directly ────────────────────────────────
-  user.usage.builds = (user.usage.builds ?? 0) + 1;
-  user.projects = user.projects ?? [];
-  user.projects.push({ name: project.name, repoUrl: undefined, deployUrl: undefined, createdAt: new Date() } as any);
-  await user.save();
-
+  // ── Step 2b: No GitHub — ask what user wants to do ──────────────────────────
   stopTyping();
   try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+
+  const choiceKeyboard: TelegramBot.InlineKeyboardMarkup = {
+    inline_keyboard: [
+      [
+        { text: "📤 Push to GitHub", callback_data: "build_choice_github" },
+        { text: "📱 Send to Telegram", callback_data: "build_choice_telegram" },
+      ],
+      ...(canDeploy ? [[{ text: "⚡ Deploy to Vercel", callback_data: "deploy_live" }]] : []),
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+    ],
+  };
 
   await bot.sendMessage(chatId,
     `✅ Project generated!\n\n` +
     `📦 ${project.name}\n` +
     `${project.description}\n\n` +
     `${fileCount} files · ${label}\n\n` +
-    `Sending files now 👇\n\n` +
     `💡 ${project.deploymentTip}\n\n` +
-    `💡 Tip: Go to ⚙️ Settings → 🔑 GitHub to connect your GitHub account for auto-push next time.`,
-    { reply_markup: buildResultKeyboard(undefined, canDeploy, canDeployRender) }
+    `What would you like to do with your project?`,
+    { reply_markup: choiceKeyboard }
   );
-  await sendProjectFiles(bot, chatId, project, e);
 }
 
 // ── Deploy request: generate + deploy in one shot ────────────────────────────

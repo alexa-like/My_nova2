@@ -93,10 +93,12 @@ function extractJson(raw: string): string {
 // active chat model is optimised for speed (8B), not reliable JSON code output.
 const CODE_MODELS = [
   "meta-llama/llama-3.3-70b-instruct:free",          // 70B — best balance of quality+availability
-  "deepseek/deepseek-r1-distill-llama-70b:free",      // reasoning model — excellent structured output
+  "deepseek/deepseek-r1:free",                        // DeepSeek R1 full — top-tier reasoning + JSON
+  "deepseek/deepseek-r1-distill-llama-70b:free",     // R1 distill — excellent structured output
+  "google/gemma-3-27b-it:free",                       // Gemma 3 27B — solid code generation
+  "qwen/qwen3-14b:free",                              // Qwen3 14B — fast, reliable JSON
   "qwen/qwen-2.5-72b-instruct:free",                  // Qwen 72B — very good at code + JSON
-  "nousresearch/hermes-3-llama-3.1-405b:free",        // 405B — high quality, sometimes slow
-  "mistralai/mixtral-8x7b-instruct:free",             // Mixtral — reliable fallback
+  "mistralai/mistral-7b-instruct:free",               // Mistral 7B — lightweight fallback
 ];
 
 export async function generateProject(
@@ -126,7 +128,7 @@ export async function generateProject(
               content: buildPrompt(userRequest),
             },
           ],
-          max_tokens: 4096,   // safe limit for all free models
+          max_tokens: 8192,   // enough for complex multi-file projects
           temperature: 0.2,
           top_p: 0.9,
         },
