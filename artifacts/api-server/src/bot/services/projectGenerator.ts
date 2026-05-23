@@ -88,17 +88,11 @@ function extractJson(raw: string): string {
 
 // ── Main generator ─────────────────────────────────────────────────────────────
 
-// ── Models proven to generate valid structured JSON for code projects ─────────
-// Ordered by code-generation quality. These bypass activeChatModel because the
-// active chat model is optimised for speed (8B), not reliable JSON code output.
+// ── Primary coding model ───────────────────────────────────────────────────────
+// DeepSeek R1: top-tier reasoning model, expert at code generation and
+// producing reliable structured JSON output for complete web projects.
 const CODE_MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",          // 70B — best balance of quality+availability
-  "deepseek/deepseek-r1:free",                        // DeepSeek R1 full — top-tier reasoning + JSON
-  "deepseek/deepseek-r1-distill-llama-70b:free",     // R1 distill — excellent structured output
-  "google/gemma-3-27b-it:free",                       // Gemma 3 27B — solid code generation
-  "qwen/qwen3-14b:free",                              // Qwen3 14B — fast, reliable JSON
-  "qwen/qwen-2.5-72b-instruct:free",                  // Qwen 72B — very good at code + JSON
-  "mistralai/mistral-7b-instruct:free",               // Mistral 7B — lightweight fallback
+  "deepseek/deepseek-r1:free",
 ];
 
 export async function generateProject(
