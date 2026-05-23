@@ -26,7 +26,9 @@ import {
   modeSelectKeyboard,
   currentModeKeyboard,
   insufficientCreditsKeyboard,
+  creditsMenuKeyboard,
 } from "../utils/keyboards.js";
+import { hasAnyPaymentProvider } from "../services/payment.js";
 import { getUserMode, setUserMode, MODES, getModeById, getDefaultMode } from "../services/modeManager.js";
 import { encrypt, decrypt } from "../utils/crypto.js";
 import { webSearch, formatSearchResults } from "../services/webSearch.js";
@@ -61,6 +63,10 @@ function checkBuildCooldown(userId: number): number {
 
 function setBuildCooldown(userId: number): void {
   buildCooldownMap.set(userId, Date.now());
+}
+
+function clearBuildCooldown(userId: number): void {
+  buildCooldownMap.delete(userId);
 }
 
 // Evict stale cooldown entries every 10 minutes to prevent unbounded memory growth
@@ -600,7 +606,7 @@ export async function handlePrivateMessage(
   // /daily — claim daily credit reward
   if (text === "/daily") {
     const dailyCfg = await getOrCreateBotConfig();
-    const dailyAmount = dailyCfg.creditRewards?.dailyReward ?? 25;
+    const dailyAmount = dailyCfg.creditRewards?.daily ?? 25;
     const now = new Date();
     const lastClaim = (user as any).lastDailyReward as Date | undefined;
     if (lastClaim) {
@@ -647,11 +653,13 @@ export async function handlePrivateMessage(
   if (text === "/credits") {
     const creditsCfg = await getOrCreateBotConfig();
     const currentCredits = (user as any).credits ?? 0;
-    const hasPayment = (await import("../services/payment.js")).hasAnyPaymentProvider();
-    const { creditsMenuKeyboard: credKb } = await import("../utils/keyboards.js");
+    const chatCost  = creditsCfg.creditCosts?.chat   ?? 1;
+    const imageCost = creditsCfg.creditCosts?.image  ?? 5;
+    const buildCost = creditsCfg.creditCosts?.build  ?? 20;
+    const ttsCost   = creditsCfg.creditCosts?.tts    ?? 3;
     await bot.sendMessage(chatId,
-      `💰 Credits\n\nBalance: ${currentCredits} credits\n\nCredit costs:\n• 💬 Chat: 1 credit\n• 🎨 Image: 5 credits\n• 🌐 Build: 20 credits\n• 🔊 Voice: 3 credits\n\n${user.premium.active ? "⭐ VIP — No credit deductions!" : "Upgrade to VIP to skip all credit costs!"}`,
-      { reply_markup: credKb(hasPayment) }
+      `💰 Credits\n\nBalance: ${currentCredits} credits\n\nCredit costs:\n• 💬 Chat: ${chatCost} credit\n• 🎨 Image: ${imageCost} credits\n• 🌐 Build: ${buildCost} credits\n• 🔊 Voice: ${ttsCost} credits\n\n${user.premium.active ? "⭐ VIP — No credit deductions!" : "Upgrade to VIP to skip all credit costs!"}`,
+      { reply_markup: creditsMenuKeyboard(hasAnyPaymentProvider()) }
     );
     return;
   }
@@ -2134,6 +2142,12 @@ async function handleBuildRequest(
     project = await generateProject(prompt, apiKey);
   } catch (err: any) {
     stopTyping();
+    clearBuildCooldown(user.userId);
+    // Refund credits — generation failed, user should not be charged
+    if (!user.premium.active) {
+      const refundCost = await getCreditCost("build");
+      try { await addCredits(user.userId, refundCost); } catch {}
+    }
     logger.error({ err }, "Project generation failed");
     try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
     await bot.sendMessage(chatId,
@@ -2182,6 +2196,13 @@ async function handleBuildRequest(
           ? `A repo named "${repoName}" already exists.`
           : `GitHub error: ${err?.response?.data?.message || err.message}`;
       await bot.sendMessage(chatId, `⚠️ ${reason}\n\nSending files directly instead...`);
+      // Still count the build and save the project even when GitHub fails
+      try {
+        await User.findOneAndUpdate({ userId: user.userId }, {
+          $inc: { "usage.builds": 1 },
+          $push: { projects: { name: project.name, repoUrl: undefined, deployUrl: undefined, createdAt: new Date() } },
+        });
+      } catch {}
       await sendProjectFiles(bot, chatId, project, e);
       return;
     }

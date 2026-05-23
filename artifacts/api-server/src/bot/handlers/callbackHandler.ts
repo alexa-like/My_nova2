@@ -814,6 +814,13 @@ export async function handleCallbackQuery(
         await bot.sendMessage(chatId, "⚠️ Project session expired. Please build again.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Build Again", callback_data: "build_menu" }]] } });
         return;
       }
+      // Record the build and save the project before sending files
+      try {
+        await User.findOneAndUpdate({ userId }, {
+          $inc: { "usage.builds": 1 },
+          $push: { projects: { name: cached.project.name, repoUrl: undefined, deployUrl: undefined, createdAt: new Date() } },
+        });
+      } catch {}
       await bot.sendMessage(chatId, `📦 Sending ${cached.project.files.length} files for *${cached.project.name}*...`, { parse_mode: "Markdown" });
       for (const file of cached.project.files) {
         try {
