@@ -1,4 +1,5 @@
 import axios from "axios";
+import { jsonrepair } from "jsonrepair";
 import { logger } from "../../lib/logger.js";
 import { getOrCreateBotConfig } from "../models/BotConfig.js";
 
@@ -100,11 +101,12 @@ function extractJson(raw: string): string {
 // ── Main generator ─────────────────────────────────────────────────────────────
 
 // ── Coding models ──────────────────────────────────────────────────────────────
-// DeepSeek R1 is the primary — top-tier reasoning, great structured JSON output.
-// Qwen 72B is the fallback — highly reliable JSON for code projects.
+// Qwen3 Coder: purpose-built for code, fast, reliable structured JSON output.
+// Llama 3.3 70B: proven reliable fallback with strong JSON compliance.
 const CODE_MODELS = [
-  "deepseek/deepseek-r1:free",
+  "qwen/qwen3-235b-a22b:free",
   "qwen/qwen-2.5-72b-instruct:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
 ];
 
 export async function generateProject(
@@ -183,9 +185,16 @@ export async function generateProject(
     try {
       parsed = JSON.parse(jsonStr);
     } catch {
-      logger.warn({ model, jsonPreview: jsonStr.substring(0, 200) }, "JSON parse failed — trying next model");
-      lastError = "Failed to parse the generated project. Please try again.";
-      continue;
+      // JSON.parse failed — attempt auto-repair (handles unescaped quotes in code strings)
+      try {
+        const repaired = jsonrepair(jsonStr);
+        parsed = JSON.parse(repaired);
+        logger.info({ model }, "JSON auto-repaired successfully");
+      } catch {
+        logger.warn({ model, jsonPreview: jsonStr.substring(0, 200) }, "JSON parse + repair both failed — trying next model");
+        lastError = "Failed to parse the generated project. Please try again.";
+        continue;
+      }
     }
 
     if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.files) || parsed.files.length === 0) {
