@@ -1,10 +1,12 @@
 import TelegramBot from "node-telegram-bot-api";
 import { IUser } from "../models/User.js";
 import { IModelEntry } from "../models/BotConfig.js";
+import { MODES, ModeDefinition } from "../services/modeManager.js";
 
 // ── Main dashboard ────────────────────────────────────────────────────────────
 
-export function mainMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
+export function mainMenuKeyboard(activeMode?: string): TelegramBot.InlineKeyboardMarkup {
+  const mode = MODES.find(m => m.id === activeMode) ?? MODES[0];
   return {
     inline_keyboard: [
       [
@@ -21,6 +23,9 @@ export function mainMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
       [
         { text: "😄 Fun", callback_data: "fun_menu" },
         { text: "🎮 Games", callback_data: "games_menu" },
+      ],
+      [
+        { text: `${mode.icon} Mode: ${mode.name}`, callback_data: "modes_menu" },
       ],
       [
         { text: "⚙️ Settings", callback_data: "settings_menu" },
@@ -888,6 +893,35 @@ export function ownerUserListKeyboard(
     inline_keyboard: [
       ...(nav.length > 0 ? [nav] : []),
       [{ text: "⬅️ Back", callback_data: "own_users" }],
+    ],
+  };
+}
+
+// ── Mode selection keyboard ───────────────────────────────────────────────────
+
+export function modeSelectKeyboard(activeMode: string): TelegramBot.InlineKeyboardMarkup {
+  const rows: TelegramBot.InlineKeyboardButton[][] = [];
+  for (let i = 0; i < MODES.length; i += 2) {
+    const row: TelegramBot.InlineKeyboardButton[] = [];
+    for (let j = i; j < Math.min(i + 2, MODES.length); j++) {
+      const m = MODES[j];
+      const isActive = m.id === activeMode;
+      row.push({
+        text: (isActive ? "✅ " : "") + `${m.icon} ${m.name}`,
+        callback_data: `mode_set_${m.id}`,
+      });
+    }
+    rows.push(row);
+  }
+  rows.push([{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]);
+  return { inline_keyboard: rows };
+}
+
+export function currentModeKeyboard(mode: ModeDefinition): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "🔄 Switch Mode", callback_data: "modes_menu" }],
+      [{ text: "⬅️ Back to Menu", callback_data: "main_menu" }],
     ],
   };
 }

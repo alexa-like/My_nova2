@@ -50,6 +50,7 @@ export interface IUser extends Document {
   referralCode?: string;
   referredBy?: number;
   referrals: number[];
+  activeMode?: string;
 }
 
 const UserSchema = new Schema<IUser>(
@@ -109,6 +110,7 @@ const UserSchema = new Schema<IUser>(
     referralCode:  { type: String },
     referredBy:    { type: Number },
     referrals:     [{ type: Number }],
+    activeMode:    { type: String, default: "nova" },
   },
   { timestamps: true }
 );

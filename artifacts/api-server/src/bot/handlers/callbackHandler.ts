@@ -57,7 +57,10 @@ import {
   ownerPickImageProviderKeyboard,
   ownerTtsKeyboard,
   ownerPickTtsVoiceKeyboard,
+  modeSelectKeyboard,
+  currentModeKeyboard,
 } from "../utils/keyboards.js";
+import { getUserMode, setUserMode, MODES, getModeById, isValidMode } from "../services/modeManager.js";
 import { logger } from "../../lib/logger.js";
 
 // ── Trivia questions ──────────────────────────────────────────────────────────
@@ -170,9 +173,10 @@ export async function handleCallbackQuery(
     // ── Navigation ─────────────────────────────────────────────────────────
 
     if (data === "main_menu" || data === "back_main") {
+      const currentMode = await getUserMode(userId);
       await editMsg(bot, query,
         `Hey ${name}! What would you like to do?\n\nPick a category below:`,
-        mainMenuKeyboard()
+        mainMenuKeyboard(currentMode.id)
       );
       return;
     }
@@ -1813,6 +1817,30 @@ export async function handleCallbackQuery(
 
     if (data.startsWith("model_pick_")) {
       await answer(bot, query.id, "Model selection is managed by the bot owner.");
+      return;
+    }
+
+    // ── Mode selection ─────────────────────────────────────────────────────────
+
+    if (data === "modes_menu") {
+      const currentMode = await getUserMode(userId);
+      await editMsg(bot, query,
+        `🎯 Select a Mode\n\nCurrent: ${currentMode.icon} ${currentMode.name}\n${currentMode.description}\n\nPick a mode below — every message you send will be routed to that feature:`,
+        modeSelectKeyboard(currentMode.id)
+      );
+      return;
+    }
+
+    if (data.startsWith("mode_set_")) {
+      const modeId = data.replace("mode_set_", "");
+      if (!isValidMode(modeId)) { await answer(bot, query.id, "Unknown mode."); return; }
+      await setUserMode(userId, modeId as any);
+      const mode = getModeById(modeId)!;
+      await answer(bot, query.id, `${mode.icon} ${mode.name} mode activated`);
+      await editMsg(bot, query,
+        `${mode.icon} Mode: ${mode.name}\n\n${mode.activationHint}\n\n${modeId === "nova" ? "Chat with Nova normally — all features are available." : `Every message you send will be treated as a ${mode.name} request.`}`,
+        currentModeKeyboard(mode)
+      );
       return;
     }
 

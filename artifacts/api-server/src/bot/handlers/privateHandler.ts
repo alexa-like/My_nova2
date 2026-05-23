@@ -23,7 +23,10 @@ import {
   backToSettingsKeyboard,
   repeatKeyboard,
   buildResultKeyboard,
+  modeSelectKeyboard,
+  currentModeKeyboard,
 } from "../utils/keyboards.js";
+import { getUserMode, setUserMode, MODES, getModeById, getDefaultMode } from "../services/modeManager.js";
 import { encrypt, decrypt } from "../utils/crypto.js";
 import { webSearch, formatSearchResults } from "../services/webSearch.js";
 import { generateTTS } from "../services/tts.js";
@@ -428,11 +431,11 @@ export async function handlePrivateMessage(
         `   "build me a portfolio website" → builds it!\n\n` +
         `Use the menu below to get started 👇`
       );
-      await bot.sendMessage(chatId, `What would you like to do first?`, { reply_markup: mainMenuKeyboard() });
+      await bot.sendMessage(chatId, `What would you like to do first?`, { reply_markup: mainMenuKeyboard(user.activeMode) });
     } else {
       await bot.sendMessage(chatId,
         `Hey ${name}! Welcome back.`,
-        { reply_markup: mainMenuKeyboard() }
+        { reply_markup: mainMenuKeyboard(user.activeMode) }
       );
     }
     return;
@@ -1197,8 +1200,132 @@ export async function handlePrivateMessage(
     return;
   }
 
+  // /mode — show mode selection or set mode directly
+  if (text === "/mode" || text.startsWith("/mode ")) {
+    const param = text.startsWith("/mode ") ? text.slice(6).trim().toLowerCase() : "";
+    const currentMode = await getUserMode(user.userId);
+    if (param) {
+      const { isValidMode } = await import("../services/modeManager.js");
+      if (isValidMode(param)) {
+        await setUserMode(user.userId, param as any);
+        const newMode = getModeById(param)!;
+        await bot.sendMessage(chatId,
+          `${newMode.icon} Mode switched to: ${newMode.name}\n\n${newMode.activationHint}`,
+          { reply_markup: currentModeKeyboard(newMode) }
+        );
+      } else {
+        const modeList = MODES.map(m => `${m.icon} ${m.id} — ${m.name}`).join("\n");
+        await bot.sendMessage(chatId,
+          `❓ Unknown mode: "${param}"\n\nAvailable modes:\n${modeList}\n\nUsage: /mode <name>`,
+          { reply_markup: modeSelectKeyboard(currentMode.id) }
+        );
+      }
+    } else {
+      await bot.sendMessage(chatId,
+        `🎯 Select a Mode\n\nCurrent mode: ${currentMode.icon} ${currentMode.name}\n\nEach mode routes every message to a specific feature. Switch anytime!`,
+        { reply_markup: modeSelectKeyboard(currentMode.id) }
+      );
+    }
+    return;
+  }
+
   // Ignore unknown slash commands
   if (text.startsWith("/")) return;
+
+  // ── Mode-based message routing ────────────────────────────────────────────────
+  const activeMode = await getUserMode(user.userId);
+  if (activeMode.id !== "nova") {
+    switch (activeMode.id) {
+      case "image":
+        await handleImageGeneration(bot, chatId, user, text, e);
+        return;
+      case "sticker":
+        await handleStickerGeneration(bot, chatId, user, text, e);
+        return;
+      case "search": {
+        const statusMsg2 = await bot.sendMessage(chatId, e ? "🔍 Searching the web..." : "Searching...");
+        const stopSearch2 = startTypingLoop(bot, chatId);
+        try {
+          const results2 = await webSearch(text);
+          const raw2 = formatSearchResults(text, results2);
+          if (results2.length === 0) {
+            stopSearch2();
+            try { await bot.deleteMessage(chatId, statusMsg2.message_id); } catch {}
+            await bot.sendMessage(chatId,
+              `No results found for: "${text.slice(0, 80)}"\n\nTry rephrasing.`,
+              { reply_markup: { inline_keyboard: [[{ text: "🔄 Try Again", callback_data: "search_again" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+            );
+            return;
+          }
+          const aiPrompt2 = `Based on these web search results for "${text}":\n\n${raw2}\n\nSummarize the key findings in a helpful, natural response. Be concise and direct. Mention relevant sources.`;
+          const aiReply2 = await chat(user.userId, chatId + 8888, aiPrompt2, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
+          stopSearch2();
+          try { await bot.deleteMessage(chatId, statusMsg2.message_id); } catch {}
+          const sources2 = results2.slice(0, 3).map(r => r.url).filter(Boolean);
+          await safeSend(bot, chatId,
+            `🔍 ${text.slice(0, 60)}\n\n${aiReply2}${sources2.length ? `\n\n──────\n${sources2.join("\n")}` : ""}`,
+            { reply_markup: { inline_keyboard: [[{ text: "🔍 Search Again", callback_data: "search_again" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+          );
+        } catch {
+          stopSearch2();
+          try { await bot.deleteMessage(chatId, statusMsg2.message_id); } catch {}
+          await bot.sendMessage(chatId, "Search failed. Please try again.");
+        }
+        return;
+      }
+      case "build":
+        await handleBuildRequest(bot, chatId, user, text, e);
+        return;
+      case "voice": {
+        const ttsStatus = await bot.sendMessage(chatId, e ? "🔊 Converting to speech..." : "Converting...");
+        const stopTts = startTypingLoop(bot, chatId, "record_voice");
+        try {
+          const { generateTTS: ttsGen } = await import("../services/tts.js");
+          const audioBuf = await ttsGen(text);
+          stopTts();
+          try { await bot.deleteMessage(chatId, ttsStatus.message_id); } catch {}
+          if (!audioBuf) {
+            await bot.sendMessage(chatId, "TTS generation failed. Please try again.",
+              { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+            );
+            return;
+          }
+          await bot.sendVoice(chatId, audioBuf, {
+            caption: text.substring(0, 100),
+            reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } as any,
+          });
+        } catch {
+          stopTts();
+          try { await bot.deleteMessage(chatId, ttsStatus.message_id); } catch {}
+          await bot.sendMessage(chatId, "Voice generation failed. Please try again.");
+        }
+        return;
+      }
+      case "translate": {
+        const transStatus = await bot.sendMessage(chatId, e ? "🌍 Translating..." : "Translating...");
+        const stopTrans = startTypingLoop(bot, chatId);
+        try {
+          const transReply = await chat(
+            user.userId, chatId + 9999,
+            `Translate the following text to English. Only respond with the translation, no explanation:\n\n"${text}"`,
+            { style: "serious", emoji: false, length: "short" },
+            user.premium.active
+          );
+          stopTrans();
+          try { await bot.deleteMessage(chatId, transStatus.message_id); } catch {}
+          await safeSend(bot, chatId,
+            `🌍 Translation:\n\n${transReply}`,
+            { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+          );
+        } catch {
+          stopTrans();
+          try { await bot.deleteMessage(chatId, transStatus.message_id); } catch {}
+          await bot.sendMessage(chatId, "Translation failed. Please try again.");
+        }
+        return;
+      }
+    }
+  }
 
   // ── Auto-detect generation intents from natural language ────────────────────
   const imagePrompt = detectImageIntent(text);
