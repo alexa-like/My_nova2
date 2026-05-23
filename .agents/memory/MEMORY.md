@@ -1,0 +1,1 @@
+- [No DB migrations ever](no-db-migrations.md) — project uses MongoDB only; the Drizzle/PostgreSQL @workspace/db package is unused; never add migrations to post-merge or anywhere else
