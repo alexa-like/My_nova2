@@ -14,28 +14,74 @@ export interface TtsResult {
 // ── StreamElements TTS — free, no API key, returns MP3 ───────────────────────
 const SE_VOICES = ["Brian", "Amy", "Emma", "Joanna", "Kimberly", "Salli", "Joey", "Justin", "Matthew"];
 
-async function ttsStreamElements(text: string, voice = "Brian"): Promise<TtsResult | null> {
-  const safeVoice = SE_VOICES.includes(voice) ? voice : "Brian";
+// Split text at sentence boundaries so each chunk fits safely in a URL
+function splitIntoChunks(text: string, maxLen = 240): string[] {
+  if (text.length <= maxLen) return [text];
+  const chunks: string[] = [];
+  let remaining = text.trim();
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLen) {
+      chunks.push(remaining);
+      break;
+    }
+    const sub = remaining.slice(0, maxLen);
+    // Prefer splitting at sentence end
+    const lastSentence = Math.max(
+      sub.lastIndexOf(". "),
+      sub.lastIndexOf("! "),
+      sub.lastIndexOf("? "),
+      sub.lastIndexOf("\n")
+    );
+    let splitAt = lastSentence > 40 ? lastSentence + 1 : sub.lastIndexOf(" ");
+    if (splitAt < 40) splitAt = maxLen; // no good boundary — hard cut
+    chunks.push(remaining.slice(0, splitAt).trim());
+    remaining = remaining.slice(splitAt).trim();
+  }
+  return chunks.filter((c) => c.length > 0);
+}
+
+async function ttsStreamElementsChunk(chunk: string, voice: string): Promise<Buffer | null> {
   try {
-    const encoded = encodeURIComponent(text.slice(0, 500));
-    const url = `https://api.streamelements.com/kappa/v2/speech?voice=${safeVoice}&text=${encoded}`;
-    logger.info({ chars: text.length, voice: safeVoice }, "Generating TTS via StreamElements");
+    const encoded = encodeURIComponent(chunk);
+    const url = `https://api.streamelements.com/kappa/v2/speech?voice=${voice}&text=${encoded}`;
     const response = await axios.get(url, {
       responseType: "arraybuffer",
-      timeout: 15000,
+      timeout: 20000,
       headers: { "User-Agent": "Nova-Bot/1.0" },
     });
     const buf = Buffer.from(response.data);
-    if (buf.byteLength > 500) {
-      logger.info({ bytes: buf.byteLength }, "StreamElements TTS success");
-      return { buffer: buf, format: "mp3" };
-    }
-    logger.warn({ bytes: buf.byteLength }, "StreamElements returned too-small response");
-    return null;
-  } catch (err: any) {
-    logger.warn({ err: err?.message }, "StreamElements TTS failed");
+    return buf.byteLength > 500 ? buf : null;
+  } catch {
     return null;
   }
+}
+
+async function ttsStreamElements(text: string, voice = "Brian"): Promise<TtsResult | null> {
+  const safeVoice = SE_VOICES.includes(voice) ? voice : "Brian";
+  // Cap total text at 3000 chars to keep response time reasonable
+  const safeText = text.slice(0, 3000);
+  const chunks = splitIntoChunks(safeText);
+  logger.info({ chars: safeText.length, chunks: chunks.length, voice: safeVoice }, "Generating TTS via StreamElements");
+
+  const buffers: Buffer[] = [];
+  for (const chunk of chunks) {
+    const buf = await ttsStreamElementsChunk(chunk, safeVoice);
+    if (!buf) {
+      logger.warn({ chunk: chunk.slice(0, 40) }, "StreamElements chunk failed");
+      // If the very first chunk fails the whole provider is down — bail out
+      if (buffers.length === 0) return null;
+      // Otherwise skip bad chunk and keep going
+      continue;
+    }
+    buffers.push(buf);
+  }
+
+  if (buffers.length === 0) return null;
+
+  // MP3 frames are self-contained — simple buffer concat produces a valid MP3
+  const combined = Buffer.concat(buffers);
+  logger.info({ bytes: combined.byteLength, chunks: buffers.length }, "StreamElements TTS success");
+  return { buffer: combined, format: "mp3" };
 }
 
 // ── OpenRouter TTS — paid, returns MP3 ────────────────────────────────────────
