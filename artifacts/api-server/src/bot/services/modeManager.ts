@@ -8,7 +8,10 @@ export type ModeId =
   | "search"
   | "build"
   | "voice"
-  | "translate";
+  | "translate"
+  | "dev"
+  | "builder"
+  | "creator";
 
 export interface ModeDefinition {
   id: ModeId;
@@ -16,6 +19,8 @@ export interface ModeDefinition {
   icon: string;
   description: string;
   activationHint: string;
+  premiumOnly?: boolean;
+  systemPrompt?: string;
 }
 
 export const MODES: ModeDefinition[] = [
@@ -67,6 +72,33 @@ export const MODES: ModeDefinition[] = [
     icon: "🌍",
     description: "Every message gets translated to English",
     activationHint: "Translate mode active! Send any text and I'll translate it to English.",
+  },
+  {
+    id: "dev",
+    name: "Dev Mode",
+    icon: "💻",
+    description: "Expert coding help, debugging & API generation",
+    activationHint: "Dev mode active! Ask me anything about code, bugs, APIs, or scripts. I'm your expert developer.",
+    premiumOnly: true,
+    systemPrompt: "You are an expert senior software engineer. Specialise in clean, production-ready code. For every coding question: provide working code immediately, explain why it works, point out potential bugs, suggest improvements. Languages: TypeScript, Python, JavaScript, Go, Rust, and more. Format all code in proper markdown code blocks.",
+  },
+  {
+    id: "builder",
+    name: "Builder Mode",
+    icon: "🤖",
+    description: "Bot creation, automation & Replit project setup",
+    activationHint: "Builder mode active! Tell me what you want to automate, build, or set up. I'll guide you step by step.",
+    premiumOnly: true,
+    systemPrompt: "You are an expert automation engineer and bot developer. Specialise in Telegram bots, Discord bots, workflow automation, Replit projects, and no-code/low-code tools. For every request: provide a concrete implementation plan, working code snippets, recommended tools and APIs, and deployment guidance. Be practical and action-oriented.",
+  },
+  {
+    id: "creator",
+    name: "Creator Mode",
+    icon: "✨",
+    description: "Content creation, marketing ideas & viral strategies",
+    activationHint: "Creator mode active! Give me a topic and I'll generate compelling content, marketing copy, hooks, and ideas.",
+    premiumOnly: false,
+    systemPrompt: "You are an elite content strategist and creative director. Specialise in viral social media content, marketing copy, YouTube scripts, ad creatives, email campaigns, and brand storytelling. For every request: produce multiple content variations, write engaging hooks, suggest distribution strategies, and think about what makes content shareable. Be creative, punchy, and results-driven.",
   },
 ];
 

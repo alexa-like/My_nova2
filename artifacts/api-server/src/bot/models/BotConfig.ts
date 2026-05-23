@@ -43,6 +43,29 @@ export interface IUsageLimits {
   resetIntervalHours: number;
 }
 
+export interface ICreditCosts {
+  chat: number;
+  image: number;
+  build: number;
+  tts: number;
+  search: number;
+}
+
+export interface ICreditRewards {
+  daily: number;
+  referrer: number;
+  newUser: number;
+  freeStarting: number;
+}
+
+export interface IFlashOffer {
+  active: boolean;
+  title: string;
+  description: string;
+  creditsAmount: number;
+  expiresAt?: Date;
+}
+
 export interface IBotConfig extends Document {
   activeChatModel: string;
   activeImageModel: string;
@@ -55,6 +78,9 @@ export interface IBotConfig extends Document {
   botPersonality: string;
   providers: IProviders;
   features: IFeatures;
+  creditCosts: ICreditCosts;
+  creditRewards: ICreditRewards;
+  flashOffer: IFlashOffer;
 }
 
 const ModelEntrySchema = new Schema<IModelEntry>(
@@ -107,6 +133,38 @@ const FeaturesSchema = new Schema<IFeatures>(
   { _id: false }
 );
 
+const CreditCostsSchema = new Schema(
+  {
+    chat:   { type: Number, default: 1 },
+    image:  { type: Number, default: 5 },
+    build:  { type: Number, default: 20 },
+    tts:    { type: Number, default: 3 },
+    search: { type: Number, default: 2 },
+  },
+  { _id: false }
+);
+
+const CreditRewardsSchema = new Schema(
+  {
+    daily:         { type: Number, default: 25 },
+    referrer:      { type: Number, default: 50 },
+    newUser:       { type: Number, default: 20 },
+    freeStarting:  { type: Number, default: 50 },
+  },
+  { _id: false }
+);
+
+const FlashOfferSchema = new Schema(
+  {
+    active:        { type: Boolean, default: false },
+    title:         { type: String, default: "" },
+    description:   { type: String, default: "" },
+    creditsAmount: { type: Number, default: 0 },
+    expiresAt:     { type: Date },
+  },
+  { _id: false }
+);
+
 const BotConfigSchema = new Schema<IBotConfig>(
   {
     activeChatModel:  { type: String, default: "meta-llama/llama-3.3-70b-instruct:free" },
@@ -120,6 +178,9 @@ const BotConfigSchema = new Schema<IBotConfig>(
     botPersonality:  { type: String, default: "" },
     providers: { type: ProvidersSchema, default: () => ({}) },
     features:  { type: FeaturesSchema,  default: () => ({}) },
+    creditCosts:   { type: CreditCostsSchema,   default: () => ({}) },
+    creditRewards: { type: CreditRewardsSchema,  default: () => ({}) },
+    flashOffer:    { type: FlashOfferSchema,     default: () => ({}) },
   },
   { timestamps: true }
 );

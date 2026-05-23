@@ -66,9 +66,15 @@ import {
   ownerPickTtsVoiceKeyboard,
   modeSelectKeyboard,
   currentModeKeyboard,
+  accountMenuKeyboard,
+  creditsMenuKeyboard,
+  referralKeyboard,
+  insufficientCreditsKeyboard,
 } from "../utils/keyboards.js";
 import { getUserMode, setUserMode, MODES, getModeById, isValidMode } from "../services/modeManager.js";
 import { logger } from "../../lib/logger.js";
+import { addCredits, getCredits } from "../services/credits.js";
+import { hasAnyPaymentProvider } from "../services/payment.js";
 
 // ── Trivia questions ──────────────────────────────────────────────────────────
 
@@ -1983,11 +1989,145 @@ export async function handleCallbackQuery(
 
     // ── Mode selection ─────────────────────────────────────────────────────────
 
+    // ── Account menu ──────────────────────────────────────────────────────────
+
+    if (data === "account_menu") {
+      const userRecord = await User.findOne({ userId });
+      if (!userRecord) { await answer(bot, query.id); return; }
+      const credits = (userRecord as any).credits ?? 0;
+      const isPrem = userRecord.premium.active;
+      const plan = isPrem ? (userRecord.premium.plan ?? "premium") : "free";
+      const expiry = userRecord.premium.expiresAt ? ` (until ${formatDate(userRecord.premium.expiresAt)})` : "";
+      const referrals = userRecord.referrals?.length ?? 0;
+      await editMsg(bot, query,
+        `📊 My Account\n\n` +
+        `👤 User ID: ${userId}\n` +
+        `✨ Plan: ${isPrem ? `⭐ VIP${expiry}` : "Free"}\n` +
+        `💰 Credits: ${credits}\n` +
+        `👥 Referrals: ${referrals}\n\n` +
+        `${isPrem ? "Thank you for being a VIP member!" : "Upgrade to VIP for unlimited access + no credit deductions."}`,
+        accountMenuKeyboard(isPrem)
+      );
+      return;
+    }
+
+    // ── Daily reward ──────────────────────────────────────────────────────────
+
+    if (data === "daily_reward") {
+      const userRecord = await User.findOne({ userId });
+      if (!userRecord) { await answer(bot, query.id); return; }
+      const now = new Date();
+      const lastClaim = (userRecord as any).lastDailyReward as Date | undefined;
+      const config = await getOrCreateBotConfig();
+      const dailyAmount = config.creditRewards?.dailyReward ?? 25;
+      const cooldownHours = 20;
+      if (lastClaim) {
+        const hoursSince = (now.getTime() - lastClaim.getTime()) / (1000 * 60 * 60);
+        if (hoursSince < cooldownHours) {
+          const hoursLeft = Math.ceil(cooldownHours - hoursSince);
+          const minsLeft = Math.ceil((cooldownHours - hoursSince) * 60) % 60;
+          await answer(bot, query.id, `⏳ Already claimed today!`, true);
+          await editMsg(bot, query,
+            `🎁 Daily Reward\n\n⏳ You already claimed your reward today!\n\nNext reward in: ${hoursLeft}h ${minsLeft}m\n\nCome back tomorrow for ${dailyAmount} more credits!`,
+            { inline_keyboard: [[{ text: "📊 My Account", callback_data: "account_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] }
+          );
+          return;
+        }
+      }
+      (userRecord as any).lastDailyReward = now;
+      await userRecord.save();
+      const newBal = await addCredits(userId, dailyAmount);
+      await answer(bot, query.id, `🎁 +${dailyAmount} credits claimed!`, true);
+      await editMsg(bot, query,
+        `🎁 Daily Reward Claimed!\n\n+${dailyAmount} credits added to your account.\n💰 New balance: ${newBal} credits\n\nCome back in 20 hours for your next reward!`,
+        { inline_keyboard: [
+          [{ text: "💰 Credits", callback_data: "credits_menu" }, { text: "📊 My Account", callback_data: "account_menu" }],
+          [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+        ]}
+      );
+      return;
+    }
+
+    // ── Credits menu ──────────────────────────────────────────────────────────
+
+    if (data === "credits_menu") {
+      const userRecord = await User.findOne({ userId });
+      if (!userRecord) { await answer(bot, query.id); return; }
+      const credits = (userRecord as any).credits ?? 0;
+      const config = await getOrCreateBotConfig();
+      const hasPayment = hasAnyPaymentProvider();
+      const flashOffer = (config as any).flashOffer;
+      let flashText = "";
+      if (flashOffer?.active) {
+        flashText = `\n\n⚡ Flash Offer: ${flashOffer.title}\n${flashOffer.description} (+${flashOffer.creditsAmount} credits)`;
+      }
+      await editMsg(bot, query,
+        `💰 Credits\n\nBalance: ${credits} credits\n\nCredit costs:\n• 💬 Chat: 1 credit\n• 🎨 Image: 5 credits\n• 🌐 Build: 20 credits\n• 🔊 Voice: 3 credits${flashText}\n\n⭐ VIP members skip all credit deductions!`,
+        creditsMenuKeyboard(hasPayment)
+      );
+      return;
+    }
+
+    if (data === "credits_coming_soon") {
+      await answer(bot, query.id, "Payment system coming soon!", true);
+      return;
+    }
+
+    if (data.startsWith("buy_pack_")) {
+      await answer(bot, query.id, "Payment integration coming soon. Stay tuned!", true);
+      return;
+    }
+
+    // ── Referral menu ─────────────────────────────────────────────────────────
+
+    if (data === "referral_menu") {
+      const userRecord = await User.findOne({ userId });
+      if (!userRecord) { await answer(bot, query.id); return; }
+      let refCode = userRecord.referralCode;
+      if (!refCode) {
+        refCode = `NOVA${userId.toString(36).toUpperCase()}`;
+        userRecord.referralCode = refCode;
+        await userRecord.save();
+      }
+      const referrals = userRecord.referrals?.length ?? 0;
+      const config = await getOrCreateBotConfig();
+      const referrerBonus = config.creditRewards?.referrer ?? 50;
+      const newUserBonus = config.creditRewards?.newUser ?? 20;
+      let botUsername = "nova_ai_bot";
+      try { const me = await bot.getMe(); botUsername = me.username ?? botUsername; } catch {}
+      await editMsg(bot, query,
+        `👥 Referral Program\n\nShare your link and earn ${referrerBonus} credits per friend!\n\nYour code: \`${refCode}\`\nFriends referred: ${referrals}\nTotal earned: ${referrals * referrerBonus} credits\n\nWhen a friend joins with your link:\n• You get: +${referrerBonus} credits + 7 days VIP\n• They get: +${newUserBonus} credits + 3 days VIP`,
+        referralKeyboard(botUsername, refCode)
+      );
+      return;
+    }
+
+    // ── Flash offer ───────────────────────────────────────────────────────────
+
+    if (data === "flash_offer") {
+      const config = await getOrCreateBotConfig();
+      const flashOffer = (config as any).flashOffer;
+      if (!flashOffer?.active) {
+        await answer(bot, query.id, "No active flash offer right now.", true);
+        return;
+      }
+      await answer(bot, query.id, "Payment coming soon!", true);
+      await editMsg(bot, query,
+        `⚡ Flash Offer: ${flashOffer.title}\n\n${flashOffer.description}\n\nReward: +${flashOffer.creditsAmount} credits\n\n💳 Payment integration coming soon — stay tuned!`,
+        { inline_keyboard: [[{ text: "⬅️ Credits", callback_data: "credits_menu" }]] }
+      );
+      return;
+    }
+
+    // ── Modes menu ────────────────────────────────────────────────────────────
+
     if (data === "modes_menu") {
+      const userRecord = await User.findOne({ userId });
+      const isPrem = userRecord?.premium?.active ?? false;
       const currentMode = await getUserMode(userId);
       await editMsg(bot, query,
-        `🎯 Select a Mode\n\nCurrent: ${currentMode.icon} ${currentMode.name}\n${currentMode.description}\n\nPick a mode below — every message you send will be routed to that feature:`,
-        modeSelectKeyboard(currentMode.id)
+        `🎯 Select a Mode\n\nCurrent: ${currentMode.icon} ${currentMode.name}\n${currentMode.description}\n\nPick a mode below — every message you send will be routed to that feature:\n\n🔒 = VIP only mode`,
+        modeSelectKeyboard(currentMode.id, isPrem)
       );
       return;
     }
@@ -1995,8 +2135,24 @@ export async function handleCallbackQuery(
     if (data.startsWith("mode_set_")) {
       const modeId = data.replace("mode_set_", "");
       if (!isValidMode(modeId)) { await answer(bot, query.id, "Unknown mode."); return; }
-      await setUserMode(userId, modeId as any);
       const mode = getModeById(modeId)!;
+      // Check if mode is premium-only
+      if (mode.premiumOnly) {
+        const userRecord = await User.findOne({ userId });
+        const isPrem = userRecord?.premium?.active ?? false;
+        if (!isPrem) {
+          await answer(bot, query.id, `🔒 ${mode.name} is a VIP feature`, true);
+          await editMsg(bot, query,
+            `🔒 ${mode.icon} ${mode.name} — VIP Feature\n\n${mode.description}\n\nUpgrade to VIP to unlock this mode and get:\n• Unlimited messages\n• No credit deductions\n• All premium modes\n• Priority responses`,
+            { inline_keyboard: [
+              [{ text: "⭐ Go VIP", callback_data: "settings_premium" }],
+              [{ text: "🔄 Back to Modes", callback_data: "modes_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+            ]}
+          );
+          return;
+        }
+      }
+      await setUserMode(userId, modeId as any);
       await answer(bot, query.id, `${mode.icon} ${mode.name} mode activated`);
       await editMsg(bot, query,
         `${mode.icon} Mode: ${mode.name}\n\n${mode.activationHint}\n\n${modeId === "nova" ? "Chat with Nova normally — all features are available." : `Every message you send will be treated as a ${mode.name} request.`}`,

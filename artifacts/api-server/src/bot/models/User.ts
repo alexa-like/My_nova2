@@ -51,6 +51,8 @@ export interface IUser extends Document {
   referredBy?: number;
   referrals: number[];
   activeMode?: string;
+  credits: number;
+  referralRewardClaimed: boolean;
 }
 
 const UserSchema = new Schema<IUser>(
@@ -111,6 +113,8 @@ const UserSchema = new Schema<IUser>(
     referredBy:    { type: Number },
     referrals:     [{ type: Number }],
     activeMode:    { type: String, default: "nova" },
+    credits:       { type: Number, default: 50 },
+    referralRewardClaimed: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

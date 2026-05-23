@@ -10,6 +10,7 @@ import { setPending } from "../utils/pendingActions.js";
 import { logger } from "../../lib/logger.js";
 import { ownerMainKeyboard, backToOwnerKeyboard } from "../utils/keyboards.js";
 import { getDailySummary, getTopCommands, getActiveUsers } from "../services/analytics.js";
+import { addCredits, setCredits, resetCredits } from "../services/credits.js";
 
 // In-memory scheduled broadcasts
 const scheduledBroadcasts = new Map<string, NodeJS.Timeout>();
@@ -219,6 +220,96 @@ export async function handleOwnerMessage(
     rc.usedAt = undefined;
     await rc.save();
     await bot.sendMessage(chatId, `✅ Code ${code} reset and available again.`);
+    return;
+  }
+
+  // ── Credit management commands ─────────────────────────────────────────────
+
+  if (cmd === "/addcredits") {
+    if (args.length < 2) { await bot.sendMessage(chatId, "Usage: /addcredits <userId> <amount>"); return; }
+    const targetId = parseInt(args[0]);
+    const amount = parseInt(args[1]);
+    if (isNaN(targetId) || isNaN(amount) || amount <= 0) { await bot.sendMessage(chatId, "Invalid userId or amount."); return; }
+    const target = await User.findOne({ userId: targetId });
+    if (!target) { await bot.sendMessage(chatId, `User ${targetId} not found.`); return; }
+    const newBal = await addCredits(targetId, amount);
+    await bot.sendMessage(chatId, `✅ Added ${amount} credits to user ${targetId}.\nNew balance: ${newBal} credits.`, { reply_markup: backToOwnerKeyboard() });
+    try { await bot.sendMessage(targetId, `🎁 An admin added ${amount} credits to your account!\n\nNew balance: ${newBal} credits. Use /menu to start.`); } catch {}
+    return;
+  }
+
+  if (cmd === "/removecredits") {
+    if (args.length < 2) { await bot.sendMessage(chatId, "Usage: /removecredits <userId> <amount>"); return; }
+    const targetId = parseInt(args[0]);
+    const amount = parseInt(args[1]);
+    if (isNaN(targetId) || isNaN(amount) || amount <= 0) { await bot.sendMessage(chatId, "Invalid userId or amount."); return; }
+    const target = await User.findOne({ userId: targetId });
+    if (!target) { await bot.sendMessage(chatId, `User ${targetId} not found.`); return; }
+    const current = (target as any).credits ?? 0;
+    const newBal = Math.max(0, current - amount);
+    await setCredits(targetId, newBal);
+    await bot.sendMessage(chatId, `✅ Removed ${amount} credits from user ${targetId}.\nNew balance: ${newBal} credits.`, { reply_markup: backToOwnerKeyboard() });
+    return;
+  }
+
+  if (cmd === "/setcredits") {
+    if (args.length < 2) { await bot.sendMessage(chatId, "Usage: /setcredits <userId> <amount>"); return; }
+    const targetId = parseInt(args[0]);
+    const amount = parseInt(args[1]);
+    if (isNaN(targetId) || isNaN(amount) || amount < 0) { await bot.sendMessage(chatId, "Invalid userId or amount."); return; }
+    const target = await User.findOne({ userId: targetId });
+    if (!target) { await bot.sendMessage(chatId, `User ${targetId} not found.`); return; }
+    await setCredits(targetId, amount);
+    await bot.sendMessage(chatId, `✅ Set credits for user ${targetId} to ${amount}.`, { reply_markup: backToOwnerKeyboard() });
+    return;
+  }
+
+  if (cmd === "/resetcredits") {
+    if (!args[0]) { await bot.sendMessage(chatId, "Usage: /resetcredits <userId>"); return; }
+    const targetId = parseInt(args[0]);
+    if (isNaN(targetId)) { await bot.sendMessage(chatId, "Invalid userId."); return; }
+    await resetCredits(targetId);
+    await bot.sendMessage(chatId, `✅ Credits reset to default for user ${targetId}.`, { reply_markup: backToOwnerKeyboard() });
+    return;
+  }
+
+  if (cmd === "/creditstats") {
+    const result = await User.aggregate([
+      { $group: { _id: null, total: { $sum: "$credits" }, avg: { $avg: "$credits" }, min: { $min: "$credits" }, max: { $max: "$credits" } } },
+    ]);
+    const s = result[0] || { total: 0, avg: 0, min: 0, max: 0 };
+    const broke = await User.countDocuments({ credits: { $lte: 0 } });
+    await bot.sendMessage(chatId,
+      `💰 Credit Stats\n\nTotal credits in system: ${s.total}\nAverage per user: ${Math.round(s.avg)}\nMin: ${s.min}  |  Max: ${s.max}\nUsers with 0 credits: ${broke}`,
+      { reply_markup: backToOwnerKeyboard() }
+    );
+    return;
+  }
+
+  if (cmd === "/setflashoffer") {
+    const raw = args.join(" ");
+    const parts = raw.split("|").map(s => s.trim());
+    if (parts.length < 3) {
+      await bot.sendMessage(chatId, "Usage: /setflashoffer <title> | <description> | <credits>\nExample: /setflashoffer Flash Sale | Get 200 bonus credits today only! | 200");
+      return;
+    }
+    const [title, description, credStr] = parts;
+    const creditsAmount = parseInt(credStr);
+    if (isNaN(creditsAmount) || creditsAmount <= 0) { await bot.sendMessage(chatId, "Invalid credits amount."); return; }
+    const config = await getOrCreateBotConfig();
+    (config as any).flashOffer = { active: true, title, description, creditsAmount };
+    await config.save();
+    invalidateBotConfigCache();
+    await bot.sendMessage(chatId, `✅ Flash offer activated!\n\nTitle: ${title}\nDescription: ${description}\nCredits: ${creditsAmount}\n\nUsers will see it in their Credits menu.`, { reply_markup: backToOwnerKeyboard() });
+    return;
+  }
+
+  if (cmd === "/endflashoffer") {
+    const config = await getOrCreateBotConfig();
+    (config as any).flashOffer = { active: false, title: "", description: "", creditsAmount: 0 };
+    await config.save();
+    invalidateBotConfigCache();
+    await bot.sendMessage(chatId, "✅ Flash offer deactivated.", { reply_markup: backToOwnerKeyboard() });
     return;
   }
 

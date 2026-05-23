@@ -7,11 +7,11 @@ import { MODES, ModeDefinition } from "../services/modeManager.js";
 
 export function mainMenuKeyboard(activeMode?: string): TelegramBot.InlineKeyboardMarkup {
   const mode = MODES.find(m => m.id === activeMode) ?? MODES[0];
-  const modeLabel = `${mode.icon} Mode: ${mode.name}`;
+  const modeLabel = `${mode.icon} ${mode.name}`;
   return {
     inline_keyboard: [
       [
-        { text: "🧠 AI Tools", callback_data: "ai_menu" },
+        { text: "💬 Chat", callback_data: "ai_menu" },
         { text: "🎨 Create", callback_data: "img_menu" },
       ],
       [
@@ -24,12 +24,80 @@ export function mainMenuKeyboard(activeMode?: string): TelegramBot.InlineKeyboar
       ],
       [
         { text: "⏰ Reminders", callback_data: "reminders_btn" },
-        { text: modeLabel, callback_data: "modes_menu" },
+        { text: `🎯 Mode: ${modeLabel}`, callback_data: "modes_menu" },
+      ],
+      [
+        { text: "🎁 Daily Reward", callback_data: "daily_reward" },
+        { text: "📊 My Account", callback_data: "account_menu" },
+      ],
+      [
+        { text: "💰 Credits", callback_data: "credits_menu" },
+        { text: "⭐ Go Premium", callback_data: "settings_premium" },
       ],
       [
         { text: "⚙️ Settings", callback_data: "settings_menu" },
-        { text: "💎 Premium", callback_data: "settings_premium" },
       ],
+    ],
+  };
+}
+
+export function accountMenuKeyboard(isPremium: boolean): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "💰 Credits & Packs", callback_data: "credits_menu" },
+        { text: "🎁 Daily Reward", callback_data: "daily_reward" },
+      ],
+      [
+        { text: "👥 Referral Link", callback_data: "referral_menu" },
+        ...(isPremium ? [] : [{ text: "⭐ Upgrade to VIP", callback_data: "settings_premium" }]),
+      ],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+    ],
+  };
+}
+
+export function creditsMenuKeyboard(hasPayment: boolean): TelegramBot.InlineKeyboardMarkup {
+  const rows: TelegramBot.InlineKeyboardButton[][] = [];
+  if (hasPayment) {
+    rows.push([
+      { text: "🌱 50 Credits — $0.99", callback_data: "buy_pack_50" },
+      { text: "⚡ 150 Credits — $2.49", callback_data: "buy_pack_150" },
+    ]);
+    rows.push([
+      { text: "🚀 500 Credits — $6.99", callback_data: "buy_pack_500" },
+      { text: "💎 1500 Credits — $17.99", callback_data: "buy_pack_1500" },
+    ]);
+  } else {
+    rows.push([{ text: "💳 Payment coming soon — stay tuned!", callback_data: "credits_coming_soon" }]);
+  }
+  rows.push([
+    { text: "🎁 Claim Daily Reward", callback_data: "daily_reward" },
+    { text: "👥 Earn via Referrals", callback_data: "referral_menu" },
+  ]);
+  rows.push([{ text: "⬅️ Menu", callback_data: "main_menu" }]);
+  return { inline_keyboard: rows };
+}
+
+export function referralKeyboard(botUsername: string, referralCode: string): TelegramBot.InlineKeyboardMarkup {
+  const link = `https://t.me/${botUsername}?start=ref_${referralCode}`;
+  return {
+    inline_keyboard: [
+      [{ text: "🔗 Share Referral Link", url: `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Join me on Nova AI! Use my link to get bonus credits 🎁")}` }],
+      [{ text: "⬅️ Back", callback_data: "account_menu" }],
+    ],
+  };
+}
+
+export function insufficientCreditsKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🎁 Claim Daily Reward", callback_data: "daily_reward" },
+        { text: "💰 Buy Credits", callback_data: "credits_menu" },
+      ],
+      [{ text: "⭐ Go VIP — Unlimited", callback_data: "settings_premium" }],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
     ],
   };
 }
@@ -912,15 +980,16 @@ export function ownerUserListKeyboard(
 
 // ── Mode selection keyboard ───────────────────────────────────────────────────
 
-export function modeSelectKeyboard(activeMode: string): TelegramBot.InlineKeyboardMarkup {
+export function modeSelectKeyboard(activeMode: string, isPremium = false): TelegramBot.InlineKeyboardMarkup {
   const rows: TelegramBot.InlineKeyboardButton[][] = [];
   for (let i = 0; i < MODES.length; i += 2) {
     const row: TelegramBot.InlineKeyboardButton[] = [];
     for (let j = i; j < Math.min(i + 2, MODES.length); j++) {
       const m = MODES[j];
       const isActive = m.id === activeMode;
+      const isLocked = m.premiumOnly && !isPremium;
       row.push({
-        text: (isActive ? "✅ " : "") + `${m.icon} ${m.name}`,
+        text: (isActive ? "✅ " : isLocked ? "🔒 " : "") + `${m.icon} ${m.name}`,
         callback_data: `mode_set_${m.id}`,
       });
     }

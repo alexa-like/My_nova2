@@ -25,6 +25,7 @@ import {
   buildResultKeyboard,
   modeSelectKeyboard,
   currentModeKeyboard,
+  insufficientCreditsKeyboard,
 } from "../utils/keyboards.js";
 import { getUserMode, setUserMode, MODES, getModeById, getDefaultMode } from "../services/modeManager.js";
 import { encrypt, decrypt } from "../utils/crypto.js";
@@ -40,6 +41,7 @@ import {
   uniqueRepoName,
 } from "../services/github.js";
 import { cacheUserBuild, getCachedBuild } from "../utils/buildCache.js";
+import { addCredits, deductCredits, getCreditCost } from "../services/credits.js";
 import { deployToVercel, deployToRender, autoFixProjectFiles } from "../services/deploy.js";
 import { downloadTelegramDocument, extractTextFromDocument } from "../services/document.js";
 import { createReminder, listUserReminders, cancelReminder } from "../services/reminder.js";
@@ -400,6 +402,10 @@ export async function handlePrivateMessage(
           user.premium.expiresAt = addDays(premiumExpiry, 3);
           user.premium.plan = user.premium.plan || "referral";
           await user.save();
+          // Also give new user bonus credits
+          const cfg = await getOrCreateBotConfig();
+          const newUserBonus = cfg.creditRewards?.newUser ?? 20;
+          await addCredits(user.userId, newUserBonus);
           try {
             const referrer = await User.findOne({ userId: referrerId });
             if (referrer && !referrer.isOwner) {
@@ -410,14 +416,21 @@ export async function handlePrivateMessage(
               referrer.referrals = referrer.referrals || [];
               if (!referrer.referrals.includes(user.userId)) referrer.referrals.push(user.userId);
               await referrer.save();
+              const referrerBonus = cfg.creditRewards?.referrer ?? 50;
+              await addCredits(referrerId, referrerBonus);
               await bot.sendMessage(referrerId,
-                `🎉 Someone joined Nova using your referral link!\n\n✨ You've been rewarded with 7 days of Premium!`
+                `🎉 Someone joined Nova using your referral link!\n\n✨ You've been rewarded with:\n• 7 days of Premium\n• +${referrerBonus} bonus credits!`
               ).catch(() => {});
             }
           } catch {}
-          await bot.sendMessage(chatId, `🎉 Welcome to Nova! You received 3 days Premium as a referral bonus!\n\n✨ Enjoy premium features starting now.`);
+          await bot.sendMessage(chatId, `🎉 Welcome to Nova! Your referral bonus:\n• 3 days of Premium\n• +${newUserBonus} bonus credits!\n\n✨ Start using your perks now.`);
         }
       }
+    }
+    // Generate referral code for user if they don't have one yet
+    if (!user.referralCode) {
+      user.referralCode = `NOVA${user.userId.toString(36).toUpperCase()}`;
+      await user.save();
     }
     const isNew = Date.now() - user.firstSeen.getTime() < 30000;
     if (isNew) {
@@ -1334,6 +1347,50 @@ export async function handlePrivateMessage(
         }
         return;
       }
+
+      case "dev":
+      case "builder":
+      case "creator": {
+        if (!user.premium.active) {
+          if (activeMode.premiumOnly) {
+            await bot.sendMessage(chatId,
+              `🔒 ${activeMode.icon} ${activeMode.name} is a VIP feature.\n\nUpgrade to unlock:\n• ${activeMode.description}\n• No credit deductions\n• Priority responses`,
+              { reply_markup: { inline_keyboard: [
+                [{ text: "⭐ Go VIP", callback_data: "settings_premium" }],
+                [{ text: "🔄 Switch Mode", callback_data: "modes_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+              ]}}
+            );
+            return;
+          }
+          const chatCost = await getCreditCost("chat");
+          const userCredits = (user as any).credits ?? 0;
+          if (userCredits < chatCost) {
+            await bot.sendMessage(chatId,
+              `💰 You need ${chatCost} credit to use ${activeMode.name}.\n\nYou have ${userCredits} credits.`,
+              { reply_markup: insufficientCreditsKeyboard() }
+            );
+            return;
+          }
+          await deductCredits(user.userId, chatCost);
+        }
+        const modeMsgCfg = await getOrCreateBotConfig();
+        const modeMsgLimit = user.premium.active ? modeMsgCfg.usageLimits.premiumMessages : modeMsgCfg.usageLimits.freeMessages;
+        if (modeMsgLimit >= 0 && user.usage.messages >= modeMsgLimit) {
+          await bot.sendMessage(chatId, `Daily message limit reached.${user.premium.active ? "" : " Upgrade to VIP for more."}`,
+            { reply_markup: { inline_keyboard: [[{ text: "⭐ Go VIP", callback_data: "settings_premium" }]] } });
+          return;
+        }
+        user.usage.messages += 1;
+        await user.save();
+        const modeEnhanced = activeMode.systemPrompt
+          ? `${activeMode.systemPrompt}\n\n---\n\nUser request: ${text}`
+          : text;
+        const stopModeTyping = startTypingLoop(bot, chatId);
+        const modeReply = await chat(user.userId, chatId, modeEnhanced, user.settings, user.premium.active, user.mood ?? undefined);
+        stopModeTyping();
+        await sendAIReply(bot, chatId, modeReply);
+        return;
+      }
     }
   }
 
@@ -1425,6 +1482,20 @@ export async function handlePrivateMessage(
   }
 
   // ── Plain text → AI chat ─────────────────────────────────────────────────
+
+  // Credit check (skip for premium users)
+  if (!user.premium.active) {
+    const chatCost = await getCreditCost("chat");
+    const userCredits = (user as any).credits ?? 0;
+    if (userCredits < chatCost) {
+      await bot.sendMessage(chatId,
+        `💰 You're out of credits!\n\nYou need ${chatCost} credit to chat.\nBalance: ${userCredits} credits\n\nEarn free credits:\n• 🎁 Claim your daily reward\n• 👥 Refer friends for bonus credits`,
+        { reply_markup: insufficientCreditsKeyboard() }
+      );
+      return;
+    }
+    await deductCredits(user.userId, chatCost);
+  }
 
   // Per-day message limit check
   const msgLimCfg = await getOrCreateBotConfig();
@@ -1956,6 +2027,20 @@ async function handleBuildRequest(
     return;
   }
 
+  // Credit check for build
+  if (!user.premium.active) {
+    const buildCost = await getCreditCost("build");
+    const userCredits = (user as any).credits ?? 0;
+    if (userCredits < buildCost) {
+      await bot.sendMessage(chatId,
+        `💰 Building a project costs ${buildCost} credits.\n\nYou have ${userCredits} credits.\n\nEarn more credits to continue!`,
+        { reply_markup: insufficientCreditsKeyboard() }
+      );
+      return;
+    }
+    await deductCredits(user.userId, buildCost);
+  }
+
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     await bot.sendMessage(chatId, "AI service is not configured. Ask the bot owner to set up OPENROUTER_API_KEY.");
@@ -2310,6 +2395,19 @@ async function handleTTS(
     await bot.sendMessage(chatId, "Voice generation is temporarily unavailable, will be available soon.");
     return;
   }
+  // Credit check for TTS
+  if (!user.premium.active) {
+    const ttsCost = await getCreditCost("tts");
+    const userCredits = (user as any).credits ?? 0;
+    if (userCredits < ttsCost) {
+      await bot.sendMessage(chatId,
+        `💰 Voice generation costs ${ttsCost} credits.\n\nYou have ${userCredits} credits.`,
+        { reply_markup: insufficientCreditsKeyboard() }
+      );
+      return;
+    }
+    await deductCredits(user.userId, ttsCost);
+  }
   if (text.length > 1000) {
     await bot.sendMessage(chatId, e ? "🔊 Text is too long! Maximum 1000 characters." : "Text too long. Maximum 1000 characters.");
     return;
@@ -2467,6 +2565,20 @@ async function handleImageGeneration(
       `Daily image limit reached (${limit}/day).${isPrem ? "" : " Upgrade to Premium for more: /premium"}`
     );
     return;
+  }
+
+  // Credit check for image generation
+  if (!isPrem) {
+    const imgCost = await getCreditCost("image");
+    const userCredits = (user as any).credits ?? 0;
+    if (userCredits < imgCost) {
+      await bot.sendMessage(chatId,
+        `💰 Image generation costs ${imgCost} credits.\n\nYou have ${userCredits} credits.`,
+        { reply_markup: insufficientCreditsKeyboard() }
+      );
+      return;
+    }
+    await deductCredits(user.userId, imgCost);
   }
 
   const sentMsg = await bot.sendMessage(chatId, e
