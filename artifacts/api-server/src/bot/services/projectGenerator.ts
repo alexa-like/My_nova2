@@ -72,27 +72,39 @@ deploymentTip examples:
 function extractJson(raw: string): string {
   let text = raw.trim();
 
-  // Strip markdown fences
+  // Strip DeepSeek R1 / reasoning model <think>...</think> blocks
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+
+  // Strip markdown fences (```json ... ``` or ``` ... ```)
   text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
 
-  // Find the outermost JSON object
+  // Find the outermost JSON object by scanning for balanced braces
   const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
+  if (start === -1) throw new Error("No valid JSON object found in model response.");
 
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error("No valid JSON object found in model response.");
+  let depth = 0;
+  let end = -1;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === "{") depth++;
+    else if (text[i] === "}") {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
   }
+
+  if (end === -1) throw new Error("JSON object is not properly closed in model response.");
 
   return text.slice(start, end + 1);
 }
 
 // ── Main generator ─────────────────────────────────────────────────────────────
 
-// ── Primary coding model ───────────────────────────────────────────────────────
-// DeepSeek R1: top-tier reasoning model, expert at code generation and
-// producing reliable structured JSON output for complete web projects.
+// ── Coding models ──────────────────────────────────────────────────────────────
+// DeepSeek R1 is the primary — top-tier reasoning, great structured JSON output.
+// Qwen 72B is the fallback — highly reliable JSON for code projects.
 const CODE_MODELS = [
   "deepseek/deepseek-r1:free",
+  "qwen/qwen-2.5-72b-instruct:free",
 ];
 
 export async function generateProject(
