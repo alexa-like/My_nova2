@@ -77,6 +77,7 @@ import { addCredits, getCredits } from "../services/credits.js";
 import { hasAnyPaymentProvider } from "../services/payment.js";
 import { checkAndAwardAchievements, formatAchievementNotification, getUserAchievements, getLastFeatures, FEATURE_LABELS, ACHIEVEMENTS } from "../services/engagement.js";
 import { formatAnnouncements } from "../services/announcements.js";
+import { getMandatoryGroups, removeMandatoryGroup } from "../services/groupGate.js";
 import {
   onboardingWelcomeKeyboard,
   onboardingStep1Keyboard,
@@ -88,6 +89,7 @@ import {
   achievementsKeyboard,
   settingsMenuWithPrivacyKeyboard,
   mainMenuWithNewsKeyboard,
+  ownerGateGroupsKeyboard,
 } from "../utils/keyboards.js";
 
 // ── Trivia questions ──────────────────────────────────────────────────────────
@@ -2698,6 +2700,96 @@ export async function handleCallbackQuery(
         `🔊 TTS Provider\n━━━━━━━━━━━━━━━━\nVoice updated to ${voice}.`,
         ownerTtsKeyboard(p.tts, p.ttsVoice)
       );
+      return;
+    }
+
+    // ── Group Gate callbacks ─────────────────────────────────────────────────
+
+    if (data === "own_gate_groups") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const groups = await getMandatoryGroups();
+      const lines = groups.length === 0
+        ? "No groups configured yet. Add one below.\n\n🟢 = active (ID set) | 🔴 = inactive (ID missing)\n⛔ = strict (blocks bot if not joined)"
+        : `Manage groups that users must join to use Nova.\n\n🟢 = active | 🔴 = ID not set\n⛔ = strict (blocks bot) | none = notification only`;
+      await editMsg(bot, query,
+        `🔒 Group Gate\n━━━━━━━━━━━━━━━━\n${lines}`,
+        ownerGateGroupsKeyboard(groups as any)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_gate_view_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_gate_view_", ""));
+      const groups = await getMandatoryGroups();
+      const g = groups[idx];
+      if (!g) { await answer(bot, query.id, "Group not found."); return; }
+      const idLabel = g.chatId ? `✅ Set: \`${g.chatId}\`` : "❌ Not set — gate inactive";
+      const strictLabel = g.strict ? "⛔ Strict — blocks bot access" : "🔔 Notification only";
+      await editMsg(bot, query,
+        `🔒 ${g.name} (index ${idx})\n\n` +
+        `Link: ${g.link}\n` +
+        `Chat ID: ${idLabel}\n` +
+        `Mode: ${strictLabel}\n\n` +
+        `To set the Chat ID, use:\n` +
+        `/setgroupid ${idx} <chat_id>\n\n` +
+        `Tip: Forward a message from the group to get its ID.`,
+        {
+          inline_keyboard: [
+            [{ text: "❌ Remove this group", callback_data: `own_gate_remove_${idx}` }],
+            [{ text: "⬅️ Back to Gate", callback_data: "own_gate_groups" }],
+          ],
+        }
+      );
+      return;
+    }
+
+    if (data.startsWith("own_gate_remove_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_gate_remove_", ""));
+      const groups = await getMandatoryGroups();
+      const g = groups[idx];
+      if (!g) { await answer(bot, query.id, "Group not found."); return; }
+      await removeMandatoryGroup(idx);
+      await answer(bot, query.id, `Removed: ${g.name}`);
+      const updated = await getMandatoryGroups();
+      await editMsg(bot, query,
+        `🔒 Group Gate\n━━━━━━━━━━━━━━━━\n✅ Removed "${g.name}"\n\nRemaining groups:`,
+        ownerGateGroupsKeyboard(updated as any)
+      );
+      return;
+    }
+
+    if (data === "own_gate_add") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      await editMsg(bot, query,
+        `➕ Add a Gate Group\n━━━━━━━━━━━━━━━━\n` +
+        `Use the command:\n/addgroup <name> | <link>\n\n` +
+        `Example:\n/addgroup Nova VIP | https://t.me/+abc123\n\n` +
+        `After adding, set the Chat ID with:\n/setgroupid <index> <chat_id>\n\n` +
+        `How to get the Chat ID:\nForward any message from the group to this chat — Nova will reply with the ID.`,
+        { inline_keyboard: [[{ text: "⬅️ Back to Gate", callback_data: "own_gate_groups" }]] }
+      );
+      return;
+    }
+
+    // ── Gate recheck (user tapped "I Joined") ────────────────────────────────
+
+    if (data === "gate_recheck") {
+      await answer(bot, query.id, "Checking...");
+      const { getFailedGroups: _checkFailed, sendGroupGateMessage: _sendGate } = await import("../services/groupGate.js");
+      const failedStrict = (await _checkFailed(bot, user.userId)).filter(g => g.strict);
+      if (failedStrict.length === 0) {
+        try { await bot.deleteMessage(chatId, query.message!.message_id); } catch {}
+        const hasNews = true;
+        const { mainMenuWithNewsKeyboard: mkb } = await import("../utils/keyboards.js");
+        await bot.sendMessage(chatId,
+          `✅ Access granted! Welcome to Nova.\n\nHere's your menu:`,
+          { reply_markup: mkb(user.activeMode, hasNews) }
+        );
+      } else {
+        await answer(bot, query.id, "You're still not in all required groups.", true);
+      }
       return;
     }
 

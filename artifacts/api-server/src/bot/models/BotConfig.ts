@@ -66,6 +66,13 @@ export interface IFlashOffer {
   expiresAt?: Date;
 }
 
+export interface IMandatoryGroup {
+  name: string;     // display name shown in inline button
+  link: string;     // Telegram invite link or t.me/@username
+  chatId: number;   // actual chat ID — 0 means not yet set (gate inactive for this entry)
+  strict: boolean;  // true = blocks bot use; false = notification only
+}
+
 export interface IBotConfig extends Document {
   activeChatModel: string;
   activeImageModel: string;
@@ -81,6 +88,7 @@ export interface IBotConfig extends Document {
   creditCosts: ICreditCosts;
   creditRewards: ICreditRewards;
   flashOffer: IFlashOffer;
+  mandatoryGroups: IMandatoryGroup[];
 }
 
 const ModelEntrySchema = new Schema<IModelEntry>(
@@ -165,6 +173,16 @@ const FlashOfferSchema = new Schema(
   { _id: false }
 );
 
+const MandatoryGroupSchema = new Schema(
+  {
+    name:   { type: String, required: true },
+    link:   { type: String, required: true },
+    chatId: { type: Number, default: 0 },
+    strict: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
 const BotConfigSchema = new Schema<IBotConfig>(
   {
     activeChatModel:  { type: String, default: "meta-llama/llama-3.3-70b-instruct:free" },
@@ -178,9 +196,10 @@ const BotConfigSchema = new Schema<IBotConfig>(
     botPersonality:  { type: String, default: "" },
     providers: { type: ProvidersSchema, default: () => ({}) },
     features:  { type: FeaturesSchema,  default: () => ({}) },
-    creditCosts:   { type: CreditCostsSchema,   default: () => ({}) },
-    creditRewards: { type: CreditRewardsSchema,  default: () => ({}) },
-    flashOffer:    { type: FlashOfferSchema,     default: () => ({}) },
+    creditCosts:     { type: CreditCostsSchema,      default: () => ({}) },
+    creditRewards:   { type: CreditRewardsSchema,    default: () => ({}) },
+    flashOffer:      { type: FlashOfferSchema,       default: () => ({}) },
+    mandatoryGroups: { type: [MandatoryGroupSchema], default: [] },
   },
   { timestamps: true }
 );

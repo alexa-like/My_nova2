@@ -14,6 +14,7 @@ import { loadPendingReminders } from "./services/reminder.js";
 import { setPremiumEmojiEnabled } from "./utils/premiumEmoji.js";
 import { disconnectDB } from "./services/db.js";
 import { logger } from "../lib/logger.js";
+import { seedDefaultMandatoryGroup, getMandatoryGroups, sendLeftGroupDM } from "./services/groupGate.js";
 
 // ── In-memory captcha store ─────────────────────────────────────────────────
 interface CaptchaChallenge {
@@ -57,10 +58,10 @@ const OWNER_CMDS = new Set([
   "/deletegroup", "/deleteuser", "/broadcast", "/announcement", "/schedule",
   "/grantpremium", "/revokepremium", "/banuser", "/unbanuser",
   "/clearuserdata", "/maintenance",
-  // Previously missing from gate (commands existed but were unreachable):
   "/analytics", "/dm", "/messageuser", "/botinfo",
-  // New commands:
   "/searchuser", "/listscheduled", "/cancelschedule",
+  // Group gate management:
+  "/addgroup", "/removegroup", "/listgroups", "/setgroupid", "/getgroupid",
 ]);
 
 export async function startBot(): Promise<void> {
@@ -96,6 +97,9 @@ export async function startBot(): Promise<void> {
   _setBotUsername(botUsername);
 
   loadPendingReminders(bot).catch((err) => logger.warn({ err }, "Failed to load reminders"));
+
+  // Seed the default Nova mandatory group
+  seedDefaultMandatoryGroup().catch(() => {});
 
   // Load premium emoji state from config
   try {
@@ -416,17 +420,25 @@ export async function startBot(): Promise<void> {
         try { await bot!.deleteMessage(msg.chat.id, msg.message_id); } catch {}
       }
 
+      // ── Mandatory group check: DM user if they left a mandatory group ────
+      try {
+        const mandatoryGroups = await getMandatoryGroups();
+        for (const g of mandatoryGroups) {
+          if (g.chatId && g.chatId === msg.chat.id) {
+            await sendLeftGroupDM(bot!, member.id, g);
+            break;
+          }
+        }
+      } catch { /* non-fatal */ }
+
       if (!groupSettings?.goodbyeMessage) return;
       const name = member.first_name || member.username || "Friend";
       const goodbye = groupSettings.goodbyeMessage
         .replace(/\{name\}/g, name)
         .replace(/\{group\}/g, msg.chat.title || "this group");
-      // Send goodbye privately so the group chat stays clean
       try {
         await bot!.sendMessage(member.id, goodbye);
-      } catch {
-        // User may have blocked the bot or never started it — silently skip
-      }
+      } catch {}
     } catch (err) {
       logger.error({ err }, "Error in left_chat_member handler");
     }

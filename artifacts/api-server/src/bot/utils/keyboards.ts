@@ -567,30 +567,48 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
         { text: "🏘 Groups", callback_data: "own_groups" },
       ],
       [
+        { text: "🔒 Group Gate", callback_data: "own_gate_groups" },
+        { text: "⚙️ Features", callback_data: "own_features" },
+      ],
+      [
         { text: "🧠 Chat Model", callback_data: "own_chat_models" },
         { text: "🖼 Image Model", callback_data: "own_img_models" },
       ],
       [
         { text: "🔌 Providers", callback_data: "own_providers" },
-        { text: "⚙️ Features", callback_data: "own_features" },
-      ],
-      [
         {
           text: maintenanceOn ? "🔴 Maintenance: ON" : "🟢 Maintenance: OFF",
           callback_data: "own_maint",
         },
+      ],
+      [
         { text: "✨ Premium Emoji", callback_data: "owner_premoji_status" },
-      ],
-      [
         { text: "🔍 Search User", callback_data: "own_searchuser" },
-        { text: "📩 DM User", callback_data: "own_dm_btn" },
       ],
       [
+        { text: "📩 DM User", callback_data: "own_dm_btn" },
         { text: "📋 Scheduled", callback_data: "own_scheduled" },
+      ],
+      [
         { text: "📨 Inbox", callback_data: "own_feedback" },
       ],
     ],
   };
+}
+
+export function ownerGateGroupsKeyboard(groups: Array<{ name: string; link: string; chatId: number; strict: boolean }>): TelegramBot.InlineKeyboardMarkup {
+  const rows: TelegramBot.InlineKeyboardButton[][] = [];
+  groups.forEach((g, i) => {
+    const status = g.chatId ? "🟢" : "🔴";
+    const strictLabel = g.strict ? " ⛔" : "";
+    rows.push([
+      { text: `${status} ${g.name}${strictLabel}`, callback_data: `own_gate_view_${i}` },
+      { text: "❌ Remove", callback_data: `own_gate_remove_${i}` },
+    ]);
+  });
+  rows.push([{ text: "➕ Add Group", callback_data: "own_gate_add" }]);
+  rows.push([{ text: "⬅️ Back to Dashboard", callback_data: "own_panel" }]);
+  return { inline_keyboard: rows };
 }
 
 export function backToOwnerKeyboard(): TelegramBot.InlineKeyboardMarkup {

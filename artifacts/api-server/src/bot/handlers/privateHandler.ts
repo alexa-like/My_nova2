@@ -54,6 +54,7 @@ import { logger } from "../../lib/logger.js";
 import { checkAndAwardAchievements, formatAchievementNotification, recordLastFeature, getLastFeatures, FEATURE_LABELS } from "../services/engagement.js";
 import { getSuggestionsKeyboard, getSuggestionLine } from "../services/suggestions.js";
 import { formatAnnouncements, getNewCount } from "../services/announcements.js";
+import { getFailedGroups, sendGroupGateMessage } from "../services/groupGate.js";
 import {
   onboardingWelcomeKeyboard,
   privacyMenuKeyboard,
@@ -338,6 +339,32 @@ export async function handlePrivateMessage(
 ): Promise<void> {
   const chatId = msg.chat.id;
   const text = msg.text || "";
+
+  // ── Owner: forwarded message → show group chat ID ─────────────────────────
+  if (user.isOwner && msg.forward_from_chat) {
+    const fwdChat = msg.forward_from_chat;
+    const fwdId = fwdChat.id;
+    const fwdTitle = fwdChat.title || fwdChat.username || String(fwdId);
+    await bot.sendMessage(chatId,
+      `📋 Forwarded from: ${fwdTitle}\n\n` +
+      `Chat ID: \`${fwdId}\`\n\n` +
+      `Use this ID to activate a group gate:\n/setgroupid <index> ${fwdId}`,
+      { parse_mode: "Markdown", reply_markup: backToMainKeyboard() }
+    );
+    return;
+  }
+
+  // ── Mandatory group gate ────────────────────────────────────────────────────
+  // Allow /start so users can always get the "join" message, and /appeal for banned users
+  if (!text.startsWith("/start") && !text.startsWith("/appeal")) {
+    try {
+      const failedStrict = (await getFailedGroups(bot, user.userId)).filter(g => g.strict);
+      if (failedStrict.length > 0) {
+        await sendGroupGateMessage(bot, chatId, failedStrict, true);
+        return;
+      }
+    } catch { /* non-fatal — never block on gate error */ }
+  }
 
   if (user.banned) {
     if (text.startsWith("/appeal")) {
