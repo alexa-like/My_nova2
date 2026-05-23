@@ -27,10 +27,27 @@ import {
   currentModeKeyboard,
   insufficientCreditsKeyboard,
   creditsMenuKeyboard,
+  onboardingWelcomeKeyboard,
+  onboardingDoneKeyboard,
+  welcomeBackKeyboard,
+  achievementsKeyboard,
+  privacyKeyboard,
+  updatesKeyboard,
+  buildMenuKeyboard,
 } from "../utils/keyboards.js";
 import { hasAnyPaymentProvider } from "../services/payment.js";
 import { getUserMode, setUserMode, MODES, getModeById, getDefaultMode } from "../services/modeManager.js";
 import { encrypt, decrypt } from "../utils/crypto.js";
+import {
+  updateRecentFeatures,
+  checkAndGrantAchievements,
+  updateLoginStreak,
+  formatAchievementsText,
+  formatAchievementToast,
+  FEATURE_LABELS,
+} from "../services/engagement.js";
+import { contextSuggestionsKeyboard } from "../utils/suggestions.js";
+import { trackFeature } from "../services/analytics.js";
 import { webSearch, formatSearchResults } from "../services/webSearch.js";
 import { generateTTS } from "../services/tts.js";
 import { transcribeAudio } from "../services/stt.js";
@@ -392,9 +409,9 @@ export async function handlePrivateMessage(
     return;
   }
 
-  // /start — show interactive dashboard with onboarding for new users
+  // /start — onboarding for new users, welcome back for returning users
   if (text === "/start" || text.startsWith("/start ")) {
-    // Handle referral parameter
+    // ── Referral handling ───────────────────────────────────────────────────
     if (text.startsWith("/start ")) {
       const param = text.slice(7).trim();
       if (param.startsWith("ref_") && !user.referredBy) {
@@ -407,7 +424,6 @@ export async function handlePrivateMessage(
           user.premium.expiresAt = addDays(premiumExpiry, 3);
           user.premium.plan = user.premium.plan || "referral";
           await user.save();
-          // Also give new user bonus credits
           const cfg = await getOrCreateBotConfig();
           const newUserBonus = cfg.creditRewards?.newUser ?? 20;
           await addCredits(user.userId, newUserBonus);
@@ -424,47 +440,68 @@ export async function handlePrivateMessage(
               const referrerBonus = cfg.creditRewards?.referrer ?? 50;
               await addCredits(referrerId, referrerBonus);
               await bot.sendMessage(referrerId,
-                `🎉 Someone joined Nova using your referral link!\n\n✨ You've been rewarded with:\n• 7 days of Premium\n• +${referrerBonus} bonus credits!`
+                `🎉 Someone joined Nova using your referral link!\n\n+7 days Premium & +${referrerBonus} credits added!`
               ).catch(() => {});
             }
           } catch {}
-          await bot.sendMessage(chatId, `🎉 Welcome to Nova! Your referral bonus:\n• 3 days of Premium\n• +${newUserBonus} bonus credits!\n\n✨ Start using your perks now.`);
+          await bot.sendMessage(chatId,
+            `🎉 *Referral Bonus Activated!*\n\n` +
+            `• ✨ 3 days of Premium\n• 💰 +${(await getOrCreateBotConfig()).creditRewards?.newUser ?? 20} bonus credits\n\nWelcome to Nova!`,
+            { parse_mode: "Markdown" }
+          );
         }
       }
     }
-    // Generate referral code for user if they don't have one yet
+
+    // Ensure referral code exists
     if (!user.referralCode) {
       user.referralCode = `NOVA${user.userId.toString(36).toUpperCase()}`;
       await user.save();
     }
-    const isNew = Date.now() - user.firstSeen.getTime() < 30000;
+
+    // Update login streak
+    const streak = await updateLoginStreak(user.userId);
+
+    const isNew = !user.onboardingComplete && Date.now() - user.firstSeen.getTime() < 60000;
+
     if (isNew) {
+      // ── New user: interactive onboarding ─────────────────────────────────
       await bot.sendMessage(chatId,
-        `👋 Welcome to Nova, ${name}!\n\n` +
-        `I'm your personal AI assistant — smarter than a chatbot, more powerful than a search engine.\n\n` +
-        `Here's what I can do:\n` +
-        `💬 Chat naturally — just type anything!\n` +
-        `🎨 Generate images & stickers\n` +
-        `🔊 Convert text to speech — /voice <text>\n` +
-        `🎤 Transcribe voice messages — /listen\n` +
-        `🔍 Search the web with AI synthesis\n` +
-        `⏰ Set reminders — /remind 1h Call mom\n` +
-        `📄 Read & analyze PDFs, DOCX, TXT files\n` +
-        `🔨 Build full websites & apps — /build <idea>\n` +
-        `🚀 Deploy live to Vercel — /deploy <idea>\n` +
-        `🌐 Translate text — just say "translate X to Spanish"\n` +
-        `📝 Summarize anything — paste text, say "summarize"\n\n` +
-        `💡 Tip: You don't need commands! Just type naturally:\n` +
-        `   "draw me a sunset" → generates an image\n` +
-        `   "build me a portfolio website" → builds it!\n\n` +
-        `Use the menu below to get started 👇`
+        `👋 *Welcome to Nova, ${name}!*\n\n` +
+        `I'm your AI assistant — more than a chatbot.\n\n` +
+        `💬 *Chat* — Ask me anything, get smart answers\n` +
+        `🎨 *Images* — Generate art from text, edit photos\n` +
+        `🔊 *Voice* — Convert any text to speech audio\n` +
+        `🔍 *Search* — Real-time web search with AI summaries\n` +
+        `🌐 *Build* — Create full websites & apps with AI\n` +
+        `📝 *Translate, Summarize, Analyze* — All in one place\n\n` +
+        `💡 You don't need commands — just type naturally!\n` +
+        `_"draw me a sunset"_ → generates it\n` +
+        `_"build a portfolio site"_ → builds it\n\n` +
+        `Take a quick tour to personalise your experience, or jump straight in 👇`,
+        { parse_mode: "Markdown", reply_markup: onboardingWelcomeKeyboard() }
       );
-      await bot.sendMessage(chatId, `What would you like to do first?`, { reply_markup: mainMenuKeyboard(user.activeMode) });
     } else {
-      await bot.sendMessage(chatId,
-        `Hey ${name}! Welcome back.`,
-        { reply_markup: mainMenuKeyboard(user.activeMode) }
-      );
+      // ── Returning user: personalised welcome back ─────────────────────────
+      const recentFeatures = user.recentFeatures ?? [];
+      const streakLine = streak > 1 ? `\n🔥 ${streak}-day streak — keep it going!` : "";
+      const premiumBadge = user.premium.active ? " ✨" : "";
+
+      let greeting = `👋 *Welcome back, ${name}${premiumBadge}!*${streakLine}`;
+
+      if (recentFeatures.length > 0) {
+        greeting += `\n\n*Quick access to your recent tools:*`;
+        await bot.sendMessage(chatId, greeting, {
+          parse_mode: "Markdown",
+          reply_markup: welcomeBackKeyboard(recentFeatures, user.activeMode),
+        });
+      } else {
+        greeting += `\n\nWhat would you like to do today?`;
+        await bot.sendMessage(chatId, greeting, {
+          parse_mode: "Markdown",
+          reply_markup: mainMenuKeyboard(user.activeMode),
+        });
+      }
     }
     return;
   }
@@ -625,6 +662,58 @@ export async function handlePrivateMessage(
     await bot.sendMessage(chatId,
       `🎁 Daily Reward Claimed!\n\n+${dailyAmount} credits added!\n💰 New balance: ${newBal} credits\n\nCome back in 20 hours for your next reward!`,
       { reply_markup: { inline_keyboard: [[{ text: "💰 Credits", callback_data: "credits_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+    );
+    return;
+  }
+
+  // /achievements — show earned badges
+  if (text === "/achievements") {
+    const badges = user.achievements ?? [];
+    const total = Object.keys((await import("../services/engagement.js")).ACHIEVEMENTS).length;
+    await bot.sendMessage(chatId,
+      formatAchievementsText(badges),
+      { parse_mode: "Markdown", reply_markup: achievementsKeyboard() }
+    );
+    return;
+  }
+
+  // /privacy — explain what data is stored and how to delete it
+  if (text === "/privacy") {
+    await bot.sendMessage(chatId,
+      `🔒 *Privacy & Your Data*\n\n` +
+      `Nova stores the following to work properly:\n\n` +
+      `• *Profile* — Name, Telegram ID, username\n` +
+      `• *Settings* — Your style, language, and preferences\n` +
+      `• *Chat Memory* — Recent conversation context (for better AI replies)\n` +
+      `• *Usage Stats* — Message counts and feature usage\n` +
+      `• *Projects* — Website/app builds you created\n` +
+      `• *Credits & Premium* — Your balance and subscription status\n\n` +
+      `🚫 *What we do NOT store:*\n` +
+      `• Your voice messages (discarded after transcription)\n` +
+      `• Payment details (processed externally)\n\n` +
+      `You can clear your chat memory with /forget, or request full data deletion below.`,
+      { parse_mode: "Markdown", reply_markup: privacyKeyboard() }
+    );
+    return;
+  }
+
+  // /updates — show what's new in Nova
+  if (text === "/updates" || text === "/whatsnew") {
+    await bot.sendMessage(chatId,
+      `✨ *What's New in Nova*\n\n` +
+      `🔥 *Recent Updates:*\n\n` +
+      `• 🎯 *Smart Suggestions* — After each action, Nova suggests what to try next\n` +
+      `• 🏆 *Achievements* — Earn badges as you use Nova (/achievements)\n` +
+      `• 🔥 *Login Streaks* — Track your daily activity streak\n` +
+      `• 🌐 *Website Builder* — Improved AI models with 4 fallbacks\n` +
+      `• 🔊 *Long Text TTS* — Voice now works for paragraphs, not just short phrases\n` +
+      `• 👋 *Personalized Welcome* — Quick-access shortcuts to your recent tools\n` +
+      `• 🔒 *Privacy Controls* — See and manage your stored data (/privacy)\n\n` +
+      `📢 *Coming Soon:*\n` +
+      `• 🎨 Image editing improvements\n` +
+      `• 📱 More AI personalities\n\n` +
+      `Have feedback? Use /feedback to share your thoughts!`,
+      { parse_mode: "Markdown", reply_markup: updatesKeyboard() }
     );
     return;
   }
@@ -1587,6 +1676,17 @@ export async function handlePrivateMessage(
   stopTyping();
   await sendAIReply(bot, chatId, reply);
 
+  // Track feature usage + check achievements (non-blocking)
+  Promise.all([
+    updateRecentFeatures(user.userId, "chat"),
+    trackFeature(user.userId, "chat"),
+    updateLoginStreak(user.userId),
+    checkAndGrantAchievements(user.userId, "chat").then(async (unlocked) => {
+      if (unlocked.length > 0) {
+        await bot.sendMessage(chatId, formatAchievementToast(unlocked), { parse_mode: "Markdown" }).catch(() => {});
+      }
+    }),
+  ]).catch(() => {});
 }
 
 

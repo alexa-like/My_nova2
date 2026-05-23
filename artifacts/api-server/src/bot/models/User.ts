@@ -53,6 +53,12 @@ export interface IUser extends Document {
   activeMode?: string;
   credits: number;
   referralRewardClaimed: boolean;
+  // ── Experience & personalization ────────────────────────────────────────────
+  recentFeatures: string[];      // last 5 feature keys used (e.g. "chat", "image", "build")
+  achievements: string[];        // earned achievement IDs
+  onboardingComplete: boolean;   // false = new user who hasn't finished onboarding
+  loginStreak: number;           // consecutive days the user has been active
+  lastActiveDate?: Date;         // date of last activity (for streak calculation)
 }
 
 const UserSchema = new Schema<IUser>(
@@ -115,6 +121,11 @@ const UserSchema = new Schema<IUser>(
     activeMode:    { type: String, default: "nova" },
     credits:       { type: Number, default: 50 },
     referralRewardClaimed: { type: Boolean, default: false },
+    recentFeatures:    { type: [String], default: [] },
+    achievements:      { type: [String], default: [] },
+    onboardingComplete:{ type: Boolean, default: false },
+    loginStreak:       { type: Number, default: 0 },
+    lastActiveDate:    { type: Date },
   },
   { timestamps: true }
 );

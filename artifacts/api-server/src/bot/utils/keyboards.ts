@@ -1019,3 +1019,139 @@ export function ttsKeyboard(): TelegramBot.InlineKeyboardMarkup {
     ],
   };
 }
+
+// ── Onboarding keyboards ──────────────────────────────────────────────────────
+
+export function onboardingWelcomeKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "🚀 Start Quick Tour", callback_data: "onboard_tour" }],
+      [{ text: "⏭ Skip — Take me to the menu", callback_data: "onboard_skip" }],
+    ],
+  };
+}
+
+export function onboardingStyleKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🤝 Friendly & Helpful", callback_data: "onboard_style_friendly" },
+        { text: "😄 Funny & Playful",    callback_data: "onboard_style_funny" },
+      ],
+      [
+        { text: "💼 Professional",        callback_data: "onboard_style_serious" },
+        { text: "⚖️ Balanced",            callback_data: "onboard_style_balanced" },
+      ],
+      [{ text: "⏭ Skip", callback_data: "onboard_skip" }],
+    ],
+  };
+}
+
+export function onboardingDoneKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "💬 Start Chatting",   callback_data: "ai_ask" }],
+      [{ text: "🎨 Generate an Image",callback_data: "img_generate" }],
+      [{ text: "🌐 Build a Website",  callback_data: "build_menu" }],
+      [{ text: "📋 See Full Menu",    callback_data: "main_menu" }],
+    ],
+  };
+}
+
+// ── Welcome-back keyboard (recent features as quick shortcuts) ────────────────
+
+export function welcomeBackKeyboard(
+  recentFeatures: string[],
+  activeMode?: string
+): TelegramBot.InlineKeyboardMarkup {
+  const FEATURE_BTNS: Record<string, { text: string; cb: string }> = {
+    chat:      { text: "💬 Chat",        cb: "ai_ask" },
+    image:     { text: "🎨 Image",       cb: "img_generate" },
+    build:     { text: "🌐 Build",       cb: "build_menu" },
+    tts:       { text: "🔊 Voice",       cb: "tts_btn" },
+    stt:       { text: "🎤 Transcribe",  cb: "stt_btn" },
+    search:    { text: "🔍 Search",      cb: "search_btn" },
+    translate: { text: "🌍 Translate",   cb: "ai_translate" },
+    summarize: { text: "📝 Summarize",   cb: "ai_summarize" },
+    sticker:   { text: "🖼️ Sticker",    cb: "sticker_btn" },
+    describe:  { text: "🔬 Describe",    cb: "ai_menu" },
+  };
+
+  const rows: TelegramBot.InlineKeyboardButton[][] = [];
+
+  // Recent feature quick-access (up to 3, in pairs)
+  const validFeatures = recentFeatures.filter(f => FEATURE_BTNS[f]).slice(0, 4);
+  if (validFeatures.length > 0) {
+    for (let i = 0; i < validFeatures.length; i += 2) {
+      const row: TelegramBot.InlineKeyboardButton[] = [];
+      for (let j = i; j < Math.min(i + 2, validFeatures.length); j++) {
+        const f = validFeatures[j];
+        row.push({ text: FEATURE_BTNS[f].text, callback_data: FEATURE_BTNS[f].cb });
+      }
+      rows.push(row);
+    }
+  }
+
+  rows.push([{ text: "📋 Full Menu", callback_data: "main_menu" }]);
+  return { inline_keyboard: rows };
+}
+
+// ── Achievements keyboard ─────────────────────────────────────────────────────
+
+export function achievementsKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "👤 My Profile",   callback_data: "settings_profile" },
+        { text: "⬅️ Menu",         callback_data: "main_menu" },
+      ],
+    ],
+  };
+}
+
+// ── Privacy keyboard ──────────────────────────────────────────────────────────
+
+export function privacyKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "🗑 Delete My Data",   callback_data: "privacy_delete_data" }],
+      [{ text: "🧹 Clear Memory",     callback_data: "forget_memory" }],
+      [{ text: "⬅️ Menu",             callback_data: "main_menu" }],
+    ],
+  };
+}
+
+// ── What's New / Updates keyboard ────────────────────────────────────────────
+
+export function updatesKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "📢 Send Feedback", callback_data: "feedback_btn" },
+        { text: "⬅️ Menu",          callback_data: "main_menu" },
+      ],
+    ],
+  };
+}
+
+// ── Build menu keyboard ───────────────────────────────────────────────────────
+
+export function buildMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🌐 Website",       callback_data: "build_website" },
+        { text: "⚛️ React App",     callback_data: "build_react" },
+      ],
+      [
+        { text: "🖥️ Dashboard",     callback_data: "build_dashboard" },
+        { text: "🛒 Landing Page",  callback_data: "build_landing" },
+      ],
+      [{ text: "✏️ Describe my idea...", callback_data: "build_custom" }],
+      [
+        { text: "📁 My Projects",   callback_data: "my_projects" },
+        { text: "⬅️ Menu",          callback_data: "main_menu" },
+      ],
+    ],
+  };
+}

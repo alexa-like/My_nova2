@@ -63,3 +63,40 @@ export async function getActiveUsers(windowMs = 86400000): Promise<number> {
     return 0;
   }
 }
+
+export async function getFeatureStats(days = 7): Promise<Record<string, number>> {
+  try {
+    const since = new Date(Date.now() - days * 86400000);
+    const results = await Analytics.aggregate([
+      { $match: { event: "feature", ts: { $gte: since } } },
+      { $group: { _id: "$meta.feature", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]);
+    const out: Record<string, number> = {};
+    for (const r of results) if (r._id) out[r._id] = r.count;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export async function getErrorRate(days = 1): Promise<number> {
+  try {
+    const since = new Date(Date.now() - days * 86400000);
+    const [total, errors] = await Promise.all([
+      Analytics.countDocuments({ ts: { $gte: since } }),
+      Analytics.countDocuments({ event: "error", ts: { $gte: since } }),
+    ]);
+    return total > 0 ? Math.round((errors / total) * 100) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function trackFeature(userId: number, feature: string): Promise<void> {
+  return track("feature", userId, undefined, { feature });
+}
+
+export async function trackError(userId: number | undefined, context: string, error: string): Promise<void> {
+  return track("error", userId, undefined, { context, error: error.slice(0, 200) });
+}
