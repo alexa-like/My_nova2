@@ -34,16 +34,17 @@ export async function addCredits(userId: number, amount: number): Promise<number
 }
 
 export async function deductCredits(userId: number, amount: number): Promise<{ success: boolean; credits: number }> {
-  const user = await User.findOne({ userId }).select("credits premium");
-  if (!user) return { success: false, credits: 0 };
-
-  const current = (user as any).credits ?? 0;
-  if (current < amount) {
-    return { success: false, credits: current };
+  // Atomic conditional update — prevents race conditions on concurrent requests
+  const result = await User.findOneAndUpdate(
+    { userId, credits: { $gte: amount } },
+    { $inc: { credits: -amount } },
+    { new: true, select: "credits" }
+  );
+  if (!result) {
+    const user = await User.findOne({ userId }).select("credits").lean();
+    return { success: false, credits: (user as any)?.credits ?? 0 };
   }
-  (user as any).credits = current - amount;
-  await user.save();
-  return { success: true, credits: (user as any).credits };
+  return { success: true, credits: (result as any).credits ?? 0 };
 }
 
 export async function resetCredits(userId: number, amount?: number): Promise<void> {

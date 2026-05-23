@@ -185,9 +185,11 @@ router.get("/admin/users", async (req, res) => {
     if (req.query.banned === "true") filter.banned = true;
     if (search) {
       const n = Number(search);
+      // Escape regex special chars to prevent ReDoS, cap length
+      const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").slice(0, 100);
       filter.$or = Number.isInteger(n) && n > 0
-        ? [{ userId: n }, { username: new RegExp(search, "i") }]
-        : [{ username: new RegExp(search, "i") }, { firstName: new RegExp(search, "i") }];
+        ? [{ userId: n }, { username: new RegExp(safeSearch, "i") }]
+        : [{ username: new RegExp(safeSearch, "i") }, { firstName: new RegExp(safeSearch, "i") }];
     }
     const [users, total] = await Promise.all([
       User.find(filter).sort({ lastSeen: -1 }).skip((page - 1) * limit).limit(limit).select("-__v"),
@@ -234,9 +236,11 @@ router.post("/admin/users/:userId/unban", async (req, res) => {
 // ── POST /api/admin/users/:userId/premium ───────────────────────────────────
 router.post("/admin/users/:userId/premium", async (req, res) => {
   try {
-    const { active, days } = req.body as { active: boolean; days?: number };
+    const { active } = req.body as { active: boolean; days?: number };
+    const rawDays = Number(req.body.days);
+    const days = Number.isFinite(rawDays) && rawDays > 0 && rawDays <= 36500 ? Math.floor(rawDays) : undefined;
     const update: Record<string, unknown> = { "premium.active": active };
-    if (active && days && days > 0) {
+    if (active && days) {
       update["premium.expiresAt"] = new Date(Date.now() + days * 86400000);
       update["premium.plan"] = `${days}d`;
     } else if (!active) {

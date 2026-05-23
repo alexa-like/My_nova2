@@ -188,18 +188,26 @@ export async function generateProject(
       continue;
     }
 
-    // Sanitize and validate files
+    // Sanitize and validate files — prevent path traversal and unsafe filenames
     parsed.files = parsed.files
       .filter((f) => f && typeof f.path === "string" && typeof f.content === "string")
-      .map((f) => ({
-        path: f.path
+      .map((f) => {
+        // Normalize separators, strip leading slashes, remove any traversal sequences
+        let safePath = f.path
+          .replace(/\\/g, "/")
           .replace(/^\/+/, "")
-          .replace(/\.\.\//g, "")
-          .replace(/[<>:"|?*]/g, ""),
-        content:
-          typeof f.content === "string" ? f.content : JSON.stringify(f.content, null, 2),
-      }))
-      .filter((f) => f.path.length > 0 && f.content.length > 0);
+          .replace(/[<>:"|?*\x00-\x1f]/g, "")
+          .replace(/\.{2,}/g, ".")     // collapse .. and ... into single dot
+          .replace(/\/\.+\//g, "/")    // remove hidden segments like /./ and /../
+          .replace(/\/+/g, "/")
+          .replace(/^\.+\//, "")       // strip leading dots
+          .slice(0, 255);
+        return {
+          path: safePath,
+          content: typeof f.content === "string" ? f.content : JSON.stringify(f.content, null, 2),
+        };
+      })
+      .filter((f) => f.path.length > 0 && f.content.length > 0 && !f.path.startsWith("."));
 
     if (parsed.files.length === 0) {
       logger.warn({ model }, "All generated files were invalid — trying next model");

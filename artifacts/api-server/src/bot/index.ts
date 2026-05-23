@@ -85,10 +85,15 @@ export async function startBot(): Promise<void> {
     },
   });
 
-  const botInfo = await bot.getMe();
-  const botUsername = botInfo.username || "NovaBot";
+  let botUsername = "NovaBot";
+  try {
+    const botInfo = await bot.getMe();
+    botUsername = botInfo.username || "NovaBot";
+    logger.info({ username: botUsername, id: botInfo.id }, "Nova bot started");
+  } catch (err) {
+    logger.warn({ err }, "Could not fetch bot info from Telegram — continuing with default username");
+  }
   _setBotUsername(botUsername);
-  logger.info({ username: botUsername, id: botInfo.id }, "Nova bot started");
 
   loadPendingReminders(bot).catch((err) => logger.warn({ err }, "Failed to load reminders"));
 
@@ -101,7 +106,7 @@ export async function startBot(): Promise<void> {
 
   // ── Register bot command menus ─────────────────────────────────────────────
   try {
-    await bot.setMyCommands([
+    await Promise.all([bot.setMyCommands([
       { command: "start", description: "Open Nova menu" },
       { command: "help", description: "Show all commands" },
       { command: "image", description: "Generate an image" },
@@ -134,9 +139,7 @@ export async function startBot(): Promise<void> {
       { command: "redeem", description: "Redeem a premium code" },
       { command: "forget", description: "Clear conversation memory" },
       { command: "cancel", description: "Cancel current action" },
-    ], { scope: { type: "all_private_chats" } });
-
-    await bot.setMyCommands([
+    ], { scope: { type: "all_private_chats" } }), bot.setMyCommands([
       { command: "help", description: "Show group commands" },
       { command: "settings", description: "Group settings (admins only)" },
       { command: "rules", description: "Show group rules" },
@@ -184,7 +187,7 @@ export async function startBot(): Promise<void> {
       { command: "sticker", description: "Generate a sticker (mention bot)" },
       { command: "search", description: "Search the web (mention bot)" },
       { command: "unwarn", description: "Remove one warning from a user (reply)" },
-    ], { scope: { type: "all_group_chats" } });
+    ], { scope: { type: "all_group_chats" } })]);
 
     logger.info("Bot command menus registered");
   } catch (err) {

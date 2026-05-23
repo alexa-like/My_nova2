@@ -597,6 +597,71 @@ export async function handlePrivateMessage(
     return;
   }
 
+  // /daily — claim daily credit reward
+  if (text === "/daily") {
+    const dailyCfg = await getOrCreateBotConfig();
+    const dailyAmount = dailyCfg.creditRewards?.dailyReward ?? 25;
+    const now = new Date();
+    const lastClaim = (user as any).lastDailyReward as Date | undefined;
+    if (lastClaim) {
+      const hoursSince = (now.getTime() - lastClaim.getTime()) / (1000 * 60 * 60);
+      if (hoursSince < 20) {
+        const hoursLeft = Math.ceil(20 - hoursSince);
+        await bot.sendMessage(chatId,
+          `🎁 Daily Reward\n\n⏳ You already claimed today's reward!\n\nNext reward in: ${hoursLeft}h\n\nCome back later for ${dailyAmount} more credits!`,
+          { reply_markup: { inline_keyboard: [[{ text: "📊 My Account", callback_data: "account_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+        );
+        return;
+      }
+    }
+    (user as any).lastDailyReward = now;
+    await user.save();
+    const newBal = await addCredits(user.userId, dailyAmount);
+    await bot.sendMessage(chatId,
+      `🎁 Daily Reward Claimed!\n\n+${dailyAmount} credits added!\n💰 New balance: ${newBal} credits\n\nCome back in 20 hours for your next reward!`,
+      { reply_markup: { inline_keyboard: [[{ text: "💰 Credits", callback_data: "credits_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+    );
+    return;
+  }
+
+  // /refer — show referral link
+  if (text === "/refer") {
+    if (!user.referralCode) {
+      user.referralCode = `NOVA${user.userId.toString(36).toUpperCase()}`;
+      await user.save();
+    }
+    const referralCfg = await getOrCreateBotConfig();
+    const referrerBonus = referralCfg.creditRewards?.referrer ?? 50;
+    const newUserBonus = referralCfg.creditRewards?.newUser ?? 20;
+    let botUsername = "nova_ai_bot";
+    try { const me = await bot.getMe(); botUsername = me.username ?? botUsername; } catch {}
+    const link = `https://t.me/${botUsername}?start=ref_${user.referralCode}`;
+    await bot.sendMessage(chatId,
+      `👥 Your Referral Link\n\nShare this link with friends!\n\n🔗 ${link}\n\nYour code: \`${user.referralCode}\`\nFriends referred: ${user.referrals?.length ?? 0}\n\nWhen a friend joins:\n• You get: +${referrerBonus} credits + 7 days VIP\n• They get: +${newUserBonus} credits + 3 days VIP`,
+      { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "📊 My Account", callback_data: "account_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+    );
+    return;
+  }
+
+  // /credits — show credit balance and menu
+  if (text === "/credits") {
+    const creditsCfg = await getOrCreateBotConfig();
+    const currentCredits = (user as any).credits ?? 0;
+    const hasPayment = (await import("../services/payment.js")).hasAnyPaymentProvider();
+    const { creditsMenuKeyboard: credKb } = await import("../utils/keyboards.js");
+    await bot.sendMessage(chatId,
+      `💰 Credits\n\nBalance: ${currentCredits} credits\n\nCredit costs:\n• 💬 Chat: 1 credit\n• 🎨 Image: 5 credits\n• 🌐 Build: 20 credits\n• 🔊 Voice: 3 credits\n\n${user.premium.active ? "⭐ VIP — No credit deductions!" : "Upgrade to VIP to skip all credit costs!"}`,
+      { reply_markup: credKb(hasPayment) }
+    );
+    return;
+  }
+
+  // /menu — show main menu
+  if (text === "/menu") {
+    await bot.sendMessage(chatId, e ? `Hey ${name}! What would you like to do?` : "Main menu:", { reply_markup: mainMenuKeyboard(user.activeMode) });
+    return;
+  }
+
   // /forget
   if (text === "/forget") {
     await clearMemory(user.userId, chatId);
@@ -633,18 +698,20 @@ export async function handlePrivateMessage(
     const imageLimit = await getImageLimit(user.premium.active);
     const daysSinceJoin = Math.floor((Date.now() - user.firstSeen.getTime()) / 86400000);
     const builds = user.usage.builds ?? 0;
+    const statsCredits = (user as any).credits ?? 0;
     await bot.sendMessage(chatId,
       `📊 Your Stats\n\n` +
       `👤 ${name}\n` +
       `🆔 ID: ${user.userId}\n` +
       `🗓️ Member for: ${daysSinceJoin} day${daysSinceJoin !== 1 ? "s" : ""}\n` +
-      `💎 Plan: ${premiumLine}\n\n` +
+      `💎 Plan: ${premiumLine}\n` +
+      `💰 Credits: ${statsCredits}\n\n` +
       `── Today ──\n` +
       `💬 Messages: ${user.usage.messages}\n` +
       `🖼️ Images: ${user.usage.images}/${imageLimit >= 999999 ? "∞" : imageLimit}\n\n` +
       `── All Time ──\n` +
       `🔨 Builds: ${builds}\n` +
-      `👥 Groups: ${user.groups.length}\n` +
+      `👥 Referrals: ${user.referrals?.length ?? 0}\n` +
       `🎭 Style: ${user.settings.style}\n` +
       `🌐 Language: ${user.settings.language || "en"}`,
       { reply_markup: { inline_keyboard: [[{ text: "👤 Profile", callback_data: "show_profile" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }

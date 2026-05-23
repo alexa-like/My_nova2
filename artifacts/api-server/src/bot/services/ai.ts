@@ -304,7 +304,9 @@ export async function chat(
   }
 
   memory.messages.push({ role: "user", content: userMessage, ts: new Date() });
-  if (memory.messages.length > MAX_SUMMARY_TRIGGER) {
+  // Trim with smooth sliding window: keep MAX_HISTORY most-recent messages
+  // (MAX_HISTORY < MAX_SUMMARY_TRIGGER ensures we trim before the array gets too large)
+  if (memory.messages.length > MAX_HISTORY) {
     memory.messages = memory.messages.slice(-MAX_HISTORY);
   }
 

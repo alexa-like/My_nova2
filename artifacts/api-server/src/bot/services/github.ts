@@ -94,21 +94,30 @@ export async function pushAllFiles(
   repoName: string,
   files: GitHubFile[],
   onProgress?: (done: number, total: number) => Promise<void>
-): Promise<void> {
+): Promise<{ pushed: number; failed: number }> {
   const BATCH_SIZE = 3;
   let done = 0;
+  let failed = 0;
 
   for (let i = 0; i < files.length; i += BATCH_SIZE) {
     const batch = files.slice(i, i + BATCH_SIZE);
-    await Promise.all(
+    const results = await Promise.allSettled(
       batch.map((f) => pushFile(token, username, repoName, f.path, f.content))
     );
+    for (const r of results) {
+      if (r.status === "rejected") {
+        failed++;
+        // Import logger lazily to avoid circular import
+        console.error(`[github] Failed to push file: ${r.reason?.message ?? r.reason}`);
+      }
+    }
     done = Math.min(i + BATCH_SIZE, files.length);
-    if (onProgress) await onProgress(done, files.length);
+    if (onProgress) await onProgress(done - failed, files.length);
     if (i + BATCH_SIZE < files.length) {
       await new Promise((r) => setTimeout(r, 400));
     }
   }
+  return { pushed: done - failed, failed };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

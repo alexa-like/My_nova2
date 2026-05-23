@@ -42,16 +42,22 @@ const PREMIUM_EMOJI_MAP: Record<string, string> = {
   "🏆": "5349679692496318930",
 };
 
+// Build a single combined regex once for O(N) replacement instead of O(M×N) per-message loop
+let _combinedRegex: RegExp | null = null;
+function getCombinedRegex(): RegExp {
+  if (_combinedRegex) return _combinedRegex;
+  const escaped = Object.keys(PREMIUM_EMOJI_MAP).map((e) =>
+    e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  );
+  _combinedRegex = new RegExp(escaped.join("|"), "g");
+  return _combinedRegex;
+}
+
 export function applyPremiumEmoji(text: string): string {
-  let result = text;
-  for (const [emoji, id] of Object.entries(PREMIUM_EMOJI_MAP)) {
-    const escaped = emoji.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    result = result.replace(
-      new RegExp(escaped, "g"),
-      `<tg-emoji emoji-id="${id}">${emoji}</tg-emoji>`
-    );
-  }
-  return result;
+  return text.replace(getCombinedRegex(), (emoji) => {
+    const id = PREMIUM_EMOJI_MAP[emoji];
+    return id ? `<tg-emoji emoji-id="${id}">${emoji}</tg-emoji>` : emoji;
+  });
 }
 
 export function escapeHtml(text: string): string {

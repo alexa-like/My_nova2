@@ -1996,7 +1996,6 @@ export async function handleCallbackQuery(
       if (!userRecord) { await answer(bot, query.id); return; }
       const credits = (userRecord as any).credits ?? 0;
       const isPrem = userRecord.premium.active;
-      const plan = isPrem ? (userRecord.premium.plan ?? "premium") : "free";
       const expiry = userRecord.premium.expiresAt ? ` (until ${formatDate(userRecord.premium.expiresAt)})` : "";
       const referrals = userRecord.referrals?.length ?? 0;
       await editMsg(bot, query,

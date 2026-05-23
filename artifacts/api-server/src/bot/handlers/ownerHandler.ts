@@ -318,13 +318,20 @@ export async function handleOwnerMessage(
     if (isNaN(targetId)) { await bot.sendMessage(chatId, "Usage: /lookup <user_id>"); return; }
     const u = await User.findOne({ userId: targetId });
     if (!u) { await bot.sendMessage(chatId, "User not found."); return; }
+    const userCredits = (u as any).credits ?? 0;
+    const premLine = u.premium.active
+      ? `Yes — ${u.premium.plan || "premium"}${u.premium.expiresAt ? ` (exp: ${formatDate(u.premium.expiresAt)})` : ""}`
+      : "No";
     await bot.sendMessage(
       chatId,
       `👤 User Lookup\n\n` +
         `ID: ${u.userId}\nName: ${u.firstName || "N/A"}\nUsername: ${u.username ? "@" + u.username : "N/A"}\n` +
-        `Premium: ${u.premium.active ? "Yes" : "No"}\nBanned: ${u.banned ? "Yes" : "No"}\n` +
+        `Premium: ${premLine}\nBanned: ${u.banned ? "Yes" : "No"}\n` +
+        `💰 Credits: ${userCredits}\n` +
         `Messages: ${u.usage.messages}  |  Images: ${u.usage.images}\n` +
-        `First seen: ${formatDate(u.firstSeen)}\nLast seen: ${formatDate(u.lastSeen)}`
+        `Referrals: ${u.referrals?.length ?? 0}  |  Code: ${(u as any).referralCode || "none"}\n` +
+        `First seen: ${formatDate(u.firstSeen)}\nLast seen: ${formatDate(u.lastSeen)}`,
+      { reply_markup: backToOwnerKeyboard() }
     );
     return;
   }
