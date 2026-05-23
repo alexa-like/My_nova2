@@ -153,7 +153,20 @@ const DEFAULT_IMAGE_MODELS: IModelEntry[] = [
   { id: "stable-diffusion-v1-5/stable-diffusion-v1-5",             name: "SD v1.5 — Reliable Fallback",       active: false },
 ];
 
+// ── In-memory cache — 30 s TTL — shared across all importers ─────────────────
+let _botConfigCache: IBotConfig | null = null;
+let _botConfigCachedAt = 0;
+const BOT_CONFIG_TTL_MS = 30_000;
+
+export function invalidateBotConfigCache(): void {
+  _botConfigCache = null;
+}
+
 export async function getOrCreateBotConfig(): Promise<IBotConfig> {
+  const now = Date.now();
+  if (_botConfigCache && now - _botConfigCachedAt < BOT_CONFIG_TTL_MS) {
+    return _botConfigCache;
+  }
   let config = await BotConfig.findOne();
   if (!config) {
     config = new BotConfig({
@@ -163,7 +176,8 @@ export async function getOrCreateBotConfig(): Promise<IBotConfig> {
       imageModels: DEFAULT_IMAGE_MODELS,
     });
     await config.save();
-    return config;
   }
+  _botConfigCache = config;
+  _botConfigCachedAt = now;
   return config;
 }

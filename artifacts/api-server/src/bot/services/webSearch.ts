@@ -154,21 +154,6 @@ async function instantAnswerFallback(query: string): Promise<SearchResult[]> {
   }
 }
 
-async function ddgJsonSearch(query: string): Promise<SearchResult[]> {
-  try {
-    const resp = await axios.get("https://duckduckgo.com/js/spice/search/1/", {
-      params: { q: query },
-      timeout: 10000,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; Nova-AI-Bot/2.0)",
-      },
-    });
-    return [];
-  } catch {
-    return [];
-  }
-}
-
 export async function webSearch(query: string): Promise<SearchResult[]> {
   try {
     const results = await scrapeHtmlResults(query);

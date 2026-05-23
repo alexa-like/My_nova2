@@ -12,23 +12,6 @@ const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 10 });
 const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 10 });
 const keepAliveAxios = axios.create({ httpAgent, httpsAgent });
 
-// ── BotConfig in-memory cache — avoid repeated DB hits ───────────────────────
-let _configCache: Awaited<ReturnType<typeof getOrCreateBotConfig>> | null = null;
-let _configCacheAt = 0;
-const CONFIG_TTL_MS = 30_000; // refresh every 30 seconds
-
-async function getCachedConfig() {
-  const now = Date.now();
-  if (_configCache && now - _configCacheAt < CONFIG_TTL_MS) return _configCache;
-  _configCache = await getOrCreateBotConfig();
-  _configCacheAt = now;
-  return _configCache;
-}
-
-export function invalidateConfigCache() {
-  _configCache = null;
-}
-
 // ── Fallback image models ─────────────────────────────────────────────────────
 const FALLBACK_MODELS = [
   "stabilityai/stable-diffusion-xl-base-1.0",
@@ -71,7 +54,7 @@ async function generateImagePollinations(prompt: string): Promise<Buffer | null>
 }
 
 // ── HuggingFace image generation ──────────────────────────────────────────────
-async function generateImageHuggingFace(prompt: string, config: Awaited<ReturnType<typeof getCachedConfig>>): Promise<Buffer | null> {
+async function generateImageHuggingFace(prompt: string, config: Awaited<ReturnType<typeof getOrCreateBotConfig>>): Promise<Buffer | null> {
   const token = process.env.HUGGINGFACE_API_TOKEN;
   if (!token) return null;
 
@@ -124,7 +107,7 @@ export async function generateImage(
   prompt: string,
   context?: "free" | "premium" | "group"
 ): Promise<Buffer | null> {
-  const config = await getCachedConfig();
+  const config = await getOrCreateBotConfig();
   const providers = config.providers;
 
   let imageProvider: "huggingface" | "pollinations" = "pollinations";
@@ -167,7 +150,7 @@ export async function generateImage(
  */
 async function raceImageProviders(
   prompt: string,
-  config: Awaited<ReturnType<typeof getCachedConfig>>,
+  config: Awaited<ReturnType<typeof getOrCreateBotConfig>>,
   hfPrimary: boolean
 ): Promise<Buffer | null> {
   type Result = { buf: Buffer | null; source: string };
@@ -285,7 +268,7 @@ export async function downloadTelegramPhoto(
 
 export async function getImageLimit(isPremium: boolean): Promise<number> {
   try {
-    const config = await getCachedConfig();
+    const config = await getOrCreateBotConfig();
     const n = isPremium ? config.usageLimits.premiumImages : config.usageLimits.freeImages;
     return n < 0 ? 999999 : n;
   } catch {

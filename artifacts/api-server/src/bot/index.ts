@@ -330,14 +330,17 @@ export async function startBot(): Promise<void> {
             });
           } catch {}
 
-          // Pre-generate shuffled choices so they stay consistent if the user re-opens the DM
+          // Pre-generate shuffled choices — deterministic offsets avoid an infinite loop
           const correctAnswer = captcha.answer;
-          const wrongAnswers = new Set<number>();
-          while (wrongAnswers.size < 3) {
-            const offset = Math.floor(Math.random() * 10) - 5;
-            const wrong = correctAnswer + offset;
-            if (wrong !== correctAnswer && wrong > 0) wrongAnswers.add(wrong);
+          const offsets = [-3, -2, -1, 1, 2, 3, 4, 5, 6, 7].sort(() => Math.random() - 0.5);
+          const wrongAnswers: number[] = [];
+          for (const off of offsets) {
+            const w = correctAnswer + off;
+            if (w > 0 && w !== correctAnswer && !wrongAnswers.includes(w)) wrongAnswers.push(w);
+            if (wrongAnswers.length >= 3) break;
           }
+          let pad = correctAnswer + 11;
+          while (wrongAnswers.length < 3) wrongAnswers.push(pad++);
           const choices = [...wrongAnswers, correctAnswer].sort(() => Math.random() - 0.5);
 
           captchaStore.set(captchaKey, {

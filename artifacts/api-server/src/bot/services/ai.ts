@@ -84,6 +84,7 @@ function buildSystemPrompt(
   const langMap: Record<string, string> = {
     en: "English", ar: "Arabic", fr: "French", es: "Spanish",
     de: "German", zh: "Chinese", hi: "Hindi", pt: "Portuguese",
+    ru: "Russian", ja: "Japanese",
   };
 
   const languageInstruction =

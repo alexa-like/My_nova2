@@ -1278,19 +1278,19 @@ export async function handlePrivateMessage(
         return;
       case "voice": {
         const ttsStatus = await bot.sendMessage(chatId, e ? "🔊 Converting to speech..." : "Converting...");
-        const stopTts = startTypingLoop(bot, chatId, "record_voice");
+        const stopTts = startTypingLoop(bot, chatId, "upload_video");
         try {
           const { generateTTS: ttsGen } = await import("../services/tts.js");
-          const audioBuf = await ttsGen(text);
+          const ttsResult = await ttsGen(text);
           stopTts();
           try { await bot.deleteMessage(chatId, ttsStatus.message_id); } catch {}
-          if (!audioBuf) {
+          if (!ttsResult) {
             await bot.sendMessage(chatId, "TTS generation failed. Please try again.",
               { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
             );
             return;
           }
-          await bot.sendVoice(chatId, audioBuf, {
+          await bot.sendVoice(chatId, ttsResult.buffer, {
             caption: text.substring(0, 100),
             reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } as any,
           });

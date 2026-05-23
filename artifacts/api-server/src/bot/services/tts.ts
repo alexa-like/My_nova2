@@ -90,7 +90,7 @@ async function ttsHuggingFace(text: string): Promise<TtsResult | null> {
       const status = err?.response?.status;
       if (status === 503 && attempt === 1) {
         logger.warn("HuggingFace TTS model loading — retrying");
-        await new Promise(r => setTimeout(r, 8000));
+        await new Promise(r => setTimeout(r, 5000));
         continue;
       }
       logger.warn({ err: err?.message, status }, "HuggingFace TTS failed");
@@ -108,7 +108,7 @@ export async function generateTTS(
   voice = "alloy"
 ): Promise<TtsResult | null> {
   // Always try StreamElements first — it's free, fast, and reliable
-  const seResult = await ttsStreamElements(text, "Brian");
+  const seResult = await ttsStreamElements(text, voice);
   if (seResult) return seResult;
 
   // OpenRouter next (if provider is openrouter or as fallback)
