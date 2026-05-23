@@ -91,6 +91,6 @@ export async function cancelReminder(reminderId: string, userId: number): Promis
   if (!r) return false;
   const timer = activeTimers.get(reminderId);
   if (timer) { clearTimeout(timer); activeTimers.delete(reminderId); }
-  await Reminder.findByIdAndUpdate(reminderId, { sent: true });
+  await Reminder.findByIdAndDelete(reminderId);
   return true;
 }

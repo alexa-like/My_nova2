@@ -82,22 +82,41 @@ export function isValidMode(id: string): id is ModeId {
   return MODES.some((m) => m.id === id);
 }
 
+// ── In-memory mode cache — 60 s TTL — avoids a DB hit per message ─────────────
+interface ModeCache { mode: ModeDefinition; cachedAt: number }
+const _modeCache = new Map<number, ModeCache>();
+const MODE_CACHE_TTL_MS = 60_000;
+
+// Purge stale entries every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - MODE_CACHE_TTL_MS;
+  for (const [uid, entry] of _modeCache.entries()) {
+    if (entry.cachedAt < cutoff) _modeCache.delete(uid);
+  }
+}, 5 * 60 * 1000).unref();
+
 export async function getUserMode(userId: number): Promise<ModeDefinition> {
+  const cached = _modeCache.get(userId);
+  if (cached && Date.now() - cached.cachedAt < MODE_CACHE_TTL_MS) {
+    return cached.mode;
+  }
   try {
     const user = await User.findOne({ userId }).select("activeMode").lean();
     const modeId = (user as any)?.activeMode;
-    if (modeId && isValidMode(modeId)) {
-      return getModeById(modeId) ?? getDefaultMode();
-    }
+    const mode = (modeId && isValidMode(modeId)) ? (getModeById(modeId) ?? getDefaultMode()) : getDefaultMode();
+    _modeCache.set(userId, { mode, cachedAt: Date.now() });
+    return mode;
   } catch (err) {
     logger.warn({ err, userId }, "Failed to get user mode — using default");
+    return getDefaultMode();
   }
-  return getDefaultMode();
 }
 
 export async function setUserMode(userId: number, modeId: ModeId): Promise<void> {
   try {
     await User.updateOne({ userId }, { activeMode: modeId });
+    const mode = getModeById(modeId) ?? getDefaultMode();
+    _modeCache.set(userId, { mode, cachedAt: Date.now() });
   } catch (err) {
     logger.error({ err, userId, modeId }, "Failed to set user mode");
   }

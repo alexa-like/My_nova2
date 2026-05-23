@@ -4,7 +4,7 @@ import { RedeemCode } from "../bot/models/RedeemCode.js";
 import { Memory } from "../bot/models/Memory.js";
 import { GroupSettings } from "../bot/models/GroupSettings.js";
 import { Analytics } from "../bot/models/Analytics.js";
-import { getOrCreateBotConfig } from "../bot/models/BotConfig.js";
+import { getOrCreateBotConfig, invalidateBotConfigCache } from "../bot/models/BotConfig.js";
 import { getDailySummary, getTopCommands, getActiveUsers } from "../bot/services/analytics.js";
 import { getBot } from "../bot/index.js";
 import { setMaintenance } from "../bot/utils/maintenanceState.js";
@@ -414,6 +414,7 @@ router.patch("/admin/config", async (req, res) => {
       if (key in req.body) (config as any)[key] = req.body[key];
     }
     await config.save();
+    invalidateBotConfigCache();
     if ("maintenanceMode" in req.body) setMaintenance(req.body.maintenanceMode);
     if ("premiumEmojiEnabled" in req.body) setPremiumEmojiEnabled(req.body.premiumEmojiEnabled);
     res.json({ success: true, config: config.toObject ? config.toObject() : config });
@@ -437,6 +438,7 @@ router.put("/admin/config/limits", async (req, res) => {
     }
     config.markModified("usageLimits");
     await config.save();
+    invalidateBotConfigCache();
     res.json({ success: true, usageLimits: config.usageLimits });
   } catch (err) { res.status(500).json({ error: "Failed to update limits" }); }
 });
@@ -449,6 +451,7 @@ router.post("/admin/maintenance", async (req, res) => {
     const config = await getOrCreateBotConfig();
     config.maintenanceMode = enabled;
     await config.save();
+    invalidateBotConfigCache();
     res.json({ success: true, maintenanceMode: enabled });
   } catch (err) { res.status(500).json({ error: "Failed to toggle maintenance" }); }
 });
@@ -461,6 +464,7 @@ router.post("/admin/premium-emoji", async (req, res) => {
     const config = await getOrCreateBotConfig();
     config.premiumEmojiEnabled = enabled;
     await config.save();
+    invalidateBotConfigCache();
     res.json({ success: true, premiumEmojiEnabled: enabled });
   } catch (err) { res.status(500).json({ error: "Failed to toggle premium emoji" }); }
 });

@@ -134,3 +134,11 @@ export function getPending(userId: number): PendingAction | null {
 export function clearPending(userId: number): void {
   store.delete(userId);
 }
+
+// Purge expired entries every 10 minutes to prevent unbounded memory growth
+setInterval(() => {
+  const now = Date.now();
+  for (const [uid, p] of store.entries()) {
+    if (now > p.expiresAt) store.delete(uid);
+  }
+}, 10 * 60 * 1000).unref();

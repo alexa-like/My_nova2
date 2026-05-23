@@ -7,7 +7,7 @@ import { formatDate, startTypingLoop, addDays } from "../utils/helpers.js";
 import { getImageLimit } from "../services/image.js";
 import { setPending } from "../utils/pendingActions.js";
 import { listUserReminders, cancelReminder } from "../services/reminder.js";
-import { getOrCreateBotConfig } from "../models/BotConfig.js";
+import { getOrCreateBotConfig, invalidateBotConfigCache } from "../models/BotConfig.js";
 import { sendOwnerPanel } from "./ownerHandler.js";
 import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
 import { analyzeImage } from "../services/imageAnalysis.js";
@@ -1593,6 +1593,7 @@ export async function handleCallbackQuery(
       if (!model) { await answer(bot, query.id, "Model not found."); return; }
       config.activeChatModel = model.id;
       await config.save();
+      invalidateBotConfigCache();
       await answer(bot, query.id, `✅ Switched to ${model.name}`);
       await editMsg(bot, query,
         `🧠 Chat AI Models\n━━━━━━━━━━━━━━━━\nActive: ${model.name}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
@@ -1609,6 +1610,7 @@ export async function handleCallbackQuery(
       if (!model) { await answer(bot, query.id, "Model not found."); return; }
       config.activeImageModel = model.id;
       await config.save();
+      invalidateBotConfigCache();
       await answer(bot, query.id, `✅ Switched to ${model.name}`);
       await editMsg(bot, query,
         `🖼 Image Models\n━━━━━━━━━━━━━━\nActive: ${model.name}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
@@ -1625,6 +1627,7 @@ export async function handleCallbackQuery(
       const removed = config.chatModels.splice(idx, 1)[0];
       if (config.activeChatModel === removed?.id) config.activeChatModel = config.chatModels[0].id;
       await config.save();
+      invalidateBotConfigCache();
       await answer(bot, query.id, `🗑 Removed ${removed?.name}`);
       const active = config.chatModels.find((m) => m.id === config.activeChatModel);
       await editMsg(bot, query,
@@ -1642,6 +1645,7 @@ export async function handleCallbackQuery(
       const removed = config.imageModels.splice(idx, 1)[0];
       if (config.activeImageModel === removed?.id) config.activeImageModel = config.imageModels[0].id;
       await config.save();
+      invalidateBotConfigCache();
       await answer(bot, query.id, `🗑 Removed ${removed?.name}`);
       await editMsg(bot, query,
         `🖼 Image Models\n━━━━━━━━━━━━━━\nActive: ${config.imageModels.find((m) => m.id === config.activeImageModel)?.name}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
@@ -2056,6 +2060,7 @@ export async function handleCallbackQuery(
         const config = await getOrCreateBotConfig();
         config.premiumEmojiEnabled = enable;
         await config.save();
+        invalidateBotConfigCache();
         setPremiumEmojiEnabled(enable);
         await answer(bot, query.id, enable ? "✨ Premium emoji ON" : "Premium emoji OFF");
         await editMsg(bot, query,
@@ -2171,6 +2176,7 @@ export async function handleCallbackQuery(
       const key = featureMap[data];
       (config.features as any)[key] = !((config.features as any)[key] !== false);
       await config.save();
+      invalidateBotConfigCache();
       const val = (config.features as any)[key];
       await answer(bot, query.id, `${val ? "✅ Enabled" : "❌ Disabled"}`);
       await editMsg(bot, query,
@@ -2223,6 +2229,7 @@ export async function handleCallbackQuery(
       if (prov === "pollinations") {
         config.providers[slotKey] = { provider: "pollinations", model: "openai" };
         await config.save();
+        invalidateBotConfigCache();
         await answer(bot, query.id, "✅ Switched to Pollinations");
         const p = config.providers;
         await editMsg(bot, query,
@@ -2256,6 +2263,7 @@ export async function handleCallbackQuery(
       const slotKey = `${slot}Chat` as "freeChat" | "premiumChat" | "groupChat";
       config.providers[slotKey] = { provider: "openrouter", model: model.id };
       await config.save();
+      invalidateBotConfigCache();
       await answer(bot, query.id, `✅ Set to ${model.name}`);
       const p = config.providers;
       await editMsg(bot, query,
@@ -2306,6 +2314,7 @@ export async function handleCallbackQuery(
       const imgKey = `${slot}Image` as "freeImage" | "premiumImage" | "groupImage";
       config.providers[imgKey] = prov;
       await config.save();
+      invalidateBotConfigCache();
       await answer(bot, query.id, `✅ Switched to ${prov}`);
       const p = config.providers;
       await editMsg(bot, query,
@@ -2336,6 +2345,7 @@ export async function handleCallbackQuery(
       const config = await getOrCreateBotConfig();
       config.providers.tts = prov;
       await config.save();
+      invalidateBotConfigCache();
       await answer(bot, query.id, `✅ TTS set to ${prov}`);
       const p = config.providers;
       await editMsg(bot, query,
@@ -2360,6 +2370,7 @@ export async function handleCallbackQuery(
       const config = await getOrCreateBotConfig();
       config.providers.ttsVoice = voice;
       await config.save();
+      invalidateBotConfigCache();
       await answer(bot, query.id, `✅ Voice set to ${voice}`);
       const p = config.providers;
       await editMsg(bot, query,

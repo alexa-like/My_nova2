@@ -3,7 +3,7 @@ import { IUser, User } from "../models/User.js";
 import { RedeemCode } from "../models/RedeemCode.js";
 import { Memory } from "../models/Memory.js";
 import { GroupSettings } from "../models/GroupSettings.js";
-import { getOrCreateBotConfig } from "../models/BotConfig.js";
+import { getOrCreateBotConfig, invalidateBotConfigCache } from "../models/BotConfig.js";
 import { addDays, formatDate } from "../utils/helpers.js";
 import { parseDuration } from "../models/RedeemCode.js";
 import { setPending } from "../utils/pendingActions.js";
@@ -744,6 +744,7 @@ export async function handleOwnerPendingText(
         }
         config.chatModels.push({ id: modelId, name: modelName, active: false });
         await config.save();
+        invalidateBotConfigCache();
         await bot.sendMessage(chatId, `✅ Chat model added!\n\nName: ${modelName}\nID: ${modelId}\n\nHead to 🧠 Chat Model in the dashboard to activate it.`, { reply_markup: backToOwnerKeyboard() });
         break;
       }
@@ -779,6 +780,7 @@ export async function handleOwnerPendingText(
         }
         config.imageModels.push({ id: modelId, name: modelName, active: false });
         await config.save();
+        invalidateBotConfigCache();
         await bot.sendMessage(chatId, `✅ Image model added!\n\nName: ${modelName}\nID: ${modelId}\n\nHead to 🖼 Image Model in the dashboard to activate it.`, { reply_markup: backToOwnerKeyboard() });
         break;
       }
@@ -800,6 +802,7 @@ export async function handleOwnerPendingText(
         }
         config.chatModels.push({ id: modelId, name: modelName, active: false });
         await config.save();
+        invalidateBotConfigCache();
         await bot.sendMessage(chatId, `✅ Chat model "${modelName}" added.`, { reply_markup: backToOwnerKeyboard() });
         break;
       }
@@ -815,6 +818,7 @@ export async function handleOwnerPendingText(
         const config = await getOrCreateBotConfig();
         config.imageModels.push({ id: modelId, name: modelName, active: false });
         await config.save();
+        invalidateBotConfigCache();
         await bot.sendMessage(chatId, `✅ Image model "${modelName}" added.`, { reply_markup: backToOwnerKeyboard() });
         break;
       }

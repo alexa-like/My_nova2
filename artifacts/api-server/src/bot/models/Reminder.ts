@@ -14,11 +14,14 @@ const ReminderSchema = new Schema<IReminder>(
     userId:    { type: Number, required: true, index: true },
     chatId:    { type: Number, required: true },
     message:   { type: String, required: true },
-    triggerAt: { type: Date, required: true },
-    sent:      { type: Boolean, default: false },
+    triggerAt: { type: Date, required: true, index: true },
+    sent:      { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
 );
+
+// Auto-delete fired reminders 30 days after they triggered
+ReminderSchema.index({ triggerAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60, partialFilterExpression: { sent: true } });
 
 export const Reminder = mongoose.model<IReminder>("Reminder", ReminderSchema);
 
