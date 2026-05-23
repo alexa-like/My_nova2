@@ -46,6 +46,7 @@ export interface IUser extends Document {
   feedbackCount: number;
   streak: number;
   lastDailyReward?: Date;
+  dailyRewardCount: number;
   bonusImages: number;
   referralCode?: string;
   referredBy?: number;
@@ -53,6 +54,16 @@ export interface IUser extends Document {
   activeMode?: string;
   credits: number;
   referralRewardClaimed: boolean;
+  // Onboarding
+  onboarded: boolean;
+  // Personalization
+  lastFeatures: string[];
+  // Engagement
+  achievements: string[];
+  totalMessages: number;
+  totalImages: number;
+  totalBuilds: number;
+  totalSearches: number;
 }
 
 const UserSchema = new Schema<IUser>(
@@ -108,6 +119,7 @@ const UserSchema = new Schema<IUser>(
     feedbackCount: { type: Number, default: 0 },
     streak:        { type: Number, default: 0 },
     lastDailyReward: { type: Date },
+    dailyRewardCount: { type: Number, default: 0 },
     bonusImages:   { type: Number, default: 0 },
     referralCode:  { type: String },
     referredBy:    { type: Number },
@@ -115,6 +127,16 @@ const UserSchema = new Schema<IUser>(
     activeMode:    { type: String, default: "nova" },
     credits:       { type: Number, default: 50 },
     referralRewardClaimed: { type: Boolean, default: false },
+    // Onboarding
+    onboarded:     { type: Boolean, default: false },
+    // Personalization
+    lastFeatures:  [{ type: String }],
+    // Engagement
+    achievements:  [{ type: String }],
+    totalMessages: { type: Number, default: 0 },
+    totalImages:   { type: Number, default: 0 },
+    totalBuilds:   { type: Number, default: 0 },
+    totalSearches: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

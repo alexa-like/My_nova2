@@ -51,6 +51,16 @@ import { parseDurationToMs } from "../models/Reminder.js";
 import { isPremiumEmojiEnabled, applyPremiumEmojiSafe } from "../utils/premiumEmoji.js";
 import { track } from "../services/analytics.js";
 import { logger } from "../../lib/logger.js";
+import { checkAndAwardAchievements, formatAchievementNotification, recordLastFeature, getLastFeatures, FEATURE_LABELS } from "../services/engagement.js";
+import { getSuggestionsKeyboard, getSuggestionLine } from "../services/suggestions.js";
+import { formatAnnouncements, getNewCount } from "../services/announcements.js";
+import {
+  onboardingWelcomeKeyboard,
+  privacyMenuKeyboard,
+  whatsNewKeyboard,
+  achievementsKeyboard,
+  mainMenuWithNewsKeyboard,
+} from "../utils/keyboards.js";
 
 // ── Per-user build/deploy cooldown (3 min) ────────────────────────────────────
 const BUILD_COOLDOWN_MS = 3 * 60 * 1000;
@@ -439,33 +449,98 @@ export async function handlePrivateMessage(
     }
     const isNew = Date.now() - user.firstSeen.getTime() < 30000;
     if (isNew) {
+      // Mark first message achievement
+      checkAndAwardAchievements(user.userId, { type: "message", count: 1 }).catch(() => {});
+      track("new_user", user.userId, chatId).catch(() => {});
       await bot.sendMessage(chatId,
         `👋 Welcome to Nova, ${name}!\n\n` +
-        `I'm your personal AI assistant — smarter than a chatbot, more powerful than a search engine.\n\n` +
-        `Here's what I can do:\n` +
-        `💬 Chat naturally — just type anything!\n` +
-        `🎨 Generate images & stickers\n` +
-        `🔊 Convert text to speech — /voice <text>\n` +
-        `🎤 Transcribe voice messages — /listen\n` +
-        `🔍 Search the web with AI synthesis\n` +
-        `⏰ Set reminders — /remind 1h Call mom\n` +
-        `📄 Read & analyze PDFs, DOCX, TXT files\n` +
-        `🔨 Build full websites & apps — /build <idea>\n` +
-        `🚀 Deploy live to Vercel — /deploy <idea>\n` +
-        `🌐 Translate text — just say "translate X to Spanish"\n` +
-        `📝 Summarize anything — paste text, say "summarize"\n\n` +
-        `💡 Tip: You don't need commands! Just type naturally:\n` +
-        `   "draw me a sunset" → generates an image\n` +
-        `   "build me a portfolio website" → builds it!\n\n` +
-        `Use the menu below to get started 👇`
+        `I'm your all-in-one AI assistant — chat, create, build, explore, and more.\n\n` +
+        `Want a quick 30-second tour to see what I can do?`
       );
-      await bot.sendMessage(chatId, `What would you like to do first?`, { reply_markup: mainMenuKeyboard(user.activeMode) });
+      await bot.sendMessage(chatId, `Or jump straight in — the menu has everything:`, {
+        reply_markup: onboardingWelcomeKeyboard(),
+      });
     } else {
-      await bot.sendMessage(chatId,
-        `Hey ${name}! Welcome back.`,
-        { reply_markup: mainMenuKeyboard(user.activeMode) }
-      );
+      // Welcome back with personalized quick access
+      const lastFeatures = await getLastFeatures(user.userId);
+      const hasNews = getNewCount() > 0;
+      let welcomeBack = `Hey ${name}! Welcome back.`;
+      if (user.streak && user.streak > 1) {
+        welcomeBack += `\n\n🔥 Streak: ${user.streak} days — keep it up!`;
+      }
+      if (lastFeatures.length > 0) {
+        const recents = lastFeatures
+          .map(f => FEATURE_LABELS[f])
+          .filter(Boolean)
+          .slice(0, 3);
+        if (recents.length > 0) {
+          welcomeBack += `\n\n⚡ Quick access to your recent tools:`;
+          const recentKeyboard: TelegramBot.InlineKeyboardMarkup = {
+            inline_keyboard: [
+              recents.map(f => ({ text: `${f.icon} ${f.label}`, callback_data: f.callback })),
+              [{ text: "🏠 Open Menu", callback_data: "main_menu" }],
+            ],
+          };
+          await bot.sendMessage(chatId, welcomeBack, { reply_markup: recentKeyboard });
+          return;
+        }
+      }
+      await bot.sendMessage(chatId, welcomeBack, {
+        reply_markup: mainMenuWithNewsKeyboard(user.activeMode, hasNews),
+      });
     }
+    return;
+  }
+
+  // /privacy — privacy & data transparency
+  if (text === "/privacy") {
+    track("privacy_view", user.userId, chatId).catch(() => {});
+    await bot.sendMessage(chatId,
+      `🔒 Privacy & Data\n\n` +
+      `Nova stores the following data about you:\n\n` +
+      `💬 Chat Memory — Your recent conversations so I can give contextual replies. Deleted when you clear memory.\n\n` +
+      `👤 Profile — Your Telegram name, username, and ID. Required to identify your account.\n\n` +
+      `⚙️ Preferences — Your style, language, mood, and settings. Stored to personalize responses.\n\n` +
+      `📊 Usage Stats — Message counts and feature usage. Used to enforce daily limits and track streaks.\n\n` +
+      `🔑 Tokens (if added) — GitHub, Vercel, and Render tokens are encrypted with AES-256. Not readable by anyone.\n\n` +
+      `📈 Analytics — Anonymous feature usage events. Used to improve the bot. Not shared with third parties.\n\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `Your data is never sold or shared. You can delete it at any time using the options below.`,
+      { reply_markup: privacyMenuKeyboard() }
+    );
+    return;
+  }
+
+  // /achievements — view earned badges
+  if (text === "/achievements") {
+    const earned = await getUserAchievements(user.userId);
+    const earnedIds = earned.map(a => a.id);
+    const totalAvailable = ACHIEVEMENTS.filter(a => !a.secret).length;
+    let msg = `🏅 Your Achievements (${earned.length}/${totalAvailable})\n\n`;
+    if (earned.length === 0) {
+      msg += `You haven't earned any achievements yet!\n\n`;
+      msg += `How to earn them:\n• Chat, generate images, build projects\n• Maintain daily streaks\n• Refer friends\n• Claim your daily reward`;
+    } else {
+      for (const a of earned) {
+        msg += `${a.icon} ${a.title} — ${a.description}\n`;
+      }
+      const locked = ACHIEVEMENTS.filter(a => !a.secret && !earnedIds.includes(a.id));
+      if (locked.length > 0) {
+        msg += `\n🔒 Still to unlock (${locked.length}):\n`;
+        for (const a of locked.slice(0, 5)) {
+          msg += `• ${a.title} — ${a.description}\n`;
+        }
+        if (locked.length > 5) msg += `...and ${locked.length - 5} more!`;
+      }
+    }
+    await bot.sendMessage(chatId, msg, { reply_markup: achievementsKeyboard() });
+    return;
+  }
+
+  // /whats_new — updates & announcements
+  if (text === "/whats_new" || text === "/whatsnew") {
+    track("whats_new_view", user.userId, chatId).catch(() => {});
+    await bot.sendMessage(chatId, formatAnnouncements(), { reply_markup: whatsNewKeyboard() });
     return;
   }
 
@@ -2541,8 +2616,11 @@ async function handleStickerGeneration(
       return;
     }
     user.usage.images += 1;
+    user.totalImages = (user.totalImages ?? 0) + 1;
     await user.save();
-    track("image_gen", user.userId, chatId, { type: "sticker" }).catch(() => {});
+    recordLastFeature(user.userId, "sticker").catch(() => {});
+    track("sticker_gen", user.userId, chatId).catch(() => {});
+    checkAndAwardAchievements(user.userId, { type: "image", count: user.totalImages ?? 0 }).catch(() => {});
     await bot.sendPhoto(chatId, imageBuffer, {
       caption: `🖼️ Sticker: ${prompt.substring(0, 80)}\n\n💡 Save this image → open Telegram Settings → Stickers → Create your own!`,
       reply_markup: { inline_keyboard: [[{ text: "🖼️ Make Another", callback_data: "sticker_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] },
@@ -2675,8 +2753,11 @@ async function handleImageGeneration(
     }
 
     user.usage.images += 1;
+    user.totalImages = (user.totalImages ?? 0) + 1;
     await user.save();
+    recordLastFeature(user.userId, "image").catch(() => {});
     track("image_gen", user.userId, chatId).catch(() => {});
+    checkAndAwardAchievements(user.userId, { type: "image", count: user.totalImages ?? 0 }).catch(() => {});
     await bot.sendPhoto(chatId, imageBuffer, { caption: prompt });
   } catch (err) {
     stopImgTyping();

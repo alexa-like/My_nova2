@@ -1019,3 +1019,174 @@ export function ttsKeyboard(): TelegramBot.InlineKeyboardMarkup {
     ],
   };
 }
+
+// ── Onboarding keyboards ──────────────────────────────────────────────────────
+
+export function onboardingWelcomeKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "🚀 Show me around!", callback_data: "onboard_step_1" }],
+      [{ text: "⏭️ Skip — take me to the menu", callback_data: "onboard_skip" }],
+    ],
+  };
+}
+
+export function onboardingStep1Keyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "Next: Images & Stickers →", callback_data: "onboard_step_2" }],
+      [{ text: "⏭️ Skip to menu", callback_data: "onboard_skip" }],
+    ],
+  };
+}
+
+export function onboardingStep2Keyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "Next: Build & Deploy →", callback_data: "onboard_step_3" }],
+      [{ text: "⏭️ Skip to menu", callback_data: "onboard_skip" }],
+    ],
+  };
+}
+
+export function onboardingStep3Keyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "Next: Rewards & Streaks →", callback_data: "onboard_step_4" }],
+      [{ text: "⏭️ Skip to menu", callback_data: "onboard_skip" }],
+    ],
+  };
+}
+
+export function onboardingDoneKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "🎉 Open Menu", callback_data: "onboard_done" }],
+      [{ text: "🔔 What's New", callback_data: "whats_new_menu" }],
+    ],
+  };
+}
+
+// ── Privacy keyboard ──────────────────────────────────────────────────────────
+
+export function privacyMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🗑️ Delete My Data", callback_data: "privacy_delete_data" },
+        { text: "📤 Export My Data", callback_data: "export_btn" },
+      ],
+      [{ text: "🧹 Clear Chat Memory", callback_data: "forget_memory" }],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+    ],
+  };
+}
+
+// ── What's New keyboard ───────────────────────────────────────────────────────
+
+export function whatsNewKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "⭐ Go Premium", callback_data: "settings_premium" },
+        { text: "🏅 Achievements", callback_data: "achievements_menu" },
+      ],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+    ],
+  };
+}
+
+// ── Achievements keyboard ─────────────────────────────────────────────────────
+
+export function achievementsKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🎁 Daily Reward", callback_data: "daily_reward" },
+        { text: "👥 Refer Friends", callback_data: "referral_menu" },
+      ],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+    ],
+  };
+}
+
+// ── Updated settings keyboard with Privacy ────────────────────────────────────
+
+export function settingsMenuWithPrivacyKeyboard(user: IUser): TelegramBot.InlineKeyboardMarkup {
+  const moodLabel = user.mood ? `😶 Mood: ${user.mood}` : "😶 Set Mood";
+  const githubLabel = user.github?.username ? `✅ GitHub` : "🔑 GitHub";
+  const emojiLabel = user.settings.emoji ? "😊 Emojis: ON" : "😑 Emojis: OFF";
+  const emojiCb = user.settings.emoji ? "settings_emoji_off" : "settings_emoji_on";
+  return {
+    inline_keyboard: [
+      [
+        { text: "👤 My Profile", callback_data: "settings_profile" },
+        { text: "📊 My Stats", callback_data: "show_stats" },
+      ],
+      [
+        { text: "🎭 AI Style", callback_data: "settings_style" },
+        { text: "📏 Reply Length", callback_data: "settings_length" },
+      ],
+      [
+        { text: "🌐 Language", callback_data: "settings_lang" },
+        { text: moodLabel, callback_data: "settings_mood" },
+      ],
+      [
+        { text: emojiLabel, callback_data: emojiCb },
+        { text: "🤖 AI Model", callback_data: "model_panel" },
+      ],
+      [
+        { text: "🧹 Clear Memory", callback_data: "settings_clear_memory" },
+        { text: "💎 Premium", callback_data: "settings_premium" },
+      ],
+      [
+        { text: githubLabel, callback_data: "settings_github" },
+        { text: "🚀 Deployments", callback_data: "settings_deployments" },
+      ],
+      [
+        { text: "🔒 Privacy", callback_data: "privacy_menu" },
+        { text: "🏅 Achievements", callback_data: "achievements_menu" },
+      ],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+    ],
+  };
+}
+
+// ── Main menu with What's New indicator ───────────────────────────────────────
+
+export function mainMenuWithNewsKeyboard(activeMode?: string, hasNews = false): TelegramBot.InlineKeyboardMarkup {
+  const mode = MODES.find(m => m.id === activeMode) ?? MODES[0];
+  const modeLabel = `${mode.icon} ${mode.name}`;
+  return {
+    inline_keyboard: [
+      [
+        { text: "💬 Chat", callback_data: "ai_menu" },
+        { text: "🎨 Create", callback_data: "img_menu" },
+      ],
+      [
+        { text: "🌐 Build", callback_data: "build_menu" },
+        { text: "🔍 Search", callback_data: "search_btn" },
+      ],
+      [
+        { text: "😄 Fun", callback_data: "fun_menu" },
+        { text: "🎮 Games", callback_data: "games_menu" },
+      ],
+      [
+        { text: "⏰ Reminders", callback_data: "reminders_btn" },
+        { text: `🎯 Mode: ${modeLabel}`, callback_data: "modes_menu" },
+      ],
+      [
+        { text: "🎁 Daily Reward", callback_data: "daily_reward" },
+        { text: "📊 My Account", callback_data: "account_menu" },
+      ],
+      [
+        { text: "💰 Credits", callback_data: "credits_menu" },
+        { text: "⭐ Go Premium", callback_data: "settings_premium" },
+      ],
+      [
+        { text: "⚙️ Settings", callback_data: "settings_menu" },
+        { text: hasNews ? "🆕 What's New!" : "🔔 What's New", callback_data: "whats_new_menu" },
+      ],
+    ],
+  };
+}

@@ -75,6 +75,20 @@ import { getUserMode, setUserMode, MODES, getModeById, isValidMode } from "../se
 import { logger } from "../../lib/logger.js";
 import { addCredits, getCredits } from "../services/credits.js";
 import { hasAnyPaymentProvider } from "../services/payment.js";
+import { checkAndAwardAchievements, formatAchievementNotification, getUserAchievements, getLastFeatures, FEATURE_LABELS, ACHIEVEMENTS } from "../services/engagement.js";
+import { formatAnnouncements } from "../services/announcements.js";
+import {
+  onboardingWelcomeKeyboard,
+  onboardingStep1Keyboard,
+  onboardingStep2Keyboard,
+  onboardingStep3Keyboard,
+  onboardingDoneKeyboard,
+  privacyMenuKeyboard,
+  whatsNewKeyboard,
+  achievementsKeyboard,
+  settingsMenuWithPrivacyKeyboard,
+  mainMenuWithNewsKeyboard,
+} from "../utils/keyboards.js";
 
 // ── Trivia questions ──────────────────────────────────────────────────────────
 
@@ -231,7 +245,7 @@ export async function handleCallbackQuery(
       if (!freshUser) return;
       await editMsg(bot, query,
         `Settings ⚙️\n\nStyle: ${freshUser.settings.style}  |  Lang: ${freshUser.settings.language || "en"}  |  Emojis: ${freshUser.settings.emoji ? "On" : "Off"}\nMood: ${freshUser.mood || "not set"}  |  Length: ${freshUser.settings.length}`,
-        settingsMenuKeyboard(freshUser)
+        settingsMenuWithPrivacyKeyboard(freshUser)
       );
       return;
     }
@@ -2684,6 +2698,164 @@ export async function handleCallbackQuery(
         `🔊 TTS Provider\n━━━━━━━━━━━━━━━━\nVoice updated to ${voice}.`,
         ownerTtsKeyboard(p.tts, p.ttsVoice)
       );
+      return;
+    }
+
+    // ── Onboarding flow ──────────────────────────────────────────────────────
+
+    if (data === "onboard_step_1") {
+      await answer(bot, query.id);
+      await editMsg(bot, query,
+        `💬 Step 1 of 4: AI Chat\n\n` +
+        `Just type anything and I'll respond intelligently.\n\n` +
+        `• Ask me questions, get advice, brainstorm ideas\n` +
+        `• I remember our conversation context automatically\n` +
+        `• You can set my personality with /style\n` +
+        `• Try different AI models with the Mode selector\n\n` +
+        `💡 Shortcut: Type "explain quantum computing" to try it right now.`,
+        onboardingStep1Keyboard()
+      );
+      return;
+    }
+
+    if (data === "onboard_step_2") {
+      await answer(bot, query.id);
+      await editMsg(bot, query,
+        `🎨 Step 2 of 4: Images & Stickers\n\n` +
+        `Create stunning images and custom Telegram stickers.\n\n` +
+        `• Type "draw me a sunset over mountains" → get an image\n` +
+        `• Use /sticker to create sticker-style art\n` +
+        `• Images are AI-generated from your description\n\n` +
+        `💡 Free users get ${3} images/day. Premium users get unlimited.`,
+        onboardingStep2Keyboard()
+      );
+      return;
+    }
+
+    if (data === "onboard_step_3") {
+      await answer(bot, query.id);
+      await editMsg(bot, query,
+        `🔨 Step 3 of 4: Build & Deploy\n\n` +
+        `Generate full apps and websites — and go live in seconds.\n\n` +
+        `• /build <idea> → generates your project files\n` +
+        `• /deploy <idea> → generates AND deploys live to Vercel\n` +
+        `• Push to GitHub with one tap\n` +
+        `• Supports React, Next.js, Node.js, Python, and more\n\n` +
+        `💡 Try: /build a todo app in React`,
+        onboardingStep3Keyboard()
+      );
+      return;
+    }
+
+    if (data === "onboard_step_4") {
+      await answer(bot, query.id);
+      await editMsg(bot, query,
+        `🏅 Step 4 of 4: Rewards & Streaks\n\n` +
+        `Nova rewards you for using it!\n\n` +
+        `🎁 Daily Reward — claim credits every 24 hours\n` +
+        `🔥 Streaks — use Nova daily to build your streak\n` +
+        `🏅 Achievements — 20+ badges to unlock by exploring features\n` +
+        `💰 Credits — spend on images, voice, and more\n` +
+        `👥 Referrals — share your link, earn bonus credits\n\n` +
+        `You're all set! Let's get started 🚀`,
+        onboardingDoneKeyboard()
+      );
+      return;
+    }
+
+    if (data === "onboard_skip" || data === "onboard_done") {
+      await answer(bot, query.id, data === "onboard_done" ? "Welcome to Nova! 🎉" : "Skipped — you can always ask /help");
+      try {
+        await bot.deleteMessage(chatId, query.message!.message_id);
+      } catch {}
+      // Mark user as onboarded
+      await User.findOneAndUpdate({ userId: user.userId }, { $set: { onboarded: true } });
+      track("onboarding_complete", user.userId, chatId, { skipped: data === "onboard_skip" }).catch(() => {});
+      const hasNews = true; // show What's New indicator after onboarding
+      await bot.sendMessage(chatId,
+        `${data === "onboard_done" ? "🎉 Let's go!" : "✅ No problem!"} Here's your menu — tap anything to explore.`,
+        { reply_markup: mainMenuWithNewsKeyboard(user.activeMode, hasNews) }
+      );
+      return;
+    }
+
+    // ── Privacy callbacks ────────────────────────────────────────────────────
+
+    if (data === "privacy_menu") {
+      await answer(bot, query.id);
+      track("privacy_view", user.userId, chatId).catch(() => {});
+      await editMsg(bot, query,
+        `🔒 Privacy & Data\n\n` +
+        `Nova stores the following data about you:\n\n` +
+        `💬 Chat Memory — Conversation context (cleared on demand)\n` +
+        `👤 Profile — Your Telegram name & ID\n` +
+        `⚙️ Preferences — Style, language, mood, settings\n` +
+        `📊 Usage Stats — Message counts, feature usage, streaks\n` +
+        `🔑 API Tokens — Encrypted with AES-256 if added\n` +
+        `📈 Analytics — Anonymous events (never sold or shared)\n\n` +
+        `You can delete or export your data at any time:`,
+        privacyMenuKeyboard()
+      );
+      return;
+    }
+
+    if (data === "privacy_delete_data") {
+      await answer(bot, query.id, "⚠️ This will permanently delete your account data.");
+      await editMsg(bot, query,
+        `🗑️ Delete All My Data\n\n` +
+        `⚠️ This will permanently delete:\n` +
+        `• Your chat memory and conversation history\n` +
+        `• Your profile, settings, and preferences\n` +
+        `• Your usage stats and achievements\n` +
+        `• All stored tokens and credentials\n\n` +
+        `This cannot be undone.\n\n` +
+        `To confirm, type: /deleteaccount`,
+        {
+          inline_keyboard: [
+            [{ text: "⬅️ Cancel", callback_data: "privacy_menu" }],
+          ],
+        }
+      );
+      return;
+    }
+
+    // ── What's New ───────────────────────────────────────────────────────────
+
+    if (data === "whats_new_menu") {
+      await answer(bot, query.id);
+      track("whats_new_view", user.userId, chatId).catch(() => {});
+      await editMsg(bot, query,
+        formatAnnouncements(),
+        whatsNewKeyboard()
+      );
+      return;
+    }
+
+    // ── Achievements ─────────────────────────────────────────────────────────
+
+    if (data === "achievements_menu") {
+      await answer(bot, query.id);
+      const earned = await getUserAchievements(user.userId);
+      const earnedIds = earned.map((a: any) => a.id);
+      const totalAvailable = ACHIEVEMENTS.filter(a => !a.secret).length;
+      let msg = `🏅 Your Achievements (${earned.length}/${totalAvailable})\n\n`;
+      if (earned.length === 0) {
+        msg += `You haven't earned any achievements yet!\n\n`;
+        msg += `How to earn them:\n• Chat with Nova daily\n• Generate images\n• Build projects\n• Claim daily rewards\n• Maintain streaks`;
+      } else {
+        for (const a of earned) {
+          msg += `${a.icon} ${a.title} — ${a.description}\n`;
+        }
+        const locked = ACHIEVEMENTS.filter((a: any) => !a.secret && !earnedIds.includes(a.id));
+        if (locked.length > 0) {
+          msg += `\n🔒 Still to unlock (${locked.length}):\n`;
+          for (const a of locked.slice(0, 5)) {
+            msg += `• ${a.title} — ${a.description}\n`;
+          }
+          if (locked.length > 5) msg += `...and ${locked.length - 5} more!`;
+        }
+      }
+      await editMsg(bot, query, msg, achievementsKeyboard());
       return;
     }
 
