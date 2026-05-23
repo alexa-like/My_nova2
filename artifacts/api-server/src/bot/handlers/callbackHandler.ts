@@ -224,21 +224,24 @@ export async function handleCallbackQuery(
     }
 
     if (data === "show_help") {
-      const badge = user.premium.active ? " (Premium)" : "";
+      const badge = user.premium.active ? " ✨ Premium" : "";
+      const currentMode = await getUserMode(userId);
       await editMsg(bot, query,
         `Nova Help${badge}\n\n` +
         `Just type anything to chat with me!\n\n` +
-        `Commands:\n` +
+        `Key Commands:\n` +
         `/image <prompt> — Generate an image\n` +
-        `/ask <question> — Quick answer\n` +
-        `/translate <text> — Translate to English\n` +
-        `/quote — Inspiring quote\n` +
-        `/fact — Fun fact\n` +
-        `/tip — Productivity tip\n` +
-        `/forget — Clear conversation memory\n` +
+        `/sticker <prompt> — Create a sticker\n` +
+        `/voice <text> — Text-to-speech\n` +
+        `/search <query> — Web search\n` +
+        `/build <idea> — Build a website or app\n` +
+        `/mode — Switch interaction mode\n` +
+        `/remind <time> <msg> — Set a reminder\n` +
+        `/translate <text> — Translate text\n` +
+        `/forget — Clear memory\n` +
         `/redeem <code> — Redeem premium code\n\n` +
-        `Or just tap the menu buttons — much easier!`,
-        backToMainKeyboard()
+        `Or use the menu below — no commands needed!`,
+        mainMenuKeyboard(currentMode.id)
       );
       return;
     }
@@ -610,6 +613,15 @@ export async function handleCallbackQuery(
       setPending(userId, "sticker_input");
       await editMsg(bot, query,
         `🖼️ Create Sticker\n\nDescribe what you want as a sticker:\n\n• happy cat waving\n• cute anime girl with stars\n• fire dragon emoji style\n• robot dancing`,
+        backToImgKeyboard()
+      );
+      return;
+    }
+
+    if (data === "tts_btn") {
+      setPending(userId, "voice_tts_input");
+      await editMsg(bot, query,
+        `🔊 Text-to-Speech\n\nType the text you want me to speak:\n\nTip: keep it under 300 characters for best results.`,
         backToImgKeyboard()
       );
       return;

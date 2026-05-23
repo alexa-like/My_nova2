@@ -485,7 +485,7 @@ export async function handlePrivateMessage(
       `📄 Send any PDF/TXT/DOCX — I'll read and analyze it!\n` +
       `🖼️ Send a photo — I'll describe or edit it!\n\n` +
       `Or tap a button below to explore everything 👇`,
-      { reply_markup: mainMenuKeyboard() }
+      { reply_markup: mainMenuKeyboard(user.activeMode) }
     );
     return;
   }
@@ -1736,11 +1736,11 @@ async function handlePendingText(
         break;
       }
       default:
-        await bot.sendMessage(chatId, "Something went wrong. Try again from the menu.", { reply_markup: mainMenuKeyboard() });
+        await bot.sendMessage(chatId, "Something went wrong. Try again from the menu.", { reply_markup: mainMenuKeyboard(user.activeMode) });
     }
   } catch (err) {
     logger.error({ err, actionType }, "Error handling pending text action");
-    await bot.sendMessage(chatId, "Something went wrong, try again later.", { reply_markup: mainMenuKeyboard() });
+    await bot.sendMessage(chatId, "Something went wrong, try again later.", { reply_markup: mainMenuKeyboard(user.activeMode) });
   } finally {
     stopTyping();
   }

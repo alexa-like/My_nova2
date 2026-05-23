@@ -7,25 +7,24 @@ import { MODES, ModeDefinition } from "../services/modeManager.js";
 
 export function mainMenuKeyboard(activeMode?: string): TelegramBot.InlineKeyboardMarkup {
   const mode = MODES.find(m => m.id === activeMode) ?? MODES[0];
+  const modeLabel = `${mode.icon} Mode: ${mode.name}`;
   return {
     inline_keyboard: [
       [
-        { text: "🤖 AI Tools", callback_data: "ai_menu" },
-        { text: "🎨 Image & Media", callback_data: "img_menu" },
+        { text: "🧠 AI Tools", callback_data: "ai_menu" },
+        { text: "🎨 Create", callback_data: "img_menu" },
       ],
       [
-        { text: "🌐 Build App/Website", callback_data: "build_menu" },
-      ],
-      [
-        { text: "🔍 Web Search", callback_data: "search_btn" },
-        { text: "⏰ Reminders", callback_data: "reminders_btn" },
+        { text: "🌐 Build", callback_data: "build_menu" },
+        { text: "🔍 Search", callback_data: "search_btn" },
       ],
       [
         { text: "😄 Fun", callback_data: "fun_menu" },
         { text: "🎮 Games", callback_data: "games_menu" },
       ],
       [
-        { text: `${mode.icon} Mode: ${mode.name}`, callback_data: "modes_menu" },
+        { text: "⏰ Reminders", callback_data: "reminders_btn" },
+        { text: modeLabel, callback_data: "modes_menu" },
       ],
       [
         { text: "⚙️ Settings", callback_data: "settings_menu" },
@@ -34,6 +33,8 @@ export function mainMenuKeyboard(activeMode?: string): TelegramBot.InlineKeyboar
     ],
   };
 }
+
+// ── Build result keyboard ─────────────────────────────────────────────────────
 
 export function buildResultKeyboard(
   repoUrl?: string,
@@ -56,12 +57,14 @@ export function buildResultKeyboard(
   return { inline_keyboard: buttons };
 }
 
+// ── Navigation shortcuts ──────────────────────────────────────────────────────
+
 export function backToMainKeyboard(): TelegramBot.InlineKeyboardMarkup {
   return { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] };
 }
 
 export function backToSettingsKeyboard(): TelegramBot.InlineKeyboardMarkup {
-  return { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "settings_menu" }]] };
+  return { inline_keyboard: [[{ text: "⬅️ Back to Settings", callback_data: "settings_menu" }]] };
 }
 
 export function backToFunKeyboard(): TelegramBot.InlineKeyboardMarkup {
@@ -83,7 +86,7 @@ export function funMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
     inline_keyboard: [
       [
         { text: "😂 Joke", callback_data: "fun_joke" },
-        { text: "🎱 8-Ball", callback_data: "fun_8ball" },
+        { text: "🎱 Magic 8-Ball", callback_data: "fun_8ball" },
       ],
       [
         { text: "💘 Ship Us", callback_data: "fun_ship" },
@@ -99,9 +102,9 @@ export function funMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
       ],
       [
         { text: "✨ Vibe Check", callback_data: "fun_vibe" },
-        { text: "💭 Truth", callback_data: "fun_truth" },
+        { text: "💭 Truth Question", callback_data: "fun_truth" },
       ],
-      [{ text: "⬅️ Back", callback_data: "main_menu" }],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
     ],
   };
 }
@@ -119,7 +122,7 @@ export function gamesMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
         { text: "📖 Word of the Day", callback_data: "fun_word" },
         { text: "🎲 Random Fact", callback_data: "fun_fact_game" },
       ],
-      [{ text: "⬅️ Back", callback_data: "main_menu" }],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
     ],
   };
 }
@@ -152,7 +155,7 @@ export function aiMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
-        { text: "💬 Ask AI", callback_data: "ai_ask" },
+        { text: "💬 Ask Nova", callback_data: "ai_ask" },
         { text: "📝 Summarize", callback_data: "ai_summarize" },
       ],
       [
@@ -165,9 +168,9 @@ export function aiMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
       ],
       [
         { text: "📜 History", callback_data: "history_btn" },
-        { text: "🔍 Web Search", callback_data: "search_btn" },
+        { text: "🧹 Clear Memory", callback_data: "forget_memory" },
       ],
-      [{ text: "⬅️ Back", callback_data: "main_menu" }],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
     ],
   };
 }
@@ -182,17 +185,18 @@ export function imageMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
         { text: "🎨 Style Presets", callback_data: "img_styles" },
       ],
       [
+        { text: "🖼️ Create Sticker", callback_data: "sticker_btn" },
+        { text: "🔊 Text-to-Speech", callback_data: "tts_btn" },
+      ],
+      [
         { text: "✏️ Edit via Prompt", callback_data: "img_edit" },
-        { text: "🔆 Enhance", callback_data: "img_enhance" },
+        { text: "🔆 Enhance Photo", callback_data: "img_enhance" },
       ],
       [
         { text: "🎭 Stylize", callback_data: "img_stylize" },
         { text: "🔧 Restore", callback_data: "img_restore" },
       ],
-      [
-        { text: "🖼️ Create Sticker", callback_data: "sticker_btn" },
-      ],
-      [{ text: "⬅️ Back", callback_data: "main_menu" }],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
     ],
   };
 }
@@ -246,8 +250,10 @@ export function moodPickerKeyboard(current?: string): TelegramBot.InlineKeyboard
     }
     rows.push(row);
   }
-  rows.push([{ text: "🗑️ Clear Mood", callback_data: "mood_clear" }]);
-  rows.push([{ text: "⬅️ Back", callback_data: "settings_menu" }]);
+  rows.push([
+    { text: "🗑️ Clear Mood", callback_data: "mood_clear" },
+    { text: "⬅️ Back", callback_data: "settings_menu" },
+  ]);
 
   return { inline_keyboard: rows };
 }
@@ -256,20 +262,14 @@ export function moodPickerKeyboard(current?: string): TelegramBot.InlineKeyboard
 
 export function settingsMenuKeyboard(user: IUser): TelegramBot.InlineKeyboardMarkup {
   const moodLabel = user.mood ? `😶 Mood: ${user.mood}` : "😶 Set Mood";
-  const githubLabel = user.github?.username ? `🔑 GitHub: @${user.github.username}` : "🔑 GitHub";
-  const vercelConnected = !!(user as any).vercelTokenEncrypted;
-  const renderConnected = !!(user as any).renderTokenEncrypted;
-  const deployLabel = vercelConnected || renderConnected
-    ? `🚀 Deployments ✅`
-    : "🚀 Deployments";
+  const githubLabel = user.github?.username ? `✅ GitHub` : "🔑 GitHub";
+  const emojiLabel = user.settings.emoji ? "😊 Emojis: ON" : "😑 Emojis: OFF";
+  const emojiCb = user.settings.emoji ? "settings_emoji_off" : "settings_emoji_on";
   return {
     inline_keyboard: [
       [
         { text: "👤 My Profile", callback_data: "settings_profile" },
-        {
-          text: user.settings.emoji ? "😊 Emojis: ON" : "😑 Emojis: OFF",
-          callback_data: user.settings.emoji ? "settings_emoji_off" : "settings_emoji_on",
-        },
+        { text: "📊 My Stats", callback_data: "show_stats" },
       ],
       [
         { text: "🎭 AI Style", callback_data: "settings_style" },
@@ -280,6 +280,7 @@ export function settingsMenuKeyboard(user: IUser): TelegramBot.InlineKeyboardMar
         { text: moodLabel, callback_data: "settings_mood" },
       ],
       [
+        { text: emojiLabel, callback_data: emojiCb },
         { text: "🤖 AI Model", callback_data: "model_panel" },
       ],
       [
@@ -288,9 +289,9 @@ export function settingsMenuKeyboard(user: IUser): TelegramBot.InlineKeyboardMar
       ],
       [
         { text: githubLabel, callback_data: "settings_github" },
-        { text: deployLabel, callback_data: "settings_deployments" },
+        { text: "🚀 Deployments", callback_data: "settings_deployments" },
       ],
-      [{ text: "⬅️ Back", callback_data: "main_menu" }],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
     ],
   };
 }
@@ -299,26 +300,20 @@ export function deploymentsKeyboard(
   hasVercel: boolean,
   hasRender: boolean
 ): TelegramBot.InlineKeyboardMarkup {
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: hasVercel ? "⚡ Vercel: Connected ✅" : "⚡ Vercel: Not set",
-          callback_data: "vercel_set_token",
-        },
-      ],
-      ...(hasVercel ? [[{ text: "🗑 Remove Vercel Token", callback_data: "vercel_remove_token" }]] : []),
-      [
-        {
-          text: hasRender ? "🟣 Render: Connected ✅" : "🟣 Render: Not set",
-          callback_data: "render_set_token",
-        },
-      ],
-      ...(hasRender ? [[{ text: "🗑 Remove Render Token", callback_data: "render_remove_token" }]] : []),
-      [{ text: "📁 My Projects", callback_data: "my_projects" }],
-      [{ text: "⬅️ Back to Settings", callback_data: "settings_menu" }],
-    ],
-  };
+  const rows: TelegramBot.InlineKeyboardButton[][] = [];
+  rows.push([{
+    text: hasVercel ? "⚡ Vercel: ✅ Connected" : "⚡ Vercel: Not set",
+    callback_data: "vercel_set_token",
+  }]);
+  if (hasVercel) rows.push([{ text: "🗑 Remove Vercel Token", callback_data: "vercel_remove_token" }]);
+  rows.push([{
+    text: hasRender ? "🟣 Render: ✅ Connected" : "🟣 Render: Not set",
+    callback_data: "render_set_token",
+  }]);
+  if (hasRender) rows.push([{ text: "🗑 Remove Render Token", callback_data: "render_remove_token" }]);
+  rows.push([{ text: "📁 My Projects", callback_data: "my_projects" }]);
+  rows.push([{ text: "⬅️ Back to Settings", callback_data: "settings_menu" }]);
+  return { inline_keyboard: rows };
 }
 
 export function projectsListKeyboard(
@@ -329,11 +324,10 @@ export function projectsListKeyboard(
   const slice = projects.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const rows: TelegramBot.InlineKeyboardButton[][] = slice.map((p, i) => {
     const globalIdx = page * PAGE_SIZE + i;
-    const row: TelegramBot.InlineKeyboardButton[] = [
+    return [
       { text: `📦 ${p.name}`, callback_data: `proj_open_${globalIdx}` },
       { text: "🗑", callback_data: `proj_del_${globalIdx}` },
     ];
-    return row;
   });
   const nav: TelegramBot.InlineKeyboardButton[] = [];
   if (page > 0) nav.push({ text: "◀️ Prev", callback_data: `proj_page_${page - 1}` });
@@ -363,6 +357,8 @@ export function githubSettingsKeyboard(
   return { inline_keyboard: rows };
 }
 
+// ── AI Style keyboard — 2 per row ─────────────────────────────────────────────
+
 export function styleMenuKeyboard(current: string): TelegramBot.InlineKeyboardMarkup {
   const styles: [string, string][] = [
     ["🤝 Friendly", "friendly"],
@@ -370,31 +366,31 @@ export function styleMenuKeyboard(current: string): TelegramBot.InlineKeyboardMa
     ["💼 Serious", "serious"],
     ["⚖️ Balanced", "balanced"],
   ];
-  return {
-    inline_keyboard: [
-      ...styles.map(([label, val]) => [
-        {
-          text: (val === current ? "✅ " : "") + label,
-          callback_data: `settings_style_${val}`,
-        },
-      ]),
-      [{ text: "⬅️ Back", callback_data: "settings_menu" }],
-    ],
-  };
+  const rows: TelegramBot.InlineKeyboardButton[][] = [];
+  for (let i = 0; i < styles.length; i += 2) {
+    const row: TelegramBot.InlineKeyboardButton[] = [];
+    for (let j = i; j < Math.min(i + 2, styles.length); j++) {
+      const [label, val] = styles[j];
+      row.push({ text: (val === current ? "✅ " : "") + label, callback_data: `settings_style_${val}` });
+    }
+    rows.push(row);
+  }
+  rows.push([{ text: "⬅️ Back", callback_data: "settings_menu" }]);
+  return { inline_keyboard: rows };
 }
+
+// ── Reply length keyboard ─────────────────────────────────────────────────────
 
 export function lengthMenuKeyboard(current: string): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
         {
-          text: (current === "short" ? "✅ " : "") + "📌 Short replies",
+          text: (current === "short" ? "✅ " : "") + "📌 Short",
           callback_data: "settings_length_short",
         },
-      ],
-      [
         {
-          text: (current === "long" ? "✅ " : "") + "📖 Long replies",
+          text: (current === "long" ? "✅ " : "") + "📖 Long",
           callback_data: "settings_length_long",
         },
       ],
@@ -402,6 +398,8 @@ export function lengthMenuKeyboard(current: string): TelegramBot.InlineKeyboardM
     ],
   };
 }
+
+// ── Language keyboard — 2 per row ─────────────────────────────────────────────
 
 export function langMenuKeyboard(current: string): TelegramBot.InlineKeyboardMarkup {
   const langs: [string, string][] = [
@@ -413,18 +411,20 @@ export function langMenuKeyboard(current: string): TelegramBot.InlineKeyboardMar
     ["🇨🇳 Chinese", "zh"],
     ["🇮🇳 Hindi", "hi"],
     ["🇧🇷 Portuguese", "pt"],
+    ["🇷🇺 Russian", "ru"],
+    ["🇯🇵 Japanese", "ja"],
   ];
-  return {
-    inline_keyboard: [
-      ...langs.map(([label, code]) => [
-        {
-          text: (code === current ? "✅ " : "") + label,
-          callback_data: `settings_lang_${code}`,
-        },
-      ]),
-      [{ text: "⬅️ Back", callback_data: "settings_menu" }],
-    ],
-  };
+  const rows: TelegramBot.InlineKeyboardButton[][] = [];
+  for (let i = 0; i < langs.length; i += 2) {
+    const row: TelegramBot.InlineKeyboardButton[] = [];
+    for (let j = i; j < Math.min(i + 2, langs.length); j++) {
+      const [label, code] = langs[j];
+      row.push({ text: (code === current ? "✅ " : "") + label, callback_data: `settings_lang_${code}` });
+    }
+    rows.push(row);
+  }
+  rows.push([{ text: "⬅️ Back", callback_data: "settings_menu" }]);
+  return { inline_keyboard: rows };
 }
 
 // ── Would You Rather keyboard ─────────────────────────────────────────────────
@@ -433,8 +433,8 @@ export function wyrKeyboard(idx: number): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
-        { text: "🅰️  Option A", callback_data: `wyr_a_${idx}` },
-        { text: "🅱️  Option B", callback_data: `wyr_b_${idx}` },
+        { text: "🅰️ Option A", callback_data: `wyr_a_${idx}` },
+        { text: "🅱️ Option B", callback_data: `wyr_b_${idx}` },
       ],
       [
         { text: "🔀 New Question", callback_data: "fun_wyr" },
@@ -460,7 +460,7 @@ export function repeatKeyboard(
   };
 }
 
-// ── Trivia game ───────────────────────────────────────────────────────────────
+// ── Trivia game keyboard ──────────────────────────────────────────────────────
 
 export function triviaKeyboard(
   questionIdx: number,
@@ -487,7 +487,7 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
   return {
     inline_keyboard: [
       [
-        { text: "📊 Full Stats", callback_data: "own_stats" },
+        { text: "📊 Stats", callback_data: "own_stats" },
         { text: "👥 Users", callback_data: "own_users" },
       ],
       [
@@ -524,7 +524,6 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
     ],
   };
 }
-
 
 export function backToOwnerKeyboard(): TelegramBot.InlineKeyboardMarkup {
   return { inline_keyboard: [[{ text: "⬅️ Back to Dashboard", callback_data: "own_panel" }]] };
@@ -648,14 +647,15 @@ export function ownerImageModelsKeyboard(
   };
 }
 
-
 // ── Owner: Provider & Feature keyboards ──────────────────────────────────────
 
 export function ownerProvidersKeyboard(): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      [{ text: "💬 Chat Providers", callback_data: "own_chat_providers" }],
-      [{ text: "🖼 Image Providers", callback_data: "own_img_providers" }],
+      [
+        { text: "💬 Chat Providers", callback_data: "own_chat_providers" },
+        { text: "🖼 Image Providers", callback_data: "own_img_providers" },
+      ],
       [{ text: "🔊 TTS Provider", callback_data: "own_tts_provider" }],
       [{ text: "⬅️ Back", callback_data: "own_panel" }],
     ],
@@ -670,22 +670,26 @@ export function ownerFeaturesKeyboard(features: {
 }): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      [{
-        text: features.imageEnabled ? "🖼 Image Gen: ✅ ON" : "🖼 Image Gen: ❌ OFF",
-        callback_data: "own_feat_image",
-      }],
-      [{
-        text: features.ttsEnabled ? "🔊 TTS (Voice): ✅ ON" : "🔊 TTS (Voice): ❌ OFF",
-        callback_data: "own_feat_tts",
-      }],
-      [{
-        text: features.sttEnabled ? "🎤 STT (Listen): ✅ ON" : "🎤 STT (Listen): ❌ OFF",
-        callback_data: "own_feat_stt",
-      }],
-      [{
-        text: features.imageAnalysisEnabled ? "🔍 Image Analysis: ✅ ON" : "🔍 Image Analysis: ❌ OFF",
-        callback_data: "own_feat_imganalyze",
-      }],
+      [
+        {
+          text: features.imageEnabled ? "🖼 Images: ✅" : "🖼 Images: ❌",
+          callback_data: "own_feat_image",
+        },
+        {
+          text: features.ttsEnabled ? "🔊 TTS: ✅" : "🔊 TTS: ❌",
+          callback_data: "own_feat_tts",
+        },
+      ],
+      [
+        {
+          text: features.sttEnabled ? "🎤 STT: ✅" : "🎤 STT: ❌",
+          callback_data: "own_feat_stt",
+        },
+        {
+          text: features.imageAnalysisEnabled ? "🔍 Vision: ✅" : "🔍 Vision: ❌",
+          callback_data: "own_feat_imganalyze",
+        },
+      ],
       [{ text: "⬅️ Back", callback_data: "own_panel" }],
     ],
   };
@@ -697,8 +701,8 @@ export function ownerChatProvidersKeyboard(providers: {
   groupChat: { provider: string; model: string };
 }): TelegramBot.InlineKeyboardMarkup {
   const label = (slot: { provider: string; model: string }) => {
-    if (slot.provider === "pollinations") return "Pollinations (free)";
-    return `OpenRouter: ${slot.model.split("/").pop()?.replace(/:free$/, "") || slot.model}`;
+    if (slot.provider === "pollinations") return "Pollinations";
+    return `OR: ${slot.model.split("/").pop()?.replace(/:free$/, "") || slot.model}`;
   };
   return {
     inline_keyboard: [
@@ -724,9 +728,9 @@ export function ownerPickOpenRouterModelKeyboard(
   slot: string,
   models: IModelEntry[]
 ): TelegramBot.InlineKeyboardMarkup {
-  const rows = models.map(m => [{
+  const rows = models.map((m, i) => [{
     text: m.name,
-    callback_data: `own_chat_model_${slot}_${models.indexOf(m)}`,
+    callback_data: `own_chat_model_${slot}_${i}`,
   }]);
   return {
     inline_keyboard: [
@@ -764,15 +768,17 @@ export function ownerPickImageProviderKeyboard(slot: string): TelegramBot.Inline
 export function ownerTtsKeyboard(tts: string, ttsVoice: string): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      [{
-        text: tts === "huggingface" ? "✅ HuggingFace SpeechT5" : "HuggingFace SpeechT5",
-        callback_data: "own_tts_prov_huggingface",
-      }],
-      [{
-        text: tts === "openrouter" ? "✅ OpenRouter TTS" : "OpenRouter TTS",
-        callback_data: "own_tts_prov_openrouter",
-      }],
-      [{ text: `🎙 Voice: ${ttsVoice} (tap to change)`, callback_data: "own_tts_voice" }],
+      [
+        {
+          text: tts === "huggingface" ? "✅ HuggingFace" : "HuggingFace",
+          callback_data: "own_tts_prov_huggingface",
+        },
+        {
+          text: tts === "openrouter" ? "✅ OpenRouter" : "OpenRouter",
+          callback_data: "own_tts_prov_openrouter",
+        },
+      ],
+      [{ text: `🎙 Voice: ${ttsVoice}`, callback_data: "own_tts_voice" }],
       [{ text: "⬅️ Back", callback_data: "own_providers" }],
     ],
   };
@@ -780,12 +786,12 @@ export function ownerTtsKeyboard(tts: string, ttsVoice: string): TelegramBot.Inl
 
 export function ownerPickTtsVoiceKeyboard(): TelegramBot.InlineKeyboardMarkup {
   const voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
-  return {
-    inline_keyboard: [
-      ...voices.map(v => [{ text: v, callback_data: `own_tts_voice_${v}` }]),
-      [{ text: "⬅️ Back", callback_data: "own_tts_provider" }],
-    ],
-  };
+  const rows: TelegramBot.InlineKeyboardButton[][] = [];
+  for (let i = 0; i < voices.length; i += 3) {
+    rows.push(voices.slice(i, i + 3).map(v => ({ text: v, callback_data: `own_tts_voice_${v}` })));
+  }
+  rows.push([{ text: "⬅️ Back", callback_data: "own_tts_provider" }]);
+  return { inline_keyboard: rows };
 }
 
 // ── User: AI Model selection keyboard ─────────────────────────────────────────
@@ -795,12 +801,12 @@ export function userModelKeyboard(
   preferredId?: string,
   globalActiveId?: string
 ): TelegramBot.InlineKeyboardMarkup {
-  const modelRows = models.map((m) => {
+  const modelRows = models.map((m, i) => {
     const isSelected = m.id === (preferredId || globalActiveId);
     return [
       {
         text: (isSelected ? "✅ " : "") + m.name,
-        callback_data: `model_pick_${models.indexOf(m)}`,
+        callback_data: `model_pick_${i}`,
       },
     ];
   });
@@ -813,8 +819,8 @@ export function userModelKeyboard(
   };
 }
 
+// ── Group Settings keyboard ───────────────────────────────────────────────────
 
-// ── Group Settings keyboard (admin-only, sent in group) ───────────────────────
 export function groupSettingsKeyboard(
   gs: {
     aiEnabled: boolean; style: string; emoji: boolean; length: string;
@@ -853,7 +859,7 @@ export function groupSettingsKeyboard(
       ],
       [
         { text: `📋 Rules`, callback_data: `grp_rules_${c}` },
-        { text: `👋 Goodbye msg`, callback_data: `grp_goodbye_${c}` },
+        { text: `👋 Goodbye`, callback_data: `grp_goodbye_${c}` },
       ],
       [{ text: "❌ Close", callback_data: "grp_settings_close" }],
     ],
@@ -865,21 +871,28 @@ export function groupStyleKeyboard(chatId: number, current: string): TelegramBot
   const styles = ["friendly", "funny", "serious", "balanced"];
   return {
     inline_keyboard: [
-      styles.map(s => ({ text: (s === current ? "✅ " : "") + s, callback_data: `grp_setstyle_${s}_${c}` })),
+      styles.slice(0, 2).map(s => ({ text: (s === current ? "✅ " : "") + s, callback_data: `grp_setstyle_${s}_${c}` })),
+      styles.slice(2).map(s => ({ text: (s === current ? "✅ " : "") + s, callback_data: `grp_setstyle_${s}_${c}` })),
       [{ text: "⬅️ Back", callback_data: `grp_back_${c}` }],
     ],
   };
 }
 
 // ── Daily reward keyboard ─────────────────────────────────────────────────────
+
 export function dailyRewardKeyboard(): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [{ text: "🎁 Claim Daily Reward", callback_data: "daily_claim" }],
-      [{ text: "👥 Refer a Friend", callback_data: "refer_link" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+      [
+        { text: "👥 Refer a Friend", callback_data: "refer_link" },
+        { text: "⬅️ Menu", callback_data: "main_menu" },
+      ],
     ],
   };
 }
+
+// ── Owner user list pagination ────────────────────────────────────────────────
 
 export function ownerUserListKeyboard(
   page: number,
@@ -913,15 +926,27 @@ export function modeSelectKeyboard(activeMode: string): TelegramBot.InlineKeyboa
     }
     rows.push(row);
   }
-  rows.push([{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]);
+  rows.push([{ text: "⬅️ Menu", callback_data: "main_menu" }]);
   return { inline_keyboard: rows };
 }
 
 export function currentModeKeyboard(mode: ModeDefinition): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      [{ text: "🔄 Switch Mode", callback_data: "modes_menu" }],
-      [{ text: "⬅️ Back to Menu", callback_data: "main_menu" }],
+      [
+        { text: "🔄 Switch Mode", callback_data: "modes_menu" },
+        { text: "⬅️ Menu", callback_data: "main_menu" },
+      ],
+    ],
+  };
+}
+
+// ── TTS keyboard ──────────────────────────────────────────────────────────────
+
+export function ttsKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "⬅️ Back", callback_data: "img_menu" }],
     ],
   };
 }
