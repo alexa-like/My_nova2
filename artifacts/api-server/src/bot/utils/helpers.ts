@@ -46,6 +46,78 @@ export function startTypingLoop(
   return () => clearInterval(interval);
 }
 
+/**
+ * Sends a live status message that animates with cycling dots and can be
+ * updated to show new text (e.g. "🔄 Trying backup model...").
+ * Also keeps the Telegram typing indicator alive.
+ *
+ * Usage:
+ *   const status = await startLiveStatus(bot, chatId, "🔨 Building your website");
+ *   status.update("🔄 Trying backup model");
+ *   status.stop();
+ *   await status.delete();
+ */
+export async function startLiveStatus(
+  bot: TelegramBot,
+  chatId: number,
+  initialText: string,
+  action: "typing" | "upload_photo" | "upload_video" = "typing"
+): Promise<{
+  update: (text: string) => void;
+  stop: () => void;
+  msgId: number | null;
+  delete: () => Promise<void>;
+}> {
+  let msgId: number | null = null;
+  let currentText = initialText;
+  let dotCount = 1;
+  let stopped = false;
+
+  try {
+    const m = await bot.sendMessage(chatId, initialText + ".");
+    msgId = m.message_id;
+  } catch {}
+
+  bot.sendChatAction(chatId, action).catch(() => {});
+
+  const interval = setInterval(async () => {
+    if (stopped) return;
+    bot.sendChatAction(chatId, action).catch(() => {});
+    if (msgId) {
+      dotCount = (dotCount % 3) + 1;
+      const dots = ".".repeat(dotCount);
+      try {
+        await bot.editMessageText(currentText + dots, {
+          chat_id: chatId,
+          message_id: msgId,
+        });
+      } catch {}
+    }
+  }, 2000);
+
+  return {
+    update(text: string) {
+      currentText = text;
+      dotCount = 1;
+      if (msgId && !stopped) {
+        bot.editMessageText(text + ".", { chat_id: chatId, message_id: msgId }).catch(() => {});
+      }
+    },
+    stop() {
+      stopped = true;
+      clearInterval(interval);
+    },
+    msgId,
+    async delete() {
+      stopped = true;
+      clearInterval(interval);
+      if (msgId) {
+        try { await bot.deleteMessage(chatId, msgId); } catch {}
+      }
+    },
+  };
+}
+
 const MAX_MSG_LEN = 4000;
 
 /**

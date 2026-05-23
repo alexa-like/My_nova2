@@ -5,7 +5,7 @@ import { chat, clearMemory } from "../services/ai.js";
 import { generateImage, getImageLimit, editImage, downloadTelegramPhoto } from "../services/image.js";
 import { analyzeImage } from "../services/imageAnalysis.js";
 import { isRateLimited } from "../utils/rateLimiter.js";
-import { formatDate, addDays, getUserName, safeSend, startTypingLoop } from "../utils/helpers.js";
+import { formatDate, addDays, getUserName, safeSend, startTypingLoop, startLiveStatus } from "../utils/helpers.js";
 import { parseDuration } from "../models/RedeemCode.js";
 import { Memory } from "../models/Memory.js";
 import { getPending, clearPending, setPending, PHOTO_ACTIONS, OWNER_PENDING_ACTIONS } from "../utils/pendingActions.js";
@@ -295,17 +295,16 @@ export async function handleVoiceMessage(
     return;
   }
 
-  const statusMsg = await bot.sendMessage(chatId, "🎤 Transcribing your voice message...");
-  const stopTyping = startTypingLoop(bot, chatId);
+  const status = await startLiveStatus(bot, chatId, "🎤 Transcribing your voice message");
   try {
     const file = await bot.getFile(voice.file_id);
     const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
     const response = await fetch(fileUrl);
     if (!response.ok) throw new Error("Failed to download voice file");
     const buffer = Buffer.from(await response.arrayBuffer());
-    stopTyping();
     const transcript = await transcribeAudio(buffer);
-    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+    status.stop();
+    await status.delete();
     if (!transcript) {
       await bot.sendMessage(chatId, "Could not transcribe your voice message. Please try again or type your message.");
       return;
@@ -314,9 +313,9 @@ export async function handleVoiceMessage(
       { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
     );
   } catch (err) {
-    stopTyping();
+    status.stop();
+    await status.delete();
     logger.error({ err }, "Voice transcription error");
-    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
     await bot.sendMessage(chatId, "Voice transcription failed. Please type your message instead.");
   }
 }
@@ -943,26 +942,26 @@ export async function handlePrivateMessage(
       );
       return;
     }
-    const statusMsg = await bot.sendMessage(chatId, "🔍 Searching the web...");
-    const stopTyping = startTypingLoop(bot, chatId);
+    const status = await startLiveStatus(bot, chatId, "🔍 Searching the web");
     try {
       const results = await webSearch(query);
       const raw = formatSearchResults(query, results);
       if (results.length === 0) {
-        stopTyping();
-        try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+        status.stop();
+        await status.delete();
         await bot.sendMessage(chatId, `No results found for: "${query}"\n\nTry rephrasing your search.`);
         return;
       }
+      status.update("🧠 Summarizing results");
       const aiPrompt = `Based on these web search results for "${query}":\n\n${raw}\n\nSummarize the key findings in a helpful, natural response. Be concise and direct. Mention the source context.`;
       const aiReply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
-      stopTyping();
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      status.stop();
+      await status.delete();
       await safeSend(bot, chatId, `🔍 Web Search: ${query}\n\n${aiReply}\n\n──────\n${results.slice(0, 2).map(r => r.url).filter(Boolean).join("\n")}`);
     } catch (err) {
-      stopTyping();
+      status.stop();
+      await status.delete();
       logger.error({ err }, "Search error");
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
       await bot.sendMessage(chatId, "Search failed. Please try again.");
     }
     return;
@@ -1341,32 +1340,32 @@ export async function handlePrivateMessage(
         await handleStickerGeneration(bot, chatId, user, text, e);
         return;
       case "search": {
-        const statusMsg2 = await bot.sendMessage(chatId, e ? "🔍 Searching the web..." : "Searching...");
-        const stopSearch2 = startTypingLoop(bot, chatId);
+        const searchStatus2 = await startLiveStatus(bot, chatId, "🔍 Searching the web");
         try {
           const results2 = await webSearch(text);
           const raw2 = formatSearchResults(text, results2);
           if (results2.length === 0) {
-            stopSearch2();
-            try { await bot.deleteMessage(chatId, statusMsg2.message_id); } catch {}
+            searchStatus2.stop();
+            await searchStatus2.delete();
             await bot.sendMessage(chatId,
               `No results found for: "${text.slice(0, 80)}"\n\nTry rephrasing.`,
               { reply_markup: { inline_keyboard: [[{ text: "🔄 Try Again", callback_data: "search_again" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
             );
             return;
           }
+          searchStatus2.update("🧠 Summarizing results");
           const aiPrompt2 = `Based on these web search results for "${text}":\n\n${raw2}\n\nSummarize the key findings in a helpful, natural response. Be concise and direct. Mention relevant sources.`;
           const aiReply2 = await chat(user.userId, chatId + 8888, aiPrompt2, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
-          stopSearch2();
-          try { await bot.deleteMessage(chatId, statusMsg2.message_id); } catch {}
+          searchStatus2.stop();
+          await searchStatus2.delete();
           const sources2 = results2.slice(0, 3).map(r => r.url).filter(Boolean);
           await safeSend(bot, chatId,
             `🔍 ${text.slice(0, 60)}\n\n${aiReply2}${sources2.length ? `\n\n──────\n${sources2.join("\n")}` : ""}`,
             { reply_markup: { inline_keyboard: [[{ text: "🔍 Search Again", callback_data: "search_again" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
           );
         } catch {
-          stopSearch2();
-          try { await bot.deleteMessage(chatId, statusMsg2.message_id); } catch {}
+          searchStatus2.stop();
+          await searchStatus2.delete();
           await bot.sendMessage(chatId, "Search failed. Please try again.");
         }
         return;
@@ -1484,30 +1483,30 @@ export async function handlePrivateMessage(
 
   const searchQuery = detectSearchIntent(text);
   if (searchQuery) {
-    const statusMsg = await bot.sendMessage(chatId, e ? "🔍 Searching the web..." : "Searching...");
-    const stopSearchTyping = startTypingLoop(bot, chatId);
+    const searchStatus = await startLiveStatus(bot, chatId, "🔍 Searching the web");
     try {
       const results = await webSearch(searchQuery);
       const raw = formatSearchResults(searchQuery, results);
       if (results.length === 0) {
-        stopSearchTyping();
-        try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+        searchStatus.stop();
+        await searchStatus.delete();
         await bot.sendMessage(chatId, `No results found for: "${searchQuery}"\n\nTry rephrasing.`,
           { reply_markup: { inline_keyboard: [[{ text: "🔍 Try Again", callback_data: "search_again" }]] } });
         return;
       }
+      searchStatus.update("🧠 Summarizing results");
       const aiPrompt = `Based on these web search results for "${searchQuery}":\n\n${raw}\n\nSummarize the key findings in a helpful, natural response. Be concise and direct. Mention relevant sources.`;
       const aiReply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
-      stopSearchTyping();
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      searchStatus.stop();
+      await searchStatus.delete();
       const sourceLines = results.slice(0, 3).map(r => r.url).filter(Boolean);
       await safeSend(bot, chatId,
         `🔍 ${searchQuery}\n\n${aiReply}${sourceLines.length ? `\n\n──────\n${sourceLines.join("\n")}` : ""}`,
         { reply_markup: { inline_keyboard: [[{ text: "🔍 Search Again", callback_data: "search_again" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
       );
     } catch {
-      stopSearchTyping();
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      searchStatus.stop();
+      await searchStatus.delete();
       await bot.sendMessage(chatId, "Search failed. Please try again.");
     }
     return;
@@ -1523,16 +1522,15 @@ export async function handlePrivateMessage(
   // ── Summarize intent (natural language) ───────────────────────────────────────
   const summarizeText = detectSummarizeIntent(text);
   if (summarizeText) {
-    const statusMsg = await bot.sendMessage(chatId, e ? "📝 Summarizing..." : "Summarizing...");
-    const stopTyping = startTypingLoop(bot, chatId);
+    const status = await startLiveStatus(bot, chatId, "📝 Summarizing your text");
     try {
       const reply = await chat(user.userId, chatId + 5556, `Summarize the following text in clear bullet points:\n\n${summarizeText}`, { style: "serious", emoji: e, length: "short" }, user.premium.active);
-      stopTyping();
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      status.stop();
+      await status.delete();
       await safeSend(bot, chatId, `📝 Summary:\n\n${reply}`, { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
     } catch {
-      stopTyping();
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      status.stop();
+      await status.delete();
       await bot.sendMessage(chatId, "Summarization failed. Please try again.");
     }
     return;
@@ -1541,16 +1539,15 @@ export async function handlePrivateMessage(
   // ── Translate intent (natural language) ───────────────────────────────────────
   const translateMatch = detectTranslateIntent(text);
   if (translateMatch) {
-    const statusMsg = await bot.sendMessage(chatId, e ? "🌐 Translating..." : "Translating...");
-    const stopTyping = startTypingLoop(bot, chatId);
+    const status = await startLiveStatus(bot, chatId, `🌐 Translating to ${translateMatch.targetLang}`);
     try {
       const reply = await chat(user.userId, chatId + 9999, `Translate the following to ${translateMatch.targetLang}. Only respond with the translation, no explanation:\n\n"${translateMatch.content}"`, { style: "serious", emoji: false, length: "short" }, user.premium.active);
-      stopTyping();
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      status.stop();
+      await status.delete();
       await safeSend(bot, chatId, `🌐 ${translateMatch.targetLang} translation:\n\n${reply}`, { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
     } catch {
-      stopTyping();
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      status.stop();
+      await status.delete();
       await bot.sendMessage(chatId, "Translation failed. Please try again.");
     }
     return;
@@ -1751,28 +1748,30 @@ async function handlePendingText(
         break;
       }
       case "search_input": {
-        const statusMsg2 = await bot.sendMessage(chatId, e ? "🔍 Searching the web..." : "Searching...");
-        const stopSearchTyping2 = startTypingLoop(bot, chatId);
+        const searchStatus3 = await startLiveStatus(bot, chatId, "🔍 Searching the web");
         try {
           const results = await webSearch(input);
           const raw = formatSearchResults(input, results);
-          stopSearchTyping2();
-          try { await bot.deleteMessage(chatId, statusMsg2.message_id); } catch {}
           if (results.length === 0) {
+            searchStatus3.stop();
+            await searchStatus3.delete();
             await bot.sendMessage(chatId, `No results found for: "${input}"\n\nTry rephrasing.`,
               { reply_markup: { inline_keyboard: [[{ text: "🔍 Try Again", callback_data: "search_again" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } });
             break;
           }
+          searchStatus3.update("🧠 Summarizing results");
           const aiPrompt = `Based on these web search results for "${input}":\n\n${raw}\n\nSummarize the key findings in a helpful, natural response. Be concise and direct. Mention relevant sources.`;
           const reply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
+          searchStatus3.stop();
+          await searchStatus3.delete();
           const sourceLines = results.slice(0, 3).map(r => r.url).filter(Boolean);
           await safeSend(bot, chatId,
             `🔍 ${input}\n\n${reply}${sourceLines.length ? `\n\n──────\n${sourceLines.join("\n")}` : ""}`,
             { reply_markup: { inline_keyboard: [[{ text: "🔍 Search Again", callback_data: "search_again" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
           );
         } catch {
-          stopSearchTyping2();
-          try { await bot.deleteMessage(chatId, statusMsg2.message_id); } catch {}
+          searchStatus3.stop();
+          await searchStatus3.delete();
           await bot.sendMessage(chatId, "Search failed. Please try again.",
             { reply_markup: { inline_keyboard: [[{ text: "🔍 Try Again", callback_data: "search_again" }]] } });
         }
@@ -1922,26 +1921,25 @@ export async function handlePhotoMessage(
     const photo = photos[photos.length - 1];
     const question = msg.caption?.trim();
 
-    const statusMsg = await bot.sendMessage(chatId,
-      question
-        ? `Analyzing your image for: "${question.slice(0, 60)}"...`
-        : "Analyzing your image..."
+    const status = await startLiveStatus(
+      bot, chatId,
+      question ? `🔍 Analyzing your image` : "🔍 Analyzing your image",
+      "upload_photo"
     );
-    const stopTyping = startTypingLoop(bot, chatId, "upload_photo");
 
     try {
       const imageBuffer = await downloadTelegramPhoto(bot, photo.file_id);
       if (!imageBuffer) {
-        stopTyping();
-        await bot.editMessageText("Failed to download your image. Please try again.", {
-          chat_id: chatId, message_id: statusMsg.message_id,
-        });
+        status.stop();
+        await status.delete();
+        await bot.sendMessage(chatId, "Failed to download your image. Please try again.");
         return;
       }
 
+      status.update("🔍 Running image analysis");
       const rawAnalysis = await analyzeImage(imageBuffer, question);
-      stopTyping();
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+      status.stop();
+      await status.delete();
 
       if (!rawAnalysis) {
         await bot.sendMessage(chatId,
@@ -1951,7 +1949,7 @@ export async function handlePhotoMessage(
         return;
       }
 
-      // Enrich the raw BLIP output with a full AI response
+      const enrichStatus = await startLiveStatus(bot, chatId, "🧠 Generating description");
       const enrichPrompt = question
         ? `The user asked: "${question}"\nAbout an image described as: "${rawAnalysis}"\n\nAnswer their question about the image naturally and helpfully. If the description doesn't answer it directly, say so and give what you can.`
         : `Describe this image to the user in an interesting and helpful way. The vision model identified it as: "${rawAnalysis}"\n\nExpand on this naturally, mentioning details, mood, and what stands out.`;
@@ -1961,13 +1959,15 @@ export async function handlePhotoMessage(
         { style: user.settings.style, emoji: user.settings.emoji, length: "short" },
         user.premium.active
       );
+      enrichStatus.stop();
+      await enrichStatus.delete();
 
       const header = question ? `🔍 Image Analysis\n\nQ: ${question}\n\n` : `🖼 Image Description\n\n`;
       await safeSend(bot, chatId, header + fullReply, { reply_markup: imageMenuKeyboard() });
     } catch (err) {
-      stopTyping();
+      status.stop();
+      await status.delete();
       logger.error({ err }, "Photo auto-analysis error");
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
       await bot.sendMessage(chatId, "Something went wrong analyzing this image. Try again.", {
         reply_markup: imageMenuKeyboard(),
       });
@@ -2001,15 +2001,24 @@ export async function handlePhotoMessage(
 
   clearPending(user.userId);
 
-  const statusMsg = await bot.sendMessage(chatId, "Processing your image...");
-  const stopImgTyping = startTypingLoop(bot, chatId, "upload_photo");
+  const imgActionLabel: Record<string, string> = {
+    img_edit: "✏️ Editing your image",
+    img_enhance: "✨ Enhancing your image",
+    img_stylize: "🎨 Stylizing your image",
+    img_restore: "🔧 Restoring your image",
+  };
+  const imgStatus = await startLiveStatus(
+    bot, chatId,
+    imgActionLabel[pending.type] || "🖼️ Processing your image",
+    "upload_photo"
+  );
 
   try {
     const imageBuffer = await downloadTelegramPhoto(bot, photo.file_id);
     if (!imageBuffer) {
-      await bot.editMessageText("Failed to download your photo. Please try again.", {
-        chat_id: chatId, message_id: statusMsg.message_id,
-      });
+      imgStatus.stop();
+      await imgStatus.delete();
+      await bot.sendMessage(chatId, "Failed to download your photo. Please try again.", { reply_markup: imageMenuKeyboard() });
       return;
     }
 
@@ -2035,8 +2044,8 @@ export async function handlePhotoMessage(
         break;
     }
 
-    stopImgTyping();
-    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+    imgStatus.stop();
+    await imgStatus.delete();
 
     if (!result) {
       await bot.sendMessage(chatId,
@@ -2056,9 +2065,9 @@ export async function handlePhotoMessage(
     });
 
   } catch (err) {
-    stopImgTyping();
+    imgStatus.stop();
+    await imgStatus.delete();
     logger.error({ err }, "Photo processing error");
-    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
     await bot.sendMessage(chatId, "Something went wrong. Try again later.", {
       reply_markup: imageMenuKeyboard(),
     });
@@ -2129,19 +2138,15 @@ async function handleBuildRequest(
   const githubUsername = ghCreds?.username;
   const hasGitHub = !!(githubToken && githubUsername);
 
-  const statusMsg = await bot.sendMessage(chatId,
-    `🔨 Analyzing your request...\n\n"${prompt.substring(0, 120)}${prompt.length > 120 ? "..." : ""}"\n\n` +
-    `Generating a complete, working project. This takes 1-2 minutes.\n` +
-    (hasGitHub ? `GitHub push will follow automatically.` : `Files will be sent to you directly.`)
-  );
-  const stopTyping = startTypingLoop(bot, chatId);
+  const buildStatus = await startLiveStatus(bot, chatId, "🔨 Building your project");
 
   // ── Step 1: Generate project files ─────────────────────────────────────────
   let project;
   try {
-    project = await generateProject(prompt, apiKey);
+    project = await generateProject(prompt, apiKey, (msg) => buildStatus.update(msg));
   } catch (err: any) {
-    stopTyping();
+    buildStatus.stop();
+    await buildStatus.delete();
     clearBuildCooldown(user.userId);
     // Refund credits — generation failed, user should not be charged
     if (!user.premium.active) {
@@ -2149,7 +2154,6 @@ async function handleBuildRequest(
       try { await addCredits(user.userId, refundCost); } catch {}
     }
     logger.error({ err }, "Project generation failed");
-    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
     await bot.sendMessage(chatId,
       `❌ Generation failed. Try being more specific, e.g. "portfolio website for a photographer" or "todo app with dark mode".`,
       { reply_markup: buildResultKeyboard() }
@@ -2167,12 +2171,7 @@ async function handleBuildRequest(
 
   // ── Step 2a: GitHub push ────────────────────────────────────────────────────
   if (hasGitHub) {
-    try {
-      await bot.editMessageText(
-        `✅ Code generated! (${fileCount} files — ${label})\n📤 Creating GitHub repository...`,
-        { chat_id: chatId, message_id: statusMsg.message_id }
-      );
-    } catch {}
+    buildStatus.update(`✅ Code ready! (${fileCount} files — ${label})\n📤 Pushing to GitHub`);
 
     const rawName = sanitizeRepoName(project.name);
     let repoName = rawName;
@@ -2186,9 +2185,9 @@ async function handleBuildRequest(
     try {
       repoInfo = await createGitHubRepo(githubToken!, repoName, project.description);
     } catch (err: any) {
-      stopTyping();
+      buildStatus.stop();
+      await buildStatus.delete();
       logger.error({ err }, "GitHub repo creation failed");
-      try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
       const reason =
         err?.response?.status === 401
           ? "GitHub authentication failed. Check your GITHUB_TOKEN secret."
@@ -2207,12 +2206,7 @@ async function handleBuildRequest(
       return;
     }
 
-    try {
-      await bot.editMessageText(
-        `✅ Repository created!\n📤 Uploading ${fileCount} files...`,
-        { chat_id: chatId, message_id: statusMsg.message_id }
-      );
-    } catch {}
+    buildStatus.update(`✅ Repository created! Uploading ${fileCount} files`);
 
     let lastDone = 0;
     try {
@@ -2223,12 +2217,7 @@ async function handleBuildRequest(
         project.files,
         async (done, total) => {
           lastDone = done;
-          try {
-            await bot.editMessageText(
-              `📤 Uploading files... ${done}/${total}`,
-              { chat_id: chatId, message_id: statusMsg.message_id }
-            );
-          } catch {}
+          buildStatus.update(`📤 Uploading files (${done}/${total})`);
         }
       );
     } catch (err) {
@@ -2237,8 +2226,8 @@ async function handleBuildRequest(
       try {
         await pushAllFiles(githubToken!, githubUsername!, repoInfo.name, project.files.slice(lastDone));
       } catch {
-        stopTyping();
-        try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+        buildStatus.stop();
+        await buildStatus.delete();
         await bot.sendMessage(chatId,
           `⚠️ Uploaded ${lastDone}/${fileCount} files. Repo: ${repoInfo.htmlUrl}\n\nSending remaining files directly...`,
           { reply_markup: buildResultKeyboard(repoInfo.htmlUrl, canDeploy) }
@@ -2248,8 +2237,8 @@ async function handleBuildRequest(
       }
     }
 
-    stopTyping();
-    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+    buildStatus.stop();
+    await buildStatus.delete();
 
     user.usage.builds = (user.usage.builds ?? 0) + 1;
     user.projects = user.projects ?? [];
@@ -2271,8 +2260,8 @@ async function handleBuildRequest(
   }
 
   // ── Step 2b: No GitHub — ask what user wants to do ──────────────────────────
-  stopTyping();
-  try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
+  buildStatus.stop();
+  await buildStatus.delete();
 
   const choiceKeyboard: TelegramBot.InlineKeyboardMarkup = {
     inline_keyboard: [
@@ -2500,14 +2489,13 @@ async function handleTTS(
     await bot.sendMessage(chatId, e ? "🔊 Text is too long! Maximum 1000 characters." : "Text too long. Maximum 1000 characters.");
     return;
   }
-  const sentMsg = await bot.sendMessage(chatId, e ? "🔊 Generating voice..." : "Generating audio...");
-  const stopTyping = startTypingLoop(bot, chatId);
+  const ttsStatus = await startLiveStatus(bot, chatId, "🔊 Generating voice", "upload_video");
   try {
     const provider = config.providers?.tts || "huggingface";
     const voice = config.providers?.ttsVoice || "nova";
     const ttsResult = await generateTTS(text, provider, voice);
-    stopTyping();
-    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+    ttsStatus.stop();
+    await ttsStatus.delete();
     if (!ttsResult) {
       await bot.sendMessage(chatId, e ? "🔊 Voice generation failed. Try again!" : "Voice generation failed. Please try again.");
       return;
@@ -2518,9 +2506,9 @@ async function handleTTS(
       await bot.sendVoice(chatId, ttsResult.buffer, { caption: e ? "🔊 Here's your audio!" : undefined });
     }
   } catch (err) {
-    stopTyping();
+    ttsStatus.stop();
+    await ttsStatus.delete();
     logger.error({ err }, "TTS error");
-    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
     await bot.sendMessage(chatId, e ? "🔊 Voice generation failed. Please try again later." : "Voice generation failed. Please try again.");
   }
 }
@@ -2540,13 +2528,12 @@ async function handleStickerGeneration(
     await bot.sendMessage(chatId, `Daily image limit reached (${limit}/day).`);
     return;
   }
-  const sentMsg = await bot.sendMessage(chatId, "🖼️ Creating your sticker image...");
-  const stopTyping = startTypingLoop(bot, chatId, "upload_photo");
+  const stickerStatus = await startLiveStatus(bot, chatId, "🖼️ Creating your sticker", "upload_photo");
   try {
     const stickerPrompt = `${prompt}, sticker art style, clean white or transparent background, bold outlines, cute and expressive, high contrast, simple design`;
     const imageBuffer = await generateImage(stickerPrompt);
-    stopTyping();
-    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+    stickerStatus.stop();
+    await stickerStatus.delete();
     if (!imageBuffer) {
       await bot.sendMessage(chatId, "Sticker generation failed. Try again in 30 seconds.");
       return;
@@ -2559,9 +2546,9 @@ async function handleStickerGeneration(
       reply_markup: { inline_keyboard: [[{ text: "🖼️ Make Another", callback_data: "sticker_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] },
     });
   } catch (err) {
-    stopTyping();
+    stickerStatus.stop();
+    await stickerStatus.delete();
     logger.error({ err }, "Sticker generation error");
-    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
     await bot.sendMessage(chatId, e ? "🖼️ Sticker generation failed. Please try again." : "Sticker generation failed. Please try again.",
       { reply_markup: { inline_keyboard: [[{ text: "🖼️ Try Again", callback_data: "sticker_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
     );

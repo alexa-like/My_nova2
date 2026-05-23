@@ -111,15 +111,22 @@ const CODE_MODELS = [
 
 export async function generateProject(
   userRequest: string,
-  apiKey: string
+  apiKey: string,
+  onStatus?: (msg: string) => void
 ): Promise<GeneratedProject> {
   logger.info({ userRequest }, "Generating project — trying code models in order");
 
   let lastError = "AI service failed. Please try again.";
 
-  for (const model of CODE_MODELS) {
+  for (let modelIdx = 0; modelIdx < CODE_MODELS.length; modelIdx++) {
+    const model = CODE_MODELS[modelIdx];
     let raw = "";
     try {
+      if (modelIdx === 0) {
+        onStatus?.("🔨 Building your project");
+      } else {
+        onStatus?.(`🔄 Trying backup model (${modelIdx + 1}/${CODE_MODELS.length})`);
+      }
       logger.info({ model }, "Attempting project generation");
       const response = await axios.post(
         "https://openrouter.ai/api/v1/chat/completions",
