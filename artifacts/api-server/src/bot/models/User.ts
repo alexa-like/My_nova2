@@ -46,6 +46,12 @@ export interface IUser extends Document {
   banned: boolean;
   isOwner: boolean;
   feedbackCount: number;
+  streak: number;
+  lastDailyReward?: Date;
+  bonusImages: number;
+  referralCode?: string;
+  referredBy?: number;
+  referrals: number[];
 }
 
 const UserSchema = new Schema<IUser>(
@@ -101,6 +107,12 @@ const UserSchema = new Schema<IUser>(
     banned: { type: Boolean, default: false },
     isOwner: { type: Boolean, default: false },
     feedbackCount: { type: Number, default: 0 },
+    streak: { type: Number, default: 0 },
+    lastDailyReward: { type: Date },
+    bonusImages: { type: Number, default: 0 },
+    referralCode: { type: String },
+    referredBy: { type: Number },
+    referrals: [{ type: Number }],
   },
   { timestamps: true }
 );

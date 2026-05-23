@@ -127,7 +127,8 @@ export async function startBot(): Promise<void> {
       { command: "profile", description: "View your profile" },
       { command: "stats", description: "View your usage stats" },
       { command: "settings", description: "Your preferences" },
-      { command: "model", description: "Choose AI model" },
+      { command: "daily", description: "Claim your daily reward" },
+      { command: "refer", description: "Refer a friend and earn Premium" },
       { command: "premium", description: "Check premium status" },
       { command: "redeem", description: "Redeem a premium code" },
       { command: "forget", description: "Clear conversation memory" },
@@ -136,6 +137,7 @@ export async function startBot(): Promise<void> {
 
     await bot.setMyCommands([
       { command: "help", description: "Show group commands" },
+      { command: "settings", description: "Group settings (admins only)" },
       { command: "rules", description: "Show group rules" },
       { command: "report", description: "Report a message (reply to it)" },
       { command: "ban", description: "Ban a user (reply)" },

@@ -305,6 +305,7 @@ export async function handleGroupMessage(
       "/back — Remove your AFK status\n" +
       "/summarize — Summarize your AI conversation\n\n" +
       "AI (mention @Nova or reply to it):\n" +
+      "@Nova <message> — Chat with Nova\n" +
       "@Nova /image <prompt> — Generate image\n" +
       "@Nova /ask <question> — Ask anything\n" +
       "@Nova /translate <text> — Translate to English\n" +
@@ -312,33 +313,7 @@ export async function handleGroupMessage(
       "@Nova /voice <text> — Convert text to speech\n" +
       "@Nova /describe — Send a photo for AI description\n" +
       "@Nova /sticker <desc> — Generate sticker\n\n" +
-      "Admin — Settings:\n" +
-      "/ai on|off — Toggle AI replies\n" +
-      "/style friendly|funny|serious|balanced\n" +
-      "/lang <code> — Set AI language (en ar fr es de zh hi pt auto)\n" +
-      "/welcome <text> — Set welcome msg ({name} {group})\n" +
-      "/setgoodbye <text> — Set goodbye msg\n" +
-      "/setrules <text> — Set group rules\n" +
-      "/lock / /unlock — Lock or unlock the group\n" +
-      "/slowmode <sec> — Set slow mode (0 = off)\n" +
-      "/antilink on|off — Delete messages with links\n" +
-      "/antiflood on|off [limit] — Auto-mute flood spammers\n" +
-      "/captcha on|off — Math captcha for new members\n" +
-      "/autodelete on|off — Auto-delete join/leave messages\n" +
-      "/setlimit <n> — Warn limit before auto-ban\n" +
-      "/poll Q | Opt1 | Opt2 — Create a poll\n" +
-      "/messageall <text> — DM all members privately\n" +
-      "/addword <word> / /removeword / /wordlist — Word filter\n\n" +
-      "Admin — Moderation:\n" +
-      "/ban /unban /kick — Remove members\n" +
-      "/mute [1m|1h|1d] / /unmute — Restrict messaging\n" +
-      "/warn [reason] / /unwarn / /warnings / /clearwarn\n" +
-      "/note <text> / /notes / /clearnotes — User notes (reply)\n" +
-      "/purge <n> — Delete last N messages\n" +
-      "/delete — Delete replied message\n" +
-      "/pin / /unpin — Pin or unpin message\n" +
-      "/promote / /demote — Change admin status\n\n" +
-      "Tip: reply to a user's message for moderation commands — always the most reliable method."
+      "⚙️ Admins: use /settings to manage all group settings."
     );
     return;
   }
@@ -570,6 +545,20 @@ export async function handleGroupMessage(
   }
 
   // ── Admin-only commands ───────────────────────────────────────────────────
+
+  // /settings — admin-only inline keyboard with all group settings
+  if (cmd === "/settings") {
+    if (!senderIsAdmin) {
+      await bot.sendMessage(chatId, "Only group admins can use /settings.", { reply_to_message_id: msg.message_id });
+      return;
+    }
+    const { groupSettingsKeyboard } = await import("../utils/keyboards.js");
+    await bot.sendMessage(chatId,
+      `⚙️ Group Settings\n━━━━━━━━━━━━━━━\nTap any button to toggle or change a setting:`,
+      { reply_markup: groupSettingsKeyboard(groupSettings, chatId) }
+    );
+    return;
+  }
 
   const adminCmds = new Set([
     "/ban", "/unban", "/mute", "/unmute", "/warn", "/unwarn", "/warnings",
@@ -1434,19 +1423,23 @@ export async function handleGroupMessage(
       return;
     }
     const sentMsg = await bot.sendMessage(chatId, `🔊 Generating voice...`);
-    const stopVoiceTyping = startTypingLoop(bot, chatId, "record_voice");
+    const stopVoiceTyping = startTypingLoop(bot, chatId);
     try {
       const { generateTTS } = await import("../services/tts.js");
       const provider = config.providers?.tts || "huggingface";
       const voice = config.providers?.ttsVoice || "nova";
-      const audioBuffer = await generateTTS(text, provider, voice);
+      const ttsResult = await generateTTS(text, provider, voice);
       stopVoiceTyping();
       try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-      if (!audioBuffer) {
+      if (!ttsResult) {
         await bot.sendMessage(chatId, "Voice generation failed. Try again.", { reply_to_message_id: msg.message_id });
         return;
       }
-      await bot.sendVoice(chatId, audioBuffer);
+      if (ttsResult.format === "wav") {
+        await bot.sendAudio(chatId, ttsResult.buffer, {}, { filename: "voice.wav", contentType: "audio/wav" });
+      } else {
+        await bot.sendVoice(chatId, ttsResult.buffer);
+      }
     } catch (err) {
       stopVoiceTyping();
       logger.error({ err }, "Group TTS error");

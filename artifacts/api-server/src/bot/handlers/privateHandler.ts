@@ -374,6 +374,38 @@ export async function handlePrivateMessage(
 
   // /start — show interactive dashboard with onboarding for new users
   if (text === "/start" || text.startsWith("/start ")) {
+    // Handle referral parameter
+    if (text.startsWith("/start ")) {
+      const param = text.slice(7).trim();
+      if (param.startsWith("ref_") && !user.referredBy) {
+        const referrerId = parseInt(param.replace("ref_", ""));
+        if (!isNaN(referrerId) && referrerId !== user.userId) {
+          user.referredBy = referrerId;
+          const now = new Date();
+          const premiumExpiry = user.premium.expiresAt && user.premium.expiresAt > now ? user.premium.expiresAt : now;
+          user.premium.active = true;
+          user.premium.expiresAt = addDays(premiumExpiry, 3);
+          user.premium.plan = user.premium.plan || "referral";
+          await user.save();
+          try {
+            const referrer = await User.findOne({ userId: referrerId });
+            if (referrer && !referrer.isOwner) {
+              const refExpiry = referrer.premium.expiresAt && referrer.premium.expiresAt > now ? referrer.premium.expiresAt : now;
+              referrer.premium.active = true;
+              referrer.premium.expiresAt = addDays(refExpiry, 7);
+              referrer.premium.plan = referrer.premium.plan || "referral";
+              referrer.referrals = referrer.referrals || [];
+              if (!referrer.referrals.includes(user.userId)) referrer.referrals.push(user.userId);
+              await referrer.save();
+              await bot.sendMessage(referrerId,
+                `🎉 Someone joined Nova using your referral link!\n\n✨ You've been rewarded with 7 days of Premium!`
+              ).catch(() => {});
+            }
+          } catch {}
+          await bot.sendMessage(chatId, `🎉 Welcome to Nova! You received 3 days Premium as a referral bonus!\n\n✨ Enjoy premium features starting now.`);
+        }
+      }
+    }
     const isNew = Date.now() - user.firstSeen.getTime() < 30000;
     if (isNew) {
       await bot.sendMessage(chatId,
@@ -440,7 +472,8 @@ export async function handlePrivateMessage(
       `👤 /profile — Your profile\n` +
       `📊 /stats — Your usage stats\n` +
       `⚙️ /settings — Your preferences\n` +
-      `🤖 /model — Choose AI model\n` +
+      `🎁 /daily — Claim daily reward\n` +
+      `👥 /refer — Refer a friend & earn Premium\n` +
       `💎 /premium — Check premium status\n` +
       `🎁 /redeem — Redeem a code\n` +
       `🧹 /forget — Clear memory\n` +
@@ -485,19 +518,11 @@ export async function handlePrivateMessage(
     return;
   }
 
-  // /model — AI model selection
+  // /model — owner-only (regular users see info message)
   if (text === "/model" || text === "/models") {
-    const config = await (await import("../models/BotConfig.js")).getOrCreateBotConfig();
-    const currentModel = config.chatModels.find(
-      (m) => m.id === (user.preferredChatModel || config.activeChatModel)
-    );
-    const { userModelKeyboard } = await import("../utils/keyboards.js");
     await bot.sendMessage(chatId,
-      `🤖 AI Model\n\n` +
-      `Current model: ${currentModel?.name || "Default"}\n` +
-      `${user.preferredChatModel ? "You have a custom model set." : "Using the global active model."}\n\n` +
-      `Tap to switch:`,
-      { reply_markup: userModelKeyboard(config.chatModels, user.preferredChatModel, config.activeChatModel) }
+      `🤖 AI Model\n\nThe AI model is selected automatically based on your account type.\n\nPremium users get access to higher-quality models automatically.`,
+      { reply_markup: { inline_keyboard: [[{ text: "💎 Get Premium", callback_data: "settings_premium" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
     );
     return;
   }
@@ -1036,6 +1061,53 @@ export async function handlePrivateMessage(
     return;
   }
 
+  // /daily — daily reward with streak system
+  if (text === "/daily") {
+    const now = new Date();
+    const lastReward = user.lastDailyReward;
+    const msIn24h = 24 * 60 * 60 * 1000;
+    if (lastReward && now.getTime() - lastReward.getTime() < msIn24h) {
+      const hoursLeft = Math.ceil((new Date(lastReward.getTime() + msIn24h).getTime() - now.getTime()) / (60 * 60 * 1000));
+      const streak = user.streak || 0;
+      await bot.sendMessage(chatId,
+        `⏳ Already claimed today!\n\n` +
+        `🔥 Streak: ${streak} day${streak !== 1 ? 's' : ''}\n` +
+        `⏰ Next reward in ${hoursLeft}h\n\n` +
+        `Keep your streak going — longer streaks unlock better rewards!`,
+        { reply_markup: { inline_keyboard: [[{ text: "👥 Refer a Friend", callback_data: "refer_link" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+      );
+      return;
+    }
+    const streak = user.streak || 0;
+    const { dailyRewardKeyboard } = await import("../utils/keyboards.js");
+    await bot.sendMessage(chatId,
+      `🎁 Daily Reward Ready!\n\n` +
+      `🔥 Current streak: ${streak} day${streak !== 1 ? 's' : ''}\n\n` +
+      `Tap below to claim your reward! Luck decides what you get — longer streaks mean better odds for rare rewards.`,
+      { reply_markup: dailyRewardKeyboard() }
+    );
+    return;
+  }
+
+  // /refer — referral link
+  if (text === "/refer" || text === "/referral" || text === "/invite") {
+    const botInfo = await bot.getMe();
+    const referralLink = `https://t.me/${botInfo.username}?start=ref_${user.userId}`;
+    const refs = (user.referrals || []).length;
+    await bot.sendMessage(chatId,
+      `👥 Refer & Earn\n\n` +
+      `Share your link — earn Premium for both of you!\n\n` +
+      `🔗 Your referral link:\n${referralLink}\n\n` +
+      `Rewards:\n` +
+      `• Your friend gets 3 days Premium 🎁\n` +
+      `• You get 7 days Premium 🎉\n` +
+      `• Already premium? It extends your time!\n\n` +
+      `📊 Total referrals: ${refs} friend${refs !== 1 ? 's' : ''}`,
+      { reply_markup: { inline_keyboard: [[{ text: "🎁 Daily Reward", callback_data: "daily_claim" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+    );
+    return;
+  }
+
   // /describe — prompt user to send a photo for AI analysis
   if (text === "/describe" || text.startsWith("/describe ")) {
     const config = await getOrCreateBotConfig();
@@ -1231,7 +1303,7 @@ export async function handlePrivateMessage(
   user.usage.messages += 1;
   await user.save();
   const stopTyping = startTypingLoop(bot, chatId);
-  const reply = await chat(user.userId, chatId, text, user.settings, user.premium.active, user.mood ?? undefined, user.preferredChatModel ?? undefined);
+  const reply = await chat(user.userId, chatId, text, user.settings, user.premium.active, user.mood ?? undefined);
   stopTyping();
   await sendAIReply(bot, chatId, reply);
 
@@ -2102,18 +2174,22 @@ async function handleTTS(
     return;
   }
   const sentMsg = await bot.sendMessage(chatId, e ? "🔊 Generating voice..." : "Generating audio...");
-  const stopTyping = startTypingLoop(bot, chatId, "record_voice");
+  const stopTyping = startTypingLoop(bot, chatId);
   try {
     const provider = config.providers?.tts || "huggingface";
     const voice = config.providers?.ttsVoice || "nova";
-    const audioBuffer = await generateTTS(text, provider, voice);
+    const ttsResult = await generateTTS(text, provider, voice);
     stopTyping();
     try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-    if (!audioBuffer) {
+    if (!ttsResult) {
       await bot.sendMessage(chatId, e ? "🔊 Voice generation failed. Try again!" : "Voice generation failed. Please try again.");
       return;
     }
-    await bot.sendVoice(chatId, audioBuffer, { caption: e ? "🔊 Here's your audio!" : undefined });
+    if (ttsResult.format === "wav") {
+      await bot.sendAudio(chatId, ttsResult.buffer, { caption: e ? "🔊 Here's your audio!" : undefined }, { filename: "voice.wav", contentType: "audio/wav" });
+    } else {
+      await bot.sendVoice(chatId, ttsResult.buffer, { caption: e ? "🔊 Here's your audio!" : undefined });
+    }
   } catch (err) {
     stopTyping();
     logger.error({ err }, "TTS error");

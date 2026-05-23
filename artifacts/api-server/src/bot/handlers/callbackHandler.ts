@@ -3,7 +3,7 @@ import { User } from "../models/User.js";
 import { Memory } from "../models/Memory.js";
 import { GroupSettings } from "../models/GroupSettings.js";
 import { chat, clearMemory } from "../services/ai.js";
-import { formatDate, startTypingLoop } from "../utils/helpers.js";
+import { formatDate, startTypingLoop, addDays } from "../utils/helpers.js";
 import { getImageLimit } from "../services/image.js";
 import { setPending } from "../utils/pendingActions.js";
 import { listUserReminders, cancelReminder } from "../services/reminder.js";
@@ -36,7 +36,6 @@ import {
   triviaKeyboard,
   wyrKeyboard,
   repeatKeyboard,
-  userModelKeyboard,
   ownerUsersKeyboard,
   ownerPremiumKeyboard,
   ownerCodesKeyboard,
@@ -1363,7 +1362,7 @@ export async function handleCallbackQuery(
         `💎 Plan: ${premiumLine}\n\n` +
         `── Today ──\n` +
         `💬 Messages: ${user.usage.messages}\n` +
-        `🖼️ Images: ${user.usage.images}/${imageLimit >= 999999 ? "∞" : imageLimit}\n\n` +
+        `🖼️ Images: ${user.usage.images}/${(await imageLimit) >= 999999 ? "∞" : await imageLimit}\n\n` +
         `── All Time ──\n` +
         `🔨 Builds: ${builds2}\n` +
         `👥 Groups: ${user.groups.length}\n` +
@@ -1801,31 +1800,208 @@ export async function handleCallbackQuery(
       return;
     }
 
-    // ── User: AI Model Selection ──────────────────────────────────────────
+    // ── User: AI Model (owner-only — regular users see info) ─────────────
 
     if (data === "model_panel") {
-      const config = await getOrCreateBotConfig();
-      const currentModel = config.chatModels.find(
-        (m) => m.id === (user.preferredChatModel || config.activeChatModel)
-      );
+      await answer(bot, query.id);
       await editMsg(bot, query,
-        `🤖 AI Model\n━━━━━━━━━━\nCurrent: ${currentModel?.name || "Default"}\n${user.preferredChatModel ? "You have a custom model set." : "Using the global default."}\n\nTap to switch models:`,
-        userModelKeyboard(config.chatModels, user.preferredChatModel, config.activeChatModel)
+        `🤖 AI Model\n━━━━━━━━━━\nThe AI model is selected automatically based on your account type.\n\nPremium users get access to higher-quality models automatically.`,
+        { inline_keyboard: [[{ text: "💎 Get Premium", callback_data: "settings_premium" }, { text: "⬅️ Back", callback_data: "settings_menu" }]] }
       );
       return;
     }
 
     if (data.startsWith("model_pick_")) {
-      const idx = parseInt(data.replace("model_pick_", ""));
-      const config = await getOrCreateBotConfig();
-      const model = config.chatModels[idx];
-      if (!model) { await answer(bot, query.id, "Model not found."); return; }
-      user.preferredChatModel = model.id;
+      await answer(bot, query.id, "Model selection is managed by the bot owner.");
+      return;
+    }
+
+    // ── Group Settings toggles (from inline keyboard in group) ────────────
+
+    if (data.startsWith("grp_tog_")) {
+      const match = data.match(/^grp_tog_(.+?)_(-?\d+)$/);
+      if (!match) { await answer(bot, query.id); return; }
+      const field = match[1];
+      const groupChatId = parseInt(match[2]);
+      const isAdm = await (async () => { try { const m = await bot.getChatMember(groupChatId, userId); return ["creator","administrator"].includes(m.status); } catch { return false; } })();
+      if (!isAdm) { await answer(bot, query.id, "Only group admins can change settings."); return; }
+      const gs = await GroupSettings.findOne({ chatId: groupChatId });
+      if (!gs) { await answer(bot, query.id, "Settings not found."); return; }
+      const lengthOptions: Array<"short" | "long"> = ["short", "long"];
+      if (field === "length") {
+        const cur = lengthOptions.indexOf(gs.length);
+        gs.length = lengthOptions[(cur + 1) % lengthOptions.length];
+      } else {
+        (gs as any)[field] = !(gs as any)[field];
+      }
+      await gs.save();
+      await answer(bot, query.id, "✅ Updated");
+      const { groupSettingsKeyboard } = await import("../utils/keyboards.js");
+      try { await bot.editMessageReplyMarkup(groupSettingsKeyboard(gs, groupChatId) as any, { chat_id: query.message!.chat.id, message_id: query.message!.message_id }); } catch {}
+      return;
+    }
+
+    if (data.startsWith("grp_style_") && !data.startsWith("grp_setstyle_")) {
+      const groupChatId = parseInt(data.replace("grp_style_", ""));
+      const isAdm = await (async () => { try { const m = await bot.getChatMember(groupChatId, userId); return ["creator","administrator"].includes(m.status); } catch { return false; } })();
+      if (!isAdm) { await answer(bot, query.id, "Only group admins."); return; }
+      const gs = await GroupSettings.findOne({ chatId: groupChatId });
+      const { groupStyleKeyboard } = await import("../utils/keyboards.js");
+      await answer(bot, query.id);
+      try { await bot.editMessageReplyMarkup(groupStyleKeyboard(groupChatId, gs?.style || "friendly") as any, { chat_id: query.message!.chat.id, message_id: query.message!.message_id }); } catch {}
+      return;
+    }
+
+    if (data.startsWith("grp_setstyle_")) {
+      const match = data.match(/^grp_setstyle_(.+?)_(-?\d+)$/);
+      if (!match) { await answer(bot, query.id); return; }
+      const style = match[1]; const groupChatId = parseInt(match[2]);
+      const isAdm = await (async () => { try { const m = await bot.getChatMember(groupChatId, userId); return ["creator","administrator"].includes(m.status); } catch { return false; } })();
+      if (!isAdm) { await answer(bot, query.id, "Only group admins."); return; }
+      const gs = await GroupSettings.findOneAndUpdate({ chatId: groupChatId }, { style }, { new: true });
+      await answer(bot, query.id, `✅ Style: ${style}`);
+      if (gs) { const { groupSettingsKeyboard } = await import("../utils/keyboards.js"); try { await bot.editMessageReplyMarkup(groupSettingsKeyboard(gs, groupChatId) as any, { chat_id: query.message!.chat.id, message_id: query.message!.message_id }); } catch {} }
+      return;
+    }
+
+    if (data.startsWith("grp_slowmode_") && !data.startsWith("grp_slowmode_set")) {
+      const groupChatId = parseInt(data.replace("grp_slowmode_", ""));
+      const isAdm = await (async () => { try { const m = await bot.getChatMember(groupChatId, userId); return ["creator","administrator"].includes(m.status); } catch { return false; } })();
+      if (!isAdm) { await answer(bot, query.id, "Only group admins."); return; }
+      const gs = await GroupSettings.findOne({ chatId: groupChatId });
+      if (!gs) return;
+      const opts = [0, 5, 10, 30, 60]; const cur = opts.indexOf(gs.slowmode);
+      gs.slowmode = opts[(cur + 1) % opts.length];
+      await gs.save();
+      await answer(bot, query.id, `⏱ Slowmode: ${gs.slowmode}s`);
+      const { groupSettingsKeyboard } = await import("../utils/keyboards.js");
+      try { await bot.editMessageReplyMarkup(groupSettingsKeyboard(gs, groupChatId) as any, { chat_id: query.message!.chat.id, message_id: query.message!.message_id }); } catch {}
+      return;
+    }
+
+    if (data.startsWith("grp_warnlimit_")) {
+      const groupChatId = parseInt(data.replace("grp_warnlimit_", ""));
+      const isAdm = await (async () => { try { const m = await bot.getChatMember(groupChatId, userId); return ["creator","administrator"].includes(m.status); } catch { return false; } })();
+      if (!isAdm) { await answer(bot, query.id, "Only group admins."); return; }
+      const gs = await GroupSettings.findOne({ chatId: groupChatId });
+      if (!gs) return;
+      const opts = [2, 3, 4, 5, 10]; const cur = opts.indexOf(gs.warnLimit);
+      gs.warnLimit = opts[(cur + 1) % opts.length];
+      await gs.save();
+      await answer(bot, query.id, `⚠️ Warn limit: ${gs.warnLimit}`);
+      const { groupSettingsKeyboard } = await import("../utils/keyboards.js");
+      try { await bot.editMessageReplyMarkup(groupSettingsKeyboard(gs, groupChatId) as any, { chat_id: query.message!.chat.id, message_id: query.message!.message_id }); } catch {}
+      return;
+    }
+
+    if (data.startsWith("grp_welcome_")) {
+      const groupChatId = parseInt(data.replace("grp_welcome_", ""));
+      const isAdm = await (async () => { try { const m = await bot.getChatMember(groupChatId, userId); return ["creator","administrator"].includes(m.status); } catch { return false; } })();
+      if (!isAdm) { await answer(bot, query.id, "Only group admins."); return; }
+      await answer(bot, query.id);
+      await bot.sendMessage(chatId, `👋 To set a welcome message, use:\n\n/welcome Your text here\n\nPlaceholders: {name} = username, {group} = group name`);
+      return;
+    }
+
+    if (data.startsWith("grp_goodbye_")) {
+      const groupChatId = parseInt(data.replace("grp_goodbye_", ""));
+      const isAdm = await (async () => { try { const m = await bot.getChatMember(groupChatId, userId); return ["creator","administrator"].includes(m.status); } catch { return false; } })();
+      if (!isAdm) { await answer(bot, query.id, "Only group admins."); return; }
+      await answer(bot, query.id);
+      await bot.sendMessage(chatId, `👋 To set a goodbye message, use:\n\n/setgoodbye Your text here\n\nPlaceholders: {name} = username, {group} = group name`);
+      return;
+    }
+
+    if (data.startsWith("grp_rules_")) {
+      const groupChatId = parseInt(data.replace("grp_rules_", ""));
+      const isAdm = await (async () => { try { const m = await bot.getChatMember(groupChatId, userId); return ["creator","administrator"].includes(m.status); } catch { return false; } })();
+      if (!isAdm) { await answer(bot, query.id, "Only group admins."); return; }
+      await answer(bot, query.id);
+      await bot.sendMessage(chatId, `📋 To set group rules, use:\n\n/setrules Your rules here\n\nMembers can view them with /rules`);
+      return;
+    }
+
+    if (data.startsWith("grp_back_")) {
+      const groupChatId = parseInt(data.replace("grp_back_", ""));
+      const gs = await GroupSettings.findOne({ chatId: groupChatId });
+      if (gs) { const { groupSettingsKeyboard } = await import("../utils/keyboards.js"); try { await bot.editMessageReplyMarkup(groupSettingsKeyboard(gs, groupChatId) as any, { chat_id: query.message!.chat.id, message_id: query.message!.message_id }); } catch {} }
+      await answer(bot, query.id);
+      return;
+    }
+
+    if (data === "grp_settings_close") {
+      try { await bot.deleteMessage(query.message!.chat.id, query.message!.message_id); } catch {}
+      await answer(bot, query.id);
+      return;
+    }
+
+    // ── Daily reward claim ────────────────────────────────────────────────
+
+    if (data === "daily_claim") {
+      const now = new Date();
+      const lastReward = user.lastDailyReward;
+      const msIn24h = 24 * 60 * 60 * 1000;
+      if (lastReward && now.getTime() - lastReward.getTime() < msIn24h) {
+        const hoursLeft = Math.ceil((new Date(lastReward.getTime() + msIn24h).getTime() - now.getTime()) / (60 * 60 * 1000));
+        await answer(bot, query.id, `⏳ Already claimed! Come back in ${hoursLeft}h`);
+        return;
+      }
+      const prevStreak = user.streak || 0;
+      const wasContinuous = lastReward && (now.getTime() - lastReward.getTime()) < (48 * 60 * 60 * 1000);
+      const newStreak = wasContinuous ? prevStreak + 1 : 1;
+      user.streak = newStreak;
+      user.lastDailyReward = now;
+      const streakBonus = Math.min(20, Math.floor(newStreak / 7) * 3);
+      const roll = Math.random() * 100;
+      let rewardMsg = "";
+      if (roll < 3 + streakBonus) {
+        const expiry = user.premium.expiresAt && user.premium.expiresAt > now ? user.premium.expiresAt : now;
+        user.premium.active = true; user.premium.expiresAt = addDays(expiry, 7);
+        user.premium.plan = user.premium.plan || "daily";
+        rewardMsg = `🌟 LEGENDARY! You won 7 days of Premium!\n\nKeep your streak going for better odds!`;
+      } else if (roll < 15 + streakBonus) {
+        const expiry = user.premium.expiresAt && user.premium.expiresAt > now ? user.premium.expiresAt : now;
+        user.premium.active = true; user.premium.expiresAt = addDays(expiry, 3);
+        user.premium.plan = user.premium.plan || "daily";
+        rewardMsg = `💎 RARE! You won 3 days of Premium!\n\nEnjoy unlimited images and priority AI!`;
+      } else if (roll < 40 + Math.floor(streakBonus / 2)) {
+        user.bonusImages = (user.bonusImages || 0) + 10;
+        rewardMsg = `✨ Nice! +10 bonus image slots for today!\n\nGenerate more images than usual today!`;
+      } else {
+        rewardMsg = `💫 Good job showing up!\n\nNothing special today, but your streak grows. Longer streaks unlock better odds for rare rewards!`;
+      }
       await user.save();
-      await answer(bot, query.id, `✅ Switched to ${model.name}`);
+      await answer(bot, query.id, "🎁 Reward claimed!");
       await editMsg(bot, query,
-        `🤖 AI Model\n━━━━━━━━━━\nCurrent: ${model.name}\n✅ Model switched!\n\nTap to switch again:`,
-        userModelKeyboard(config.chatModels, user.preferredChatModel, config.activeChatModel)
+        `🎁 Daily Reward — Day ${newStreak}!\n\n` +
+        `🔥 Streak: ${newStreak} day${newStreak !== 1 ? 's' : ''}${newStreak >= 7 ? ' 🔥' : ''}\n\n` +
+        rewardMsg,
+        { inline_keyboard: [
+          [{ text: "👥 Refer a Friend", callback_data: "refer_link" }],
+          [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+        ]}
+      );
+      return;
+    }
+
+    // ── Referral link ─────────────────────────────────────────────────────
+
+    if (data === "refer_link") {
+      const botInfo = await bot.getMe();
+      const referralLink = `https://t.me/${botInfo.username}?start=ref_${user.userId}`;
+      const refs = (user.referrals || []).length;
+      await editMsg(bot, query,
+        `👥 Refer & Earn\n\n` +
+        `Share your link — earn Premium for both of you!\n\n` +
+        `🔗 Your referral link:\n${referralLink}\n\n` +
+        `• New friend gets 3 days Premium 🎁\n` +
+        `• You get 7 days Premium 🎉\n` +
+        `• Already premium? It extends your time!\n\n` +
+        `📊 Total referrals: ${refs} friend${refs !== 1 ? 's' : ''}`,
+        { inline_keyboard: [
+          [{ text: "🎁 Daily Reward", callback_data: "daily_claim" }],
+          [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+        ]}
       );
       return;
     }
@@ -1912,7 +2088,7 @@ export async function handleCallbackQuery(
         await bot.pinChatMessage(cId, mId, { disable_notification: true });
         await answer(bot, query.id, "📌 Pinned!");
       } catch {
-        await answer(bot, query.id, "Could not pin — I need admin + pin rights.", true);
+        await answer(bot, query.id, "Could not pin — I need admin + pin rights.");
       }
       return;
     }
@@ -1945,7 +2121,7 @@ export async function handleCallbackQuery(
     if (data === "own_feat_image" || data === "own_feat_tts" || data === "own_feat_stt" || data === "own_feat_imganalyze") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
       const config = await getOrCreateBotConfig();
-      if (!config.features) config.features = {};
+      if (!config.features) config.features = { imageEnabled: true, ttsEnabled: true, sttEnabled: true, imageAnalysisEnabled: true };
       const featureMap: Record<string, keyof typeof config.features> = {
         own_feat_image: "imageEnabled",
         own_feat_tts: "ttsEnabled",

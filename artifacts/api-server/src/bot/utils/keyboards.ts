@@ -809,6 +809,73 @@ export function userModelKeyboard(
 }
 
 
+// ── Group Settings keyboard (admin-only, sent in group) ───────────────────────
+export function groupSettingsKeyboard(
+  gs: {
+    aiEnabled: boolean; style: string; emoji: boolean; length: string;
+    antilink: boolean; antiflood: boolean; captchaEnabled: boolean;
+    autoDeleteServiceMessages: boolean; locked: boolean; slowmode: number; warnLimit: number;
+  },
+  chatId: number
+): TelegramBot.InlineKeyboardMarkup {
+  const c = String(chatId);
+  const on = "✅"; const off = "❌";
+  return {
+    inline_keyboard: [
+      [
+        { text: `🤖 AI: ${gs.aiEnabled ? on : off}`, callback_data: `grp_tog_aiEnabled_${c}` },
+        { text: `😂 Emoji: ${gs.emoji ? on : off}`, callback_data: `grp_tog_emoji_${c}` },
+      ],
+      [
+        { text: `🎭 Style: ${gs.style}`, callback_data: `grp_style_${c}` },
+        { text: `📏 Length: ${gs.length}`, callback_data: `grp_tog_length_${c}` },
+      ],
+      [
+        { text: `🔗 Anti-link: ${gs.antilink ? on : off}`, callback_data: `grp_tog_antilink_${c}` },
+        { text: `🌊 Anti-flood: ${gs.antiflood ? on : off}`, callback_data: `grp_tog_antiflood_${c}` },
+      ],
+      [
+        { text: `🧮 Captcha: ${gs.captchaEnabled ? on : off}`, callback_data: `grp_tog_captchaEnabled_${c}` },
+        { text: `🗑 Auto-del: ${gs.autoDeleteServiceMessages ? on : off}`, callback_data: `grp_tog_autoDeleteServiceMessages_${c}` },
+      ],
+      [
+        { text: `🔒 Locked: ${gs.locked ? on : off}`, callback_data: `grp_tog_locked_${c}` },
+        { text: `⏱ Slowmode: ${gs.slowmode}s`, callback_data: `grp_slowmode_${c}` },
+      ],
+      [
+        { text: `⚠️ Warn limit: ${gs.warnLimit}`, callback_data: `grp_warnlimit_${c}` },
+        { text: `👋 Welcome msg`, callback_data: `grp_welcome_${c}` },
+      ],
+      [
+        { text: `📋 Rules`, callback_data: `grp_rules_${c}` },
+        { text: `👋 Goodbye msg`, callback_data: `grp_goodbye_${c}` },
+      ],
+      [{ text: "❌ Close", callback_data: "grp_settings_close" }],
+    ],
+  };
+}
+
+export function groupStyleKeyboard(chatId: number, current: string): TelegramBot.InlineKeyboardMarkup {
+  const c = String(chatId);
+  const styles = ["friendly", "funny", "serious", "balanced"];
+  return {
+    inline_keyboard: [
+      styles.map(s => ({ text: (s === current ? "✅ " : "") + s, callback_data: `grp_setstyle_${s}_${c}` })),
+      [{ text: "⬅️ Back", callback_data: `grp_back_${c}` }],
+    ],
+  };
+}
+
+// ── Daily reward keyboard ─────────────────────────────────────────────────────
+export function dailyRewardKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "🎁 Claim Daily Reward", callback_data: "daily_claim" }],
+      [{ text: "👥 Refer a Friend", callback_data: "refer_link" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+    ],
+  };
+}
+
 export function ownerUserListKeyboard(
   page: number,
   totalPages: number
