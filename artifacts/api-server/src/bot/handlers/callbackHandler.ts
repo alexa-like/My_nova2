@@ -914,7 +914,7 @@ export async function handleCallbackQuery(
         `Language: ${user.settings.language || "en"}\n` +
         `Mood: ${user.mood || "not set"}\n` +
         `Messages today: ${user.usage.messages}\n` +
-        `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}\n` +
+        `Images today: ${user.usage.images}/${await getImageLimit(user.premium.active)}\n` +
         `Member since: ${formatDate(user.firstSeen)}`,
         backToSettingsKeyboard()
       );
@@ -922,7 +922,7 @@ export async function handleCallbackQuery(
     }
 
     if (data === "settings_premium") {
-      const limit = getImageLimit(user.premium.active);
+      const limit = await getImageLimit(user.premium.active);
       if (user.premium.active) {
         await editMsg(bot, query,
           `💎 Premium Member\n\n` +
@@ -1336,7 +1336,7 @@ export async function handleCallbackQuery(
         `Reply length: ${user.settings.length}\n\n` +
         `── Usage ──\n` +
         `Messages today: ${user.usage.messages}\n` +
-        `Images today: ${user.usage.images}/${getImageLimit(user.premium.active)}\n` +
+        `Images today: ${user.usage.images}/${await getImageLimit(user.premium.active)}\n` +
         `Total builds: ${builds2}\n` +
         `Groups: ${user.groups.length}\n` +
         `Warnings: ${user.warnings}`,
@@ -1351,7 +1351,7 @@ export async function handleCallbackQuery(
       const premiumLine = user.premium.active
         ? `✨ Premium${user.premium.expiresAt ? ` (expires ${formatDate(user.premium.expiresAt)})` : ""}`
         : "Free";
-      const imageLimit = getImageLimit(user.premium.active);
+      const imageLimit = await getImageLimit(user.premium.active);
       const daysSinceJoin = Math.floor((Date.now() - user.firstSeen.getTime()) / 86400000);
       const builds2 = user.usage.builds ?? 0;
       await editMsg(bot, query,
@@ -1362,7 +1362,7 @@ export async function handleCallbackQuery(
         `💎 Plan: ${premiumLine}\n\n` +
         `── Today ──\n` +
         `💬 Messages: ${user.usage.messages}\n` +
-        `🖼️ Images: ${user.usage.images}/${(await imageLimit) >= 999999 ? "∞" : await imageLimit}\n\n` +
+        `🖼️ Images: ${user.usage.images}/${imageLimit >= 999999 ? "∞" : imageLimit}\n\n` +
         `── All Time ──\n` +
         `🔨 Builds: ${builds2}\n` +
         `👥 Groups: ${user.groups.length}\n` +
@@ -1987,8 +1987,8 @@ export async function handleCallbackQuery(
     // ── Referral link ─────────────────────────────────────────────────────
 
     if (data === "refer_link") {
-      const botInfo = await bot.getMe();
-      const referralLink = `https://t.me/${botInfo.username}?start=ref_${user.userId}`;
+      const { getBotUsername } = await import("../index.js");
+      const referralLink = `https://t.me/${getBotUsername()}?start=ref_${user.userId}`;
       const refs = (user.referrals || []).length;
       await editMsg(bot, query,
         `👥 Refer & Earn\n\n` +

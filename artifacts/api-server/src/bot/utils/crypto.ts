@@ -2,11 +2,26 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypt
 
 const ALG = "aes-256-gcm";
 
+let _keyWarned = false;
+
 function getKey(): Buffer {
-  const raw =
-    process.env.ENCRYPTION_KEY ||
-    process.env.TELEGRAM_BOT_TOKEN ||
-    "nova-default-enc-key-change-me!!";
+  const raw = process.env.ENCRYPTION_KEY;
+  if (!raw) {
+    if (!_keyWarned) {
+      _keyWarned = true;
+      // Use stderr so it is visible in logs even when stdout is quiet
+      process.stderr.write(
+        "[nova] WARNING: ENCRYPTION_KEY is not set. " +
+        "A derived fallback key is being used. " +
+        "Set ENCRYPTION_KEY to a stable secret so encrypted tokens survive bot-token rotations.\n"
+      );
+    }
+    // Stable fallback: scrypt of a fixed constant so the key never changes
+    // even if TELEGRAM_BOT_TOKEN is rotated. Users who already have data
+    // encrypted under the old bot-token key will need to re-link their
+    // accounts once ENCRYPTION_KEY is set.
+    return scryptSync("nova-fallback-key-set-ENCRYPTION_KEY", "nova-salt-v1", 32) as Buffer;
+  }
   return scryptSync(raw, "nova-salt-v1", 32) as Buffer;
 }
 

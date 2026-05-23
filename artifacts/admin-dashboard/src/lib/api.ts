@@ -50,7 +50,7 @@ export interface User {
   banned: boolean;
   isOwner: boolean;
   premium: { active: boolean; expiresAt?: string; plan?: string };
-  usage: { messages: number; images: number; builds: number; music: number };
+  usage: { messages: number; images: number; builds: number };
   settings: { style: string; emoji: boolean; length: string; language: string };
   warnings: number;
   groups: number[];
@@ -86,8 +86,8 @@ export interface BotConfigData {
   premiumEmojiEnabled: boolean;
   maintenanceMode: boolean;
   usageLimits: {
-    freeMessages: number; freeImages: number; freeBuilds: number; freeMusic: number;
-    premiumMessages: number; premiumImages: number; premiumBuilds: number; premiumMusic: number;
+    freeMessages: number; freeImages: number; freeBuilds: number;
+    premiumMessages: number; premiumImages: number; premiumBuilds: number;
     resetIntervalHours: number;
   };
   welcomeMessage: string;

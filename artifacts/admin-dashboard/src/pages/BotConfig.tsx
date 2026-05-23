@@ -357,7 +357,6 @@ export default function BotConfig() {
           <LimitRow label="Messages" freeKey="freeMessages" premiumKey="premiumMessages" values={limits} onChange={setLimitVal} />
           <LimitRow label="Images" freeKey="freeImages" premiumKey="premiumImages" values={limits} onChange={setLimitVal} />
           <LimitRow label="Builds" freeKey="freeBuilds" premiumKey="premiumBuilds" values={limits} onChange={setLimitVal} />
-          <LimitRow label="Music" freeKey="freeMusic" premiumKey="premiumMusic" values={limits} onChange={setLimitVal} />
           <div className="pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <div className="flex items-center gap-3">
               <span className="text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>Reset every (hours)</span>

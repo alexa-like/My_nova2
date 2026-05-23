@@ -426,8 +426,8 @@ router.put("/admin/config/limits", async (req, res) => {
     const config = await getOrCreateBotConfig();
     const limits = req.body as Record<string, number>;
     const limitKeys = [
-      "freeMessages", "freeImages", "freeBuilds", "freeMusic",
-      "premiumMessages", "premiumImages", "premiumBuilds", "premiumMusic",
+      "freeMessages", "freeImages", "freeBuilds",
+      "premiumMessages", "premiumImages", "premiumBuilds",
       "resetIntervalHours",
     ];
     for (const key of limitKeys) {

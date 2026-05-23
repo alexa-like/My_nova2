@@ -13,7 +13,6 @@ export interface IUser extends Document {
     length: "long" | "short";
     language: string;
   };
-  preferredChatModel?: string;
   mood?: string;
   interests: string[];
   notes: string[];
@@ -27,7 +26,6 @@ export interface IUser extends Document {
     messages: number;
     images: number;
     builds: number;
-    music: number;
     lastReset: Date;
   };
   github: {
@@ -72,7 +70,6 @@ const UserSchema = new Schema<IUser>(
       length: { type: String, enum: ["long", "short"], default: "long" },
       language: { type: String, default: "en" },
     },
-    preferredChatModel: { type: String },
     mood: { type: String },
     interests: [{ type: String }],
     notes: [{ type: String }],
@@ -84,9 +81,8 @@ const UserSchema = new Schema<IUser>(
     },
     usage: {
       messages: { type: Number, default: 0 },
-      images: { type: Number, default: 0 },
-      builds: { type: Number, default: 0 },
-      music: { type: Number, default: 0 },
+      images:   { type: Number, default: 0 },
+      builds:   { type: Number, default: 0 },
       lastReset: { type: Date, default: Date.now },
     },
     github: {
@@ -103,16 +99,16 @@ const UserSchema = new Schema<IUser>(
         createdAt: { type: Date, default: Date.now },
       },
     ],
-    warnings: { type: Number, default: 0 },
-    banned: { type: Boolean, default: false },
-    isOwner: { type: Boolean, default: false },
+    warnings:      { type: Number, default: 0 },
+    banned:        { type: Boolean, default: false },
+    isOwner:       { type: Boolean, default: false },
     feedbackCount: { type: Number, default: 0 },
-    streak: { type: Number, default: 0 },
+    streak:        { type: Number, default: 0 },
     lastDailyReward: { type: Date },
-    bonusImages: { type: Number, default: 0 },
-    referralCode: { type: String },
-    referredBy: { type: Number },
-    referrals: [{ type: Number }],
+    bonusImages:   { type: Number, default: 0 },
+    referralCode:  { type: String },
+    referredBy:    { type: Number },
+    referrals:     [{ type: Number }],
   },
   { timestamps: true }
 );

@@ -87,6 +87,7 @@ export async function startBot(): Promise<void> {
 
   const botInfo = await bot.getMe();
   const botUsername = botInfo.username || "NovaBot";
+  _setBotUsername(botUsername);
   logger.info({ username: botUsername, id: botInfo.id }, "Nova bot started");
 
   loadPendingReminders(bot).catch((err) => logger.warn({ err }, "Failed to load reminders"));
@@ -667,3 +668,7 @@ function scheduleDailyReport(botInstance: TelegramBot): void {
 export function getBot(): TelegramBot | null {
   return bot;
 }
+
+let _cachedBotUsername = "NovaBot";
+export function getBotUsername(): string { return _cachedBotUsername; }
+export function _setBotUsername(u: string): void { _cachedBotUsername = u; }

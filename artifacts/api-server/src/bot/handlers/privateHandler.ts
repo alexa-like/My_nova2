@@ -1091,8 +1091,8 @@ export async function handlePrivateMessage(
 
   // /refer — referral link
   if (text === "/refer" || text === "/referral" || text === "/invite") {
-    const botInfo = await bot.getMe();
-    const referralLink = `https://t.me/${botInfo.username}?start=ref_${user.userId}`;
+    const { getBotUsername } = await import("../index.js");
+    const referralLink = `https://t.me/${getBotUsername()}?start=ref_${user.userId}`;
     const refs = (user.referrals || []).length;
     await bot.sendMessage(chatId,
       `👥 Refer & Earn\n\n` +
