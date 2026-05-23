@@ -340,20 +340,6 @@ export async function handlePrivateMessage(
   const chatId = msg.chat.id;
   const text = msg.text || "";
 
-  // ── Owner: forwarded message → show group chat ID ─────────────────────────
-  if (user.isOwner && msg.forward_from_chat) {
-    const fwdChat = msg.forward_from_chat;
-    const fwdId = fwdChat.id;
-    const fwdTitle = fwdChat.title || fwdChat.username || String(fwdId);
-    await bot.sendMessage(chatId,
-      `📋 Forwarded from: ${fwdTitle}\n\n` +
-      `Chat ID: \`${fwdId}\`\n\n` +
-      `Use this ID to activate a group gate:\n/setgroupid <index> ${fwdId}`,
-      { parse_mode: "Markdown", reply_markup: backToMainKeyboard() }
-    );
-    return;
-  }
-
   // ── Mandatory group gate ────────────────────────────────────────────────────
   // Allow /start so users can always get the "join" message, and /appeal for banned users
   if (!text.startsWith("/start") && !text.startsWith("/appeal")) {
@@ -1433,7 +1419,7 @@ export async function handlePrivateMessage(
 
   // ── Mode-based message routing ────────────────────────────────────────────────
   const activeMode = await getUserMode(user.userId);
-  if (activeMode.id !== "nova") {
+  if (activeMode.id !== "nova" && activeMode.id !== "none") {
     switch (activeMode.id) {
       case "image":
         await handleImageGeneration(bot, chatId, user, text, e);

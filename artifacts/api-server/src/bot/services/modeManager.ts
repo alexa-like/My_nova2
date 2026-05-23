@@ -3,6 +3,7 @@ import { logger } from "../../lib/logger.js";
 
 export type ModeId =
   | "nova"
+  | "none"
   | "image"
   | "sticker"
   | "search"
@@ -25,11 +26,18 @@ export interface ModeDefinition {
 
 export const MODES: ModeDefinition[] = [
   {
+    id: "none",
+    name: "Normal (Auto)",
+    icon: "🔄",
+    description: "Default mode — Nova handles everything naturally. Just chat or ask for images, searches, etc.",
+    activationHint: "Normal mode active! Just type anything — I'll figure out what you need.",
+  },
+  {
     id: "nova",
-    name: "Nova",
+    name: "Nova (Chat)",
     icon: "🤖",
-    description: "General AI assistant — default mode",
-    activationHint: "You're in Nova mode. Just type anything to chat!",
+    description: "General AI chat — conversations, questions, advice",
+    activationHint: "Nova mode active. Just type anything to chat!",
   },
   {
     id: "image",

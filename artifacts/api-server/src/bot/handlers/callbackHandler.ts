@@ -77,7 +77,7 @@ import { addCredits, getCredits } from "../services/credits.js";
 import { hasAnyPaymentProvider } from "../services/payment.js";
 import { checkAndAwardAchievements, formatAchievementNotification, getUserAchievements, getLastFeatures, FEATURE_LABELS, ACHIEVEMENTS } from "../services/engagement.js";
 import { formatAnnouncements } from "../services/announcements.js";
-import { getMandatoryGroups, removeMandatoryGroup } from "../services/groupGate.js";
+import { getMandatoryGroups, removeMandatoryGroup, getFailedGroups } from "../services/groupGate.js";
 import {
   onboardingWelcomeKeyboard,
   onboardingStep1Keyboard,
@@ -2175,9 +2175,10 @@ export async function handleCallbackQuery(
         }
       }
       await setUserMode(userId, modeId as any);
-      await answer(bot, query.id, `${mode.icon} ${mode.name} mode activated`);
+      await answer(bot, query.id, `${mode.icon} ${mode.name} activated`);
+      const isNormalMode = modeId === "none" || modeId === "nova";
       await editMsg(bot, query,
-        `${mode.icon} Mode: ${mode.name}\n\n${mode.activationHint}\n\n${modeId === "nova" ? "Chat with Nova normally — all features are available." : `Every message you send will be treated as a ${mode.name} request.`}`,
+        `${mode.icon} Mode: ${mode.name}\n\n${mode.activationHint}\n\n${isNormalMode ? "All features available — chat, images, search, and more. Just type naturally!" : `Every message you send will be handled as a ${mode.name} request.`}`,
         currentModeKeyboard(mode)
       );
       return;
@@ -2776,19 +2777,18 @@ export async function handleCallbackQuery(
     // ── Gate recheck (user tapped "I Joined") ────────────────────────────────
 
     if (data === "gate_recheck") {
-      await answer(bot, query.id, "Checking...");
-      const { getFailedGroups: _checkFailed, sendGroupGateMessage: _sendGate } = await import("../services/groupGate.js");
-      const failedStrict = (await _checkFailed(bot, user.userId)).filter(g => g.strict);
+      const failedStrict = (await getFailedGroups(bot, user.userId)).filter(g => g.strict);
       if (failedStrict.length === 0) {
+        await answer(bot, query.id, "✅ Access granted!");
         try { await bot.deleteMessage(chatId, query.message!.message_id); } catch {}
-        const hasNews = true;
-        const { mainMenuWithNewsKeyboard: mkb } = await import("../utils/keyboards.js");
+        const { getNewCount } = await import("../services/announcements.js");
+        const hasNews = getNewCount() > 0;
         await bot.sendMessage(chatId,
-          `✅ Access granted! Welcome to Nova.\n\nHere's your menu:`,
-          { reply_markup: mkb(user.activeMode, hasNews) }
+          `✅ Welcome to Nova! You're all set.\n\nHere's your menu:`,
+          { reply_markup: mainMenuWithNewsKeyboard(user.activeMode || "none", hasNews) }
         );
       } else {
-        await answer(bot, query.id, "You're still not in all required groups.", true);
+        await answer(bot, query.id, "⚠️ You're still not in all required groups. Please join and try again.", true);
       }
       return;
     }

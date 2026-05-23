@@ -318,6 +318,14 @@ export async function handleGroupMessage(
     return;
   }
 
+  if (cmd === "/groupid") {
+    await bot.sendMessage(chatId,
+      `🆔 Group Info\n\nGroup ID: \`${chatId}\`\nGroup name: ${msg.chat.title || "Unknown"}\n\nAdmin tip: Use this ID with /setgroupid to activate the group gate.`,
+      { parse_mode: "Markdown" }
+    );
+    return;
+  }
+
   if (cmd === "/rules") {
     await bot.sendMessage(chatId, groupSettings.rules
       ? "Group Rules\n\n" + groupSettings.rules
