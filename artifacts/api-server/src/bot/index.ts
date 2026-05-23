@@ -485,7 +485,9 @@ export async function startBot(): Promise<void> {
             // ── Correct answer ───────────────────────────────────────────────
             captchaStore.delete(captchaKey);
             await bot!.answerCallbackQuery(query.id, { text: "✅ Correct! You are now verified." });
-            // Restore full permissions in the group
+            // Restore messaging permissions in the group.
+            // NOTE: can_invite_users is intentionally omitted — attempting to set it
+            // beyond the group's default causes Telegram to reject the whole call.
             try {
               await bot!.restrictChatMember(chatId, userId, {
                 permissions: {
@@ -499,11 +501,20 @@ export async function startBot(): Promise<void> {
                   can_send_other_messages: true,
                   can_add_web_page_previews: true,
                   can_send_polls: true,
-                  can_invite_users: true,
                 },
               });
-            } catch (unmuteErr) {
-              logger.error({ err: unmuteErr, chatId, userId }, "Captcha: failed to restore member permissions after verification");
+            } catch (unmuteErr: any) {
+              const errMsg: string = unmuteErr?.message ?? String(unmuteErr);
+              logger.error({ err: errMsg, chatId, userId }, "Captcha: failed to restore member permissions after verification");
+              // Inform the user in DM so they know to contact an admin
+              try {
+                const dmId = challenge.dmChatId ?? userId;
+                if (errMsg.includes("not enough rights") || errMsg.includes("CHAT_ADMIN_REQUIRED")) {
+                  await bot!.sendMessage(dmId, "✅ You answered correctly! However the bot lacks admin rights to unmute you. Please ask a group admin to unmute you manually.");
+                } else if (errMsg.includes("supergroup")) {
+                  await bot!.sendMessage(dmId, "✅ You answered correctly! The group needs to be converted to a supergroup before restrictions work. Please contact a group admin.");
+                }
+              } catch {}
             }
             // Clean up the group "Verify" message
             if (challenge.messageId) {

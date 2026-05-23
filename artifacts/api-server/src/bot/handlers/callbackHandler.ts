@@ -242,6 +242,14 @@ export async function handleCallbackQuery(
       return;
     }
 
+    if (data === "build_menu") {
+      await editMsg(bot, query,
+        `🌐 Build a Website or App\n\nTell me what you want and I'll generate the full code.\n\nUse the /build command followed by your description:\n\n• /build portfolio website for a photographer\n• /build todo app with dark mode\n• /build Netflix clone with React\n• /build real-time chat app with Node.js\n• /build calculator with history\n\nOr just type your idea naturally — I'll detect it automatically!`,
+        { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] }
+      );
+      return;
+    }
+
     if (data === "settings_menu") {
       const freshUser = await User.findOne({ userId });
       if (!freshUser) return;
@@ -2777,18 +2785,24 @@ export async function handleCallbackQuery(
     // ── Gate recheck (user tapped "I Joined") ────────────────────────────────
 
     if (data === "gate_recheck") {
+      // NOTE: answer(bot, query.id) already fired at the top of handleCallbackQuery.
+      // A second answerCallbackQuery call will silently fail, so we use sendMessage for all feedback here.
       const failedStrict = (await getFailedGroups(bot, user.userId)).filter(g => g.strict);
       if (failedStrict.length === 0) {
-        await answer(bot, query.id, "✅ Access granted!");
         try { await bot.deleteMessage(chatId, query.message!.message_id); } catch {}
         const { getNewCount } = await import("../services/announcements.js");
         const hasNews = getNewCount() > 0;
         await bot.sendMessage(chatId,
-          `✅ Welcome to Nova! You're all set.\n\nHere's your menu:`,
+          `✅ Verified! Welcome to Nova.\n\nHere's your menu:`,
           { reply_markup: mainMenuWithNewsKeyboard(user.activeMode || "none", hasNews) }
         );
       } else {
-        await answer(bot, query.id, "⚠️ You're still not in all required groups. Please join and try again.", true);
+        const groupLines = failedStrict
+          .map(g => g.link ? `• ${g.link}` : `• ${g.name || "Required group"}`)
+          .join("\n");
+        await bot.sendMessage(chatId,
+          `⚠️ You still haven't joined all required groups:\n\n${groupLines}\n\nJoin the group(s) above, then tap "✅ I Joined" again.`
+        );
       }
       return;
     }
