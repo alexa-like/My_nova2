@@ -51,6 +51,33 @@ function needsCurrentInfo(text: string): boolean {
   return CURRENT_INFO_PATTERNS.some(p => p.test(text));
 }
 
+// ── Content moderation (lightweight, runs before every AI call) ───────────────
+// Guards against prompt injection / jailbreak attempts. Not a full NSFW filter —
+// just catches patterns that try to override the bot's system instructions.
+
+const INJECTION_PATTERNS = [
+  /ignore (all |your |previous |the )?(previous |prior |above |all )?(instructions?|rules?|prompts?|guidelines?|constraints?)/i,
+  /you (are|must|should|will) (now |)(act|pretend|behave|respond|reply) as/i,
+  /\bdan\b.{0,30}(mode|prompt|jailbreak)/i,
+  /\b(jailbreak|jailbroken|jail-?break)\b/i,
+  /forget (everything|all|your|the|what).{0,30}(told|said|instructions?|trained|rules?)/i,
+  /\bdeveloper mode\b/i,
+  /disregard (your |all |any |the )?(previous |prior |)?(instructions?|rules?|prompts?|training|guidelines?)/i,
+  /new (persona|personality|character|role|system prompt)/i,
+  /\bdo anything now\b/i,
+];
+
+/** Returns a refusal reason if the message violates content policy, or null if safe. */
+export function moderationCheck(text: string): string | null {
+  if (!text || text.length === 0) return null;
+  // Block extremely long single-token spam (>3000 chars with no spaces)
+  if (/\S{3000,}/.test(text)) return "Message contains invalid content.";
+  for (const pattern of INJECTION_PATTERNS) {
+    if (pattern.test(text)) return "That type of request isn't something I can help with.";
+  }
+  return null;
+}
+
 type Style = "friendly" | "funny" | "serious" | "balanced";
 
 function buildSystemPrompt(
@@ -287,6 +314,10 @@ export async function chat(
   preferredModel?: string,
   context?: "free" | "premium" | "group"
 ): Promise<string> {
+  // Guard: reject prompt injection / jailbreak attempts before touching memory or the AI
+  const moderation = moderationCheck(userMessage);
+  if (moderation) return moderation;
+
   const config = await getOrCreateBotConfig();
 
   // Determine provider slot based on context
