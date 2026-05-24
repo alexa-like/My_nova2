@@ -103,10 +103,9 @@ function extractJson(raw: string): string {
 // ── Coding models ──────────────────────────────────────────────────────────────
 const CODE_MODELS = [
   "meta-llama/llama-3.3-70b-instruct:free",
-  "deepseek/deepseek-r1-distill-llama-70b:free",
+  "deepseek/deepseek-v4-flash:free",
+  "google/gemma-4-31b-it:free",
   "microsoft/phi-4:free",
-  "google/gemma-3-12b-it:free",
-  "mistralai/mixtral-8x7b-instruct:free",
   "meta-llama/llama-3.1-8b-instruct:free",
 ];
 

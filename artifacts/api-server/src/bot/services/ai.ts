@@ -8,13 +8,10 @@ const MAX_HISTORY = 20;
 // ── Single sequential fallback chain — used for all users ─────────────────────
 const FALLBACK_MODELS = [
   "meta-llama/llama-3.3-70b-instruct:free",
-  "qwen/qwen-2.5-72b-instruct:free",
-  "google/gemma-3-12b-it:free",
-  "deepseek/deepseek-r1-distill-llama-70b:free",
+  "google/gemma-4-31b-it:free",
+  "deepseek/deepseek-v4-flash:free",
   "microsoft/phi-4:free",
-  "mistralai/mixtral-8x7b-instruct:free",
   "mistralai/mistral-7b-instruct:free",
-  "google/gemma-2-9b-it:free",
   "meta-llama/llama-3.1-8b-instruct:free",
   "meta-llama/llama-3.2-3b-instruct:free",
 ];

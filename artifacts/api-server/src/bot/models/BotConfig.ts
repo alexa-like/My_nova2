@@ -6,22 +6,9 @@ export interface IModelEntry {
   active: boolean;
 }
 
-export type ChatProvider = "openrouter";
-export type ImageProvider = "huggingface";
 export type TtsProvider = "huggingface" | "openrouter";
 
-export interface IProviderSlot {
-  provider: ChatProvider;
-  model: string;
-}
-
 export interface IProviders {
-  freeChat: IProviderSlot;
-  premiumChat: IProviderSlot;
-  groupChat: IProviderSlot;
-  freeImage: ImageProvider;
-  premiumImage: ImageProvider;
-  groupImage: ImageProvider;
   tts: TtsProvider;
   ttsVoice: string;
 }
@@ -109,22 +96,8 @@ const UsageLimitsSchema = new Schema(
   { _id: false }
 );
 
-const ProviderSlotSchema = new Schema<IProviderSlot>(
-  {
-    provider: { type: String, enum: ["openrouter"], default: "openrouter" },
-    model: { type: String, default: "meta-llama/llama-3.3-70b-instruct:free" },
-  },
-  { _id: false }
-);
-
 const ProvidersSchema = new Schema<IProviders>(
   {
-    freeChat:    { type: ProviderSlotSchema, default: () => ({ provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" }) },
-    premiumChat: { type: ProviderSlotSchema, default: () => ({ provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" }) },
-    groupChat:   { type: ProviderSlotSchema, default: () => ({ provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" }) },
-    freeImage:    { type: String, enum: ["huggingface"], default: "huggingface" },
-    premiumImage: { type: String, enum: ["huggingface"], default: "huggingface" },
-    groupImage:   { type: String, enum: ["huggingface"], default: "huggingface" },
     tts:      { type: String, enum: ["huggingface", "openrouter"], default: "huggingface" },
     ttsVoice: { type: String, default: "alloy" },
   },

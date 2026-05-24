@@ -563,7 +563,7 @@ router.post("/admin/test/chat", async (req, res) => {
 });
 
 // ── POST /api/admin/test/image ────────────────────────────────────────────────
-// Attempts to generate a tiny image with the given HuggingFace model (or Pollinations).
+// Attempts to generate a tiny image with the given HuggingFace model.
 router.post("/admin/test/image", async (req, res) => {
   const { model } = req.body as { model?: string };
   if (!model) { res.status(400).json({ error: "model is required" }); return; }
@@ -572,16 +572,7 @@ router.post("/admin/test/image", async (req, res) => {
   const start = Date.now();
 
   if (!token) {
-    // No HF token — test Pollinations fallback (always free)
-    try {
-      const { default: axios } = await import("axios");
-      const url = `https://image.pollinations.ai/prompt/red+circle?width=64&height=64&nologo=true&model=flux&seed=42`;
-      const r = await axios.get(url, { responseType: "arraybuffer", timeout: 30000, headers: { "User-Agent": "Nova-Bot/1.0" } });
-      const buf = Buffer.from(r.data);
-      res.json({ ok: buf.byteLength > 1000, source: "pollinations (no HF token)", bytes: buf.byteLength, latencyMs: Date.now() - start });
-    } catch (e: any) {
-      res.json({ ok: false, source: "pollinations", error: e.message, latencyMs: Date.now() - start });
-    }
+    res.json({ ok: false, error: "HUGGINGFACE_API_TOKEN is not configured", latencyMs: Date.now() - start });
     return;
   }
 
