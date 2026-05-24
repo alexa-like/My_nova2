@@ -389,7 +389,10 @@ export function projectsListKeyboard(
   if (page > 0) nav.push({ text: "◀️ Prev", callback_data: `proj_page_${page - 1}` });
   if ((page + 1) * PAGE_SIZE < projects.length) nav.push({ text: "▶️ Next", callback_data: `proj_page_${page + 1}` });
   if (nav.length > 0) rows.push(nav);
-  rows.push([{ text: "⬅️ Back", callback_data: "settings_deployments" }]);
+  rows.push([
+    { text: "🌐 Build Another", callback_data: "build_menu" },
+    { text: "⬅️ Back to Build", callback_data: "build_menu" },
+  ]);
   return { inline_keyboard: rows };
 }
 

@@ -245,14 +245,6 @@ export async function handleCallbackQuery(
       return;
     }
 
-    if (data === "build_menu") {
-      await editMsg(bot, query,
-        `🌐 Build a Website or App\n\nTell me what you want and I'll generate the full code.\n\nUse the /build command followed by your description:\n\n• /build portfolio website for a photographer\n• /build todo app with dark mode\n• /build Netflix clone with React\n• /build real-time chat app with Node.js\n• /build calculator with history\n\nOr just type your idea naturally — I'll detect it automatically!`,
-        { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] }
-      );
-      return;
-    }
-
     if (data === "settings_menu") {
       const freshUser = await User.findOne({ userId });
       if (!freshUser) return;
@@ -271,7 +263,6 @@ export async function handleCallbackQuery(
         `Key Commands:\n` +
         `/image <prompt> — Generate an image\n` +
         `/sticker <prompt> — Create a sticker\n` +
-        `/voice <text> — Text-to-speech\n` +
         `/search <query> — Web search\n` +
         `/build <idea> — Build a website or app\n` +
         `/remind <time> <msg> — Set a reminder\n` +
@@ -465,7 +456,7 @@ export async function handleCallbackQuery(
         `🌐 *Build a ${typeName.charAt(0).toUpperCase() + typeName.slice(1)}*\n\n` +
         `Describe what you want. Be specific — the more detail, the better the result.\n\n` +
         `Example: _"A personal portfolio with an about section, skills grid, and contact form"_`,
-        { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] }
+        { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "build_menu" }, { text: "❌ Cancel", callback_data: "main_menu" }]] }
       );
       return;
     }
@@ -1552,13 +1543,16 @@ export async function handleCallbackQuery(
       const projects = (fresh?.projects ?? []) as Array<{ name: string; deployUrl?: string; repoUrl?: string; _id?: any }>;
       if (projects.length === 0) {
         await editMsg(bot, query,
-          `📁 My Projects\n\nYou have no saved projects yet.\n\nUse /build to generate a project!`,
-          { inline_keyboard: [[{ text: "🌐 Build a Project", callback_data: "build_menu" }, { text: "⬅️ Back", callback_data: "settings_deployments" }]] }
+          `📁 My Projects\n\nYou have no saved projects yet.\n\nUse /build to generate your first project!`,
+          { inline_keyboard: [
+            [{ text: "🌐 Build a Project", callback_data: "build_menu" }],
+            [{ text: "⬅️ Back to Build", callback_data: "build_menu" }],
+          ]}
         );
         return;
       }
       await editMsg(bot, query,
-        `📁 My Projects\n\nYou have ${projects.length} project${projects.length !== 1 ? "s" : ""}.\nFree users: 2 max · Premium: unlimited\n\nTap 🗑 to delete a project:`,
+        `📁 My Projects\n\nYou have ${projects.length} project${projects.length !== 1 ? "s" : ""}.\nFree users: 2 max · Premium: unlimited\n\nTap a project to open or delete it:`,
         projectsListKeyboard(projects)
       );
       return;
@@ -1616,7 +1610,7 @@ export async function handleCallbackQuery(
         `🗑 Deleted: ${projName}\n\n${updatedProjects.length} project${updatedProjects.length !== 1 ? "s" : ""} remaining.`,
         updatedProjects.length > 0
           ? projectsListKeyboard(updatedProjects)
-          : { inline_keyboard: [[{ text: "🌐 Build a Project", callback_data: "build_menu" }, { text: "⬅️ Back", callback_data: "settings_deployments" }]] }
+          : { inline_keyboard: [[{ text: "🌐 Build a Project", callback_data: "build_menu" }], [{ text: "⬅️ Back to Build", callback_data: "build_menu" }]] }
       );
       return;
     }
