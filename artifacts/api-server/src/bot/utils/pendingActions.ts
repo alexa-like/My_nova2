@@ -29,7 +29,9 @@ export type PendingTextAction =
   | "github_set_token"
   | "build_input"
   | "vercel_set_token"
-  | "render_set_token";
+  | "render_set_token"
+  | "build_pending"
+  | "feedback_pending";
 
 export type PendingPhotoAction =
   | "img_edit"

@@ -48,6 +48,12 @@ import {
   ownerCodesKeyboard,
   ownerBroadcastKeyboard,
   ownerGroupsKeyboard,
+  onboardingStyleKeyboard,
+  onboardingDoneKeyboard,
+  achievementsKeyboard,
+  privacyKeyboard,
+  updatesKeyboard,
+  buildMenuKeyboard,
   ownerChatModelsKeyboard,
   ownerImageModelsKeyboard,
   ownerUserListKeyboard,
@@ -75,6 +81,13 @@ import { getUserMode, setUserMode, MODES, getModeById, isValidMode } from "../se
 import { logger } from "../../lib/logger.js";
 import { addCredits, getCredits } from "../services/credits.js";
 import { hasAnyPaymentProvider } from "../services/payment.js";
+import {
+  updateRecentFeatures,
+  checkAndGrantAchievements,
+  formatAchievementsText,
+  formatAchievementToast,
+} from "../services/engagement.js";
+import { trackFeature } from "../services/analytics.js";
 
 // ── Trivia questions ──────────────────────────────────────────────────────────
 
@@ -255,6 +268,157 @@ export async function handleCallbackQuery(
         `/redeem <code> — Redeem premium code\n\n` +
         `Or use the menu below — no commands needed!`,
         mainMenuKeyboard(currentMode.id)
+      );
+      return;
+    }
+
+    // ── Onboarding callbacks ────────────────────────────────────────────────
+
+    if (data === "onboard_tour") {
+      await bot.answerCallbackQuery(query.id);
+      await editMsg(bot, query,
+        `✨ *Quick Setup — Pick Your Style*\n\n` +
+        `How should Nova respond to you?\n\n` +
+        `You can always change this later in ⚙️ Settings.`,
+        onboardingStyleKeyboard()
+      );
+      return;
+    }
+
+    if (data.startsWith("onboard_style_")) {
+      const styleMap: Record<string, string> = {
+        onboard_style_friendly: "friendly",
+        onboard_style_funny:    "funny",
+        onboard_style_serious:  "serious",
+        onboard_style_balanced: "balanced",
+      };
+      const style = styleMap[data] ?? "balanced";
+      await User.findOneAndUpdate({ userId }, { "settings.style": style, onboardingComplete: true });
+      await bot.answerCallbackQuery(query.id, { text: `Style set to ${style}!` });
+      await editMsg(bot, query,
+        `✅ *All set, ${user.firstName || "there"}!*\n\n` +
+        `Nova will respond in a *${style}* style.\n\n` +
+        `Here's what you can do right now 👇`,
+        onboardingDoneKeyboard()
+      );
+      return;
+    }
+
+    if (data === "onboard_skip") {
+      await User.findOneAndUpdate({ userId }, { onboardingComplete: true });
+      await bot.answerCallbackQuery(query.id);
+      const mode = await getUserMode(userId);
+      await editMsg(bot, query,
+        `👋 Welcome to Nova! What would you like to do?`,
+        mainMenuKeyboard(mode.id)
+      );
+      return;
+    }
+
+    // ── Achievements callback ────────────────────────────────────────────────
+
+    if (data === "achievements_menu") {
+      const freshUser = await User.findOne({ userId });
+      const badges = freshUser?.achievements ?? [];
+      await editMsg(bot, query,
+        formatAchievementsText(badges),
+        achievementsKeyboard()
+      );
+      return;
+    }
+
+    // ── Privacy callback ─────────────────────────────────────────────────────
+
+    if (data === "privacy_info") {
+      await editMsg(bot, query,
+        `🔒 *Privacy & Your Data*\n\n` +
+        `Nova stores:\n` +
+        `• *Profile* — Name, Telegram ID, username\n` +
+        `• *Settings* — Style, language, preferences\n` +
+        `• *Chat Memory* — Recent context (last 20 msgs)\n` +
+        `• *Usage Stats* — Feature use & message counts\n` +
+        `• *Projects* — Website/app builds\n` +
+        `• *Credits & Premium* — Balance & subscription\n\n` +
+        `🚫 *Not stored:* voice messages, payment details\n\n` +
+        `Clear memory anytime with /forget, or request full deletion below.`,
+        privacyKeyboard()
+      );
+      return;
+    }
+
+    if (data === "privacy_delete_data") {
+      await bot.answerCallbackQuery(query.id, { text: "To request data deletion, send /deletedata" });
+      await bot.sendMessage(chatId,
+        `🗑 *Data Deletion Request*\n\n` +
+        `To delete all your Nova data, send:\n\n` +
+        `/deletedata confirm\n\n` +
+        `⚠️ This will erase your profile, memory, credits, premium, and all projects. *This cannot be undone.*`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    // ── Updates / What's New callback ────────────────────────────────────────
+
+    if (data === "updates_menu") {
+      await editMsg(bot, query,
+        `✨ *What's New in Nova*\n\n` +
+        `🔥 *Recent Updates:*\n\n` +
+        `• 🎯 *Smart Suggestions* — Nova suggests what to try next after each action\n` +
+        `• 🏆 *Achievements* — Earn badges as you use Nova (/achievements)\n` +
+        `• 🔥 *Login Streaks* — Daily activity streak tracking\n` +
+        `• 🌐 *Better /build* — 4-model fallback chain for reliable builds\n` +
+        `• 🔊 *Long TTS* — Voice works for long text, not just short phrases\n` +
+        `• 👋 *Personalised Welcome* — Quick-access to your recent tools\n` +
+        `• 🔒 *Privacy Controls* — See & manage your stored data (/privacy)\n\n` +
+        `📢 *Coming Soon:* Image editing, more AI modes\n\n` +
+        `Have feedback? Use /feedback`,
+        updatesKeyboard()
+      );
+      return;
+    }
+
+    // ── Build menu callback ───────────────────────────────────────────────────
+
+    if (data === "build_menu") {
+      await bot.answerCallbackQuery(query.id);
+      await editMsg(bot, query,
+        `🌐 *Website & App Builder*\n\n` +
+        `Tell me what to build and I'll generate the full code — HTML, CSS, JavaScript, and more.\n\n` +
+        `Choose a template or describe your own idea 👇`,
+        buildMenuKeyboard()
+      );
+      return;
+    }
+
+    if (data === "build_website" || data === "build_react" || data === "build_dashboard" || data === "build_landing" || data === "build_custom") {
+      const typeMap: Record<string, string> = {
+        build_website:   "website",
+        build_react:     "react app",
+        build_dashboard: "admin dashboard",
+        build_landing:   "landing page",
+        build_custom:    "custom project",
+      };
+      const typeName = typeMap[data] ?? "project";
+      await bot.answerCallbackQuery(query.id);
+      setPending(userId, "build_pending");
+      await editMsg(bot, query,
+        `🌐 *Build a ${typeName.charAt(0).toUpperCase() + typeName.slice(1)}*\n\n` +
+        `Describe what you want. Be specific — the more detail, the better the result.\n\n` +
+        `Example: _"A personal portfolio with an about section, skills grid, and contact form"_`,
+        { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] }
+      );
+      return;
+    }
+
+    // ── Feedback callback ─────────────────────────────────────────────────────
+
+    if (data === "feedback_btn") {
+      setPending(userId, "feedback_pending");
+      await bot.answerCallbackQuery(query.id);
+      await editMsg(bot, query,
+        `📢 *Send Feedback*\n\nWhat would you like to tell us? Bug reports, feature requests, or general thoughts — all welcome!\n\nType your message below:`,
+        { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] }
       );
       return;
     }
@@ -2025,14 +2189,14 @@ export async function handleCallbackQuery(
       const now = new Date();
       const lastClaim = (userRecord as any).lastDailyReward as Date | undefined;
       const config = await getOrCreateBotConfig();
-      const dailyAmount = config.creditRewards?.dailyReward ?? 25;
+      const dailyAmount = config.creditRewards?.daily ?? 25;
       const cooldownHours = 20;
       if (lastClaim) {
         const hoursSince = (now.getTime() - lastClaim.getTime()) / (1000 * 60 * 60);
         if (hoursSince < cooldownHours) {
           const hoursLeft = Math.ceil(cooldownHours - hoursSince);
           const minsLeft = Math.ceil((cooldownHours - hoursSince) * 60) % 60;
-          await answer(bot, query.id, `⏳ Already claimed today!`, true);
+          await answer(bot, query.id, `⏳ Already claimed today!`);
           await editMsg(bot, query,
             `🎁 Daily Reward\n\n⏳ You already claimed your reward today!\n\nNext reward in: ${hoursLeft}h ${minsLeft}m\n\nCome back tomorrow for ${dailyAmount} more credits!`,
             { inline_keyboard: [[{ text: "📊 My Account", callback_data: "account_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] }
@@ -2043,7 +2207,7 @@ export async function handleCallbackQuery(
       (userRecord as any).lastDailyReward = now;
       await userRecord.save();
       const newBal = await addCredits(userId, dailyAmount);
-      await answer(bot, query.id, `🎁 +${dailyAmount} credits claimed!`, true);
+      await answer(bot, query.id, `🎁 +${dailyAmount} credits claimed!`);
       await editMsg(bot, query,
         `🎁 Daily Reward Claimed!\n\n+${dailyAmount} credits added to your account.\n💰 New balance: ${newBal} credits\n\nCome back in 20 hours for your next reward!`,
         { inline_keyboard: [
@@ -2075,12 +2239,12 @@ export async function handleCallbackQuery(
     }
 
     if (data === "credits_coming_soon") {
-      await answer(bot, query.id, "Payment system coming soon!", true);
+      await answer(bot, query.id, "Payment system coming soon!");
       return;
     }
 
     if (data.startsWith("buy_pack_")) {
-      await answer(bot, query.id, "Payment integration coming soon. Stay tuned!", true);
+      await answer(bot, query.id, "Payment integration coming soon. Stay tuned!");
       return;
     }
 
@@ -2114,10 +2278,10 @@ export async function handleCallbackQuery(
       const config = await getOrCreateBotConfig();
       const flashOffer = (config as any).flashOffer;
       if (!flashOffer?.active) {
-        await answer(bot, query.id, "No active flash offer right now.", true);
+        await answer(bot, query.id, "No active flash offer right now.");
         return;
       }
-      await answer(bot, query.id, "Payment coming soon!", true);
+      await answer(bot, query.id, "Payment coming soon!");
       await editMsg(bot, query,
         `⚡ Flash Offer: ${flashOffer.title}\n\n${flashOffer.description}\n\nReward: +${flashOffer.creditsAmount} credits\n\n💳 Payment integration coming soon — stay tuned!`,
         { inline_keyboard: [[{ text: "⬅️ Credits", callback_data: "credits_menu" }]] }
@@ -2147,7 +2311,7 @@ export async function handleCallbackQuery(
         const userRecord = await User.findOne({ userId });
         const isPrem = userRecord?.premium?.active ?? false;
         if (!isPrem) {
-          await answer(bot, query.id, `🔒 ${mode.name} is a VIP feature`, true);
+          await answer(bot, query.id, `🔒 ${mode.name} is a VIP feature`);
           await editMsg(bot, query,
             `🔒 ${mode.icon} ${mode.name} — VIP Feature\n\n${mode.description}\n\nUpgrade to VIP to unlock this mode and get:\n• Unlimited messages\n• No credit deductions\n• All premium modes\n• Priority responses`,
             { inline_keyboard: [

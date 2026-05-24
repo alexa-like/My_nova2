@@ -7,6 +7,7 @@ export type AnalyticsEvent =
   | "command"
   | "new_user"
   | "premium_redeemed"
+  | "feature"
   | "error"
   | "ban"
   | "warn"
@@ -33,6 +34,7 @@ const AnalyticsSchema = new Schema<IAnalytics>(
         "command",
         "new_user",
         "premium_redeemed",
+        "feature",
         "error",
         "ban",
         "warn",

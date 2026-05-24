@@ -2607,6 +2607,15 @@ async function handleTTS(
     } else {
       await bot.sendVoice(chatId, ttsResult.buffer, { caption: e ? "🔊 Here's your audio!" : undefined });
     }
+    Promise.all([
+      updateRecentFeatures(user.userId, "tts"),
+      trackFeature(user.userId, "tts"),
+      checkAndGrantAchievements(user.userId, "tts").then(async (unlocked) => {
+        if (unlocked.length > 0) {
+          await bot.sendMessage(chatId, formatAchievementToast(unlocked), { parse_mode: "Markdown" }).catch(() => {});
+        }
+      }),
+    ]).catch(() => {});
   } catch (err) {
     ttsStatus.stop();
     await ttsStatus.delete();
