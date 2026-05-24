@@ -1,6 +1,6 @@
 /**
  * Intent Engine — classifies natural-language messages into intents.
- * Used by privateHandler for routing; single source of truth for all intent detection.
+ * Single source of truth for all intent routing in private and group chats.
  */
 
 export type IntentType =
@@ -20,74 +20,94 @@ export interface IntentResult {
   clarificationNeeded?: boolean;
 }
 
-type PatternSet = Array<{
-  pattern: RegExp;
-  extract?: (match: RegExpMatchArray) => string;
-}>;
-
-function matchPatterns(text: string, patterns: PatternSet): { prompt: string; confidence: number } | null {
-  const t = text.trim();
-  for (const { pattern, extract } of patterns) {
-    const m = t.match(pattern);
-    if (m) {
-      const prompt = extract ? (extract(m) || "").trim() : (m[1] || m[0] || "").trim();
-      if (prompt.length > 2) return { prompt, confidence: 0.92 };
-    }
-  }
-  return null;
-}
-
 // ── Image ──────────────────────────────────────────────────────────────────────
-const IMAGE_PATTERNS: PatternSet = [
-  { pattern: /^(?:generate|create|make|produce)\s+(?:an?\s+)?(?:image|photo|picture|pic|illustration|artwork|drawing|painting|wallpaper|render|poster)\s+(?:of|showing|depicting|about|with|for)?\s*(.+)/i, extract: (m) => m[1] },
-  { pattern: /^(?:draw|paint|illustrate|sketch|render|design)\s+(?:me\s+)?(?:an?\s+)?(.+)/i, extract: (m) => m[1] },
-  { pattern: /^(?:show me|gimme|give me)\s+(?:an?\s+)?(?:image|photo|picture|pic|illustration)\s+(?:of\s+)?(.+)/i, extract: (m) => m[1] },
-  { pattern: /^(?:image|photo|picture)\s+(?:of\s+|showing\s+)?(.+)/i, extract: (m) => m[1] },
-  { pattern: /^(?:can you|could you|please)\s+(?:generate|create|make|draw|paint|design)\s+(?:an?\s+)?(?:image|photo|picture|illustration|drawing)\s+(?:of|showing|with|about|for)?\s*(.+)/i, extract: (m) => m[1] },
-  { pattern: /^(?:i want|i need)\s+(?:an?\s+)?(?:image|photo|picture|illustration)\s+(?:of\s+)?(.+)/i, extract: (m) => m[1] },
-  { pattern: /^(?:visualize|imagine)\s+(.+)/i, extract: (m) => m[1] },
+
+const IMAGE_VERBS = "generate|create|make|produce|draw|paint|illustrate|sketch|render|design|show|get|gimme|give me";
+const IMAGE_NOUNS = "image|photo|picture|pic|illustration|artwork|drawing|painting|wallpaper|render|poster|portrait|photo";
+const IMAGE_PREPS = "of|showing|depicting|about|with|for";
+
+const IMAGE_PATTERNS: Array<{ pattern: RegExp; extract: (m: RegExpMatchArray) => string }> = [
+  // "generate/draw/make [me] [a/an] image/photo of/with X"
+  {
+    pattern: new RegExp(`^(?:${IMAGE_VERBS})\\s+(?:me\\s+)?(?:an?\\s+)?(?:${IMAGE_NOUNS})\\s+(?:${IMAGE_PREPS})\\s+(.+)`, "i"),
+    extract: (m) => m[1],
+  },
+  // "generate/draw/make [me] [a/an] image/photo" (no prep — captures everything after noun)
+  {
+    pattern: new RegExp(`^(?:${IMAGE_VERBS})\\s+(?:me\\s+)?(?:an?\\s+)?(?:${IMAGE_NOUNS})\\s+(.+)`, "i"),
+    extract: (m) => m[1],
+  },
+  // "draw/paint/sketch/illustrate [me] X" — verb implies visual
+  {
+    pattern: /^(?:draw|paint|illustrate|sketch|render)\s+(?:me\s+)?(?:an?\s+)?(.+)/i,
+    extract: (m) => m[1],
+  },
+  // "show me/give me/gimme a picture/photo/image of X"
+  {
+    pattern: new RegExp(`^(?:show me|give me|gimme)\\s+(?:an?\\s+)?(?:${IMAGE_NOUNS})\\s+(?:${IMAGE_PREPS})\\s+(.+)`, "i"),
+    extract: (m) => m[1],
+  },
+  // "can you/could you/please generate/draw/create a picture of X"
+  {
+    pattern: new RegExp(`^(?:can you|could you|please)\\s+(?:${IMAGE_VERBS})\\s+(?:me\\s+)?(?:an?\\s+)?(?:${IMAGE_NOUNS})\\s*(?:${IMAGE_PREPS})?\\s*(.+)`, "i"),
+    extract: (m) => m[1],
+  },
+  // "I want/need a picture/image of X"
+  {
+    pattern: new RegExp(`^(?:i want|i need|i'd like)\\s+(?:an?\\s+)?(?:${IMAGE_NOUNS})\\s+(?:${IMAGE_PREPS})\\s+(.+)`, "i"),
+    extract: (m) => m[1],
+  },
+  // "picture of X" / "photo of X" (no verb — shorthand)
+  {
+    pattern: new RegExp(`^(?:${IMAGE_NOUNS})\\s+of\\s+(.+)`, "i"),
+    extract: (m) => m[1],
+  },
+  // "visualize/imagine X"
+  {
+    pattern: /^(?:visualize|imagine)\s+(.+)/i,
+    extract: (m) => m[1],
+  },
 ];
 
-const IMAGE_SKIP = new Set(["me", "that", "this", "one", "some", "it", "anything", "something", "a photo", "an image", "sure", "yes"]);
+const IMAGE_SKIP = new Set(["me", "that", "this", "one", "some", "it", "anything", "something"]);
 
 export function detectImageIntent(text: string): string | null {
   const t = text.trim();
-  if (t.length < 5 || t.startsWith("/")) return null;
+  if (t.length < 3 || t.startsWith("/")) return null;
+
   for (const { pattern, extract } of IMAGE_PATTERNS) {
     const m = t.match(pattern);
-    const captured = (extract ? extract(m!) : m?.[1])?.trim();
-    if (m && captured && captured.length > 3) {
-      const prompt = captured.replace(/[?.!]+$/, "");
-      if (!IMAGE_SKIP.has(prompt.toLowerCase())) return prompt;
+    if (!m) continue;
+    const captured = extract(m)?.trim().replace(/[?.!]+$/, "");
+    if (captured && captured.length > 1 && !IMAGE_SKIP.has(captured.toLowerCase())) {
+      return captured;
     }
   }
   return null;
 }
 
 // ── Sticker ────────────────────────────────────────────────────────────────────
-const STICKER_PATTERNS: PatternSet = [
-  { pattern: /^(?:make|create|generate|design)\s+(?:me\s+)?(?:a\s+)?sticker\s+(?:of|showing|with|depicting|about)?\s*(.+)/i, extract: (m) => m[1] },
-  { pattern: /^(?:can you|could you)\s+(?:make|create|design|generate)\s+(?:a\s+)?sticker\s+(?:of|showing|with|for)?\s*(.+)/i, extract: (m) => m[1] },
-  { pattern: /^sticker\s+(?:of\s+|showing\s+|with\s+)?(.+)/i, extract: (m) => m[1] },
-  { pattern: /^i\s+(?:want|need)\s+(?:a\s+)?sticker\s+(?:of|showing|with)?\s*(.+)/i, extract: (m) => m[1] },
-];
 
-const STICKER_SKIP = new Set(["me", "that", "this", "one", "it", "a sticker"]);
+const STICKER_PATTERNS: RegExp[] = [
+  /^(?:make|create|generate|design)\s+(?:me\s+)?(?:a\s+)?sticker\s+(?:of|showing|with|depicting|about)?\s*(.+)/i,
+  /^(?:can you|could you)\s+(?:make|create|design|generate)\s+(?:a\s+)?sticker\s+(?:of|showing|with|for)?\s*(.+)/i,
+  /^sticker\s+(?:of\s+|showing\s+|with\s+)?(.+)/i,
+  /^i\s+(?:want|need)\s+(?:a\s+)?sticker\s+(?:of|showing|with)?\s*(.+)/i,
+];
 
 export function detectStickerIntent(text: string): string | null {
   const t = text.trim();
   if (t.length < 5 || t.startsWith("/")) return null;
-  for (const { pattern, extract } of STICKER_PATTERNS) {
+  for (const pattern of STICKER_PATTERNS) {
     const m = t.match(pattern);
-    const captured = (extract ? extract(m!) : m?.[1])?.trim();
-    if (m && captured && captured.length > 3 && !STICKER_SKIP.has(captured.toLowerCase())) {
-      return captured.replace(/[?.!]+$/, "");
-    }
+    const captured = m?.[1]?.trim();
+    if (captured && captured.length > 1) return captured.replace(/[?.!]+$/, "");
   }
   return null;
 }
 
 // ── Web Search ─────────────────────────────────────────────────────────────────
+
 export function detectSearchIntent(text: string): string | null {
   const t = text.trim();
   if (t.length < 5 || t.startsWith("/")) return null;
@@ -104,16 +124,17 @@ export function detectSearchIntent(text: string): string | null {
   for (const pattern of patterns) {
     const m = t.match(pattern);
     const captured = m?.[1]?.trim();
-    if (m && captured && captured.length > 2) return captured.replace(/[?.!]+$/, "");
+    if (captured && captured.length > 2) return captured.replace(/[?.!]+$/, "");
   }
   return null;
 }
 
 // ── Summarize ──────────────────────────────────────────────────────────────────
+
 export function detectSummarizeIntent(text: string): string | null {
   const t = text.trim();
   if (t.length < 10 || t.startsWith("/")) return null;
-  const patterns: Array<RegExp> = [
+  const patterns: RegExp[] = [
     /^(?:summarize|summarise|tldr|tl;dr)\s*:?\s*(.+)/i,
     /^(?:sum up|condense|shorten|make shorter)\s+(?:this|the following)\s*:?\s*(.+)/i,
     /^(?:give me a summary of|what(?:'s| is) the (?:summary|gist|main point) of)\s+(.+)/i,
@@ -122,12 +143,13 @@ export function detectSummarizeIntent(text: string): string | null {
   for (const pattern of patterns) {
     const m = t.match(pattern);
     const captured = m?.[1]?.trim();
-    if (m && captured && captured.length > 10) return captured;
+    if (captured && captured.length > 10) return captured;
   }
   return null;
 }
 
 // ── Translate ──────────────────────────────────────────────────────────────────
+
 export function detectTranslateIntent(text: string): { content: string; targetLang: string } | null {
   const t = text.trim();
   if (t.length < 5 || t.startsWith("/")) return null;
@@ -145,16 +167,24 @@ export function detectTranslateIntent(text: string): { content: string; targetLa
 }
 
 // ── Build ──────────────────────────────────────────────────────────────────────
+
 export function detectBuildIntent(text: string): string | null {
   const t = text.trim();
   if (t.length < 8 || t.startsWith("/")) return null;
   const patterns: RegExp[] = [
-    /^(?:build|create|make|generate|code|develop|design|write)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:website|web\s*app|webapp|landing\s*page|portfolio|dashboard|blog|e-?commerce\s*(?:store|shop)?|store|shop|platform|tool|calculator|game|app|application|project|site|page|frontend|backend)\b/i,
-    /^(?:i want|i need|i'd like|i would like|can you build|can you make|can you create|can you code|can you develop|could you build|could you make|could you create|please build|please make|please create|help me build|help me make|help me create)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:website|web\s*app|webapp|landing\s*page|portfolio|dashboard|app|application|site|tool|game|calculator|blog|store|shop|platform|project)\b/i,
-    /^(?:build|develop|code|create|make|generate)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:react|node(?:js|\.js)?|express|fullstack|full.stack|vue|angular|next(?:js|\.js)?|html|css|javascript|js|typescript|ts)\s+(?:app|application|project|website|site|tool|dashboard|page)\b/i,
+    // "build/create/make/code/develop/design [me] [a/an] website/app/..."
+    /^(?:build|create|make|generate|code|develop|design|write)\s+(?:me\s+)?(?:an?\s+)?(?:website|web\s*app|webapp|landing\s*page|portfolio|dashboard|blog|e-?commerce(?:\s*(?:store|shop))?|store|shop|platform|tool|calculator|game|app|application|project|site|page|frontend|backend)\b/i,
+    // "I want/need/would like [me] a website/app..."
+    /^(?:i want|i need|i'd like|i would like|can you build|can you make|can you create|can you code|can you develop|could you build|could you make|could you create|please build|please make|please create|help me build|help me make|help me create)\s+(?:me\s+)?(?:an?\s+)?(?:website|web\s*app|webapp|landing\s*page|portfolio|dashboard|app|application|site|tool|game|calculator|blog|store|shop|platform|project)\b/i,
+    // "build/develop [me] a React/Node/HTML app/website"
+    /^(?:build|develop|code|create|make|generate)\s+(?:me\s+)?(?:an?\s+)?(?:react|node(?:js|\.js)?|express|fullstack|full.stack|vue|angular|next(?:js|\.js)?|html|css|javascript|js|typescript|ts)\s+(?:app|application|project|website|site|tool|dashboard|page)\b/i,
+    // "clone/replicate Netflix/Spotify/..."
     /^(?:clone|make a clone of|build a clone of|create a clone of|replicate)\s+(?:netflix|spotify|twitter|instagram|youtube|airbnb|amazon|reddit|facebook|tiktok|whatsapp|telegram|uber|discord|slack|github|trello|notion|figma)\b/i,
+    // generic sentence containing "website/webapp/landing page" keywords
     /^.{0,60}\b(?:website|web\s*app|webapp|landing\s*page|portfolio website|personal site)\b.{0,60}$/i,
+    // "build ... website/app for me/my"
     /^(?:build|create|make|generate|code|develop)\s+.{3,80}\s+(?:website|app|application|site|tool|game|dashboard|portfolio|blog|store)\s+for\s+(?:me|my|a)\b/i,
+    // standalone type + "website/app"
     /^(?:a\s+)?(?:portfolio|todo|task|weather|calculator|chat|quiz|flashcard|timer|countdown|expense|budget|recipe|fitness|music|photo|gallery|login|signup|landing|e-commerce|shop|store)\s+(?:website|site|app|page|tool|dashboard|tracker)\b/i,
   ];
   for (const pattern of patterns) {
@@ -164,6 +194,7 @@ export function detectBuildIntent(text: string): string | null {
 }
 
 // ── Master intent classifier ───────────────────────────────────────────────────
+
 export function classifyIntent(text: string): IntentResult {
   const t = text.trim();
 
