@@ -34,20 +34,6 @@ const SUGGESTION_MAP: Record<string, SuggestionRow[]> = {
       { text: "⬅️ Menu",            callback_data: "main_menu" },
     ],
   ],
-  tts: [
-    [
-      { text: "🎤 Transcribe Voice",callback_data: "stt_btn" },
-      { text: "🔊 Again",          callback_data: "tts_btn" },
-      { text: "⬅️ Menu",            callback_data: "main_menu" },
-    ],
-  ],
-  stt: [
-    [
-      { text: "💬 Chat",            callback_data: "ai_ask" },
-      { text: "📝 Summarize It",    callback_data: "ai_summarize" },
-      { text: "⬅️ Menu",            callback_data: "main_menu" },
-    ],
-  ],
   search: [
     [
       { text: "💬 Ask Nova",        callback_data: "ai_ask" },
@@ -57,15 +43,15 @@ const SUGGESTION_MAP: Record<string, SuggestionRow[]> = {
   ],
   translate: [
     [
-      { text: "🔊 Read It Aloud",   callback_data: "tts_btn" },
       { text: "🌍 Translate Again", callback_data: "ai_translate" },
+      { text: "📝 Summarize It",    callback_data: "ai_summarize" },
       { text: "⬅️ Menu",            callback_data: "main_menu" },
     ],
   ],
   summarize: [
     [
       { text: "🌍 Translate It",    callback_data: "ai_translate" },
-      { text: "🔊 Read Aloud",      callback_data: "tts_btn" },
+      { text: "🔍 Web Search",      callback_data: "search_btn" },
       { text: "⬅️ Menu",            callback_data: "main_menu" },
     ],
   ],

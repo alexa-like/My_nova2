@@ -308,7 +308,7 @@ export async function chat(
   for (let i = 0; i < modelsToTry.length; i++) {
     const model = modelsToTry[i];
     try {
-      const reply = await callOpenRouter(apiKey, model, fullMessages, maxTokens, temperature, 25000);
+      const reply = await callOpenRouter(apiKey, model, fullMessages, maxTokens, temperature, 12000);
       if (i > 0) {
         logger.info({ primaryModel, usedModel: model }, "Chat fell back to model successfully");
       }

@@ -79,7 +79,7 @@ import {
 } from "../utils/keyboards.js";
 import { logger } from "../../lib/logger.js";
 import { addCredits, getCredits } from "../services/credits.js";
-import { hasAnyPaymentProvider, sendStarsInvoice } from "../services/payment.js";
+import { sendStarsInvoice } from "../services/payment.js";
 import {
   checkAndAwardAchievements,
   checkAndGrantAchievements,
@@ -846,7 +846,7 @@ export async function handleCallbackQuery(
     }
 
     if (data === "tts_btn" || data === "stt_btn") {
-      await answer(bot, query.id, "Voice features are not available.");
+      await answer(bot, query.id, "Voice features have been removed. Try /image or just chat with me!");
       return;
     }
 
@@ -2339,7 +2339,6 @@ export async function handleCallbackQuery(
       if (!userRecord) { await answer(bot, query.id); return; }
       const credits = (userRecord as any).credits ?? 0;
       const config = await getOrCreateBotConfig();
-      const hasPayment = hasAnyPaymentProvider();
       const flashOffer = (config as any).flashOffer;
       let flashText = "";
       if (flashOffer?.active) {
@@ -2347,7 +2346,7 @@ export async function handleCallbackQuery(
       }
       await editMsg(bot, query,
         `💰 Credits\n\nBalance: ${credits} credits\n\nCredit costs:\n• 💬 Chat: 1 credit\n• 🎨 Image: 5 credits\n• 🌐 Build: 20 credits\n• 🔍 Search: 2 credits${flashText}\n\n⭐ VIP members skip all credit deductions!`,
-        creditsMenuKeyboard(hasPayment)
+        creditsMenuKeyboard()
       );
       return;
     }

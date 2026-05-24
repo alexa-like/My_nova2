@@ -22,7 +22,6 @@ export type PendingTextAction =
   | "write_email"
   | "write_lyrics"
   | "remind_input"
-  | "voice_tts_input"
   | "search_input"
   | "sticker_input"
   | "github_set_username"

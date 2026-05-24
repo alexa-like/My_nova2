@@ -36,7 +36,6 @@ import {
   whatsNewKeyboard,
   mainMenuWithNewsKeyboard,
 } from "../utils/keyboards.js";
-import { hasAnyPaymentProvider } from "../services/payment.js";
 import { encrypt, decrypt } from "../utils/crypto.js";
 import {
   updateRecentFeatures,
@@ -652,10 +651,9 @@ export async function handlePrivateMessage(
     const chatCost  = creditsCfg.creditCosts?.chat   ?? 1;
     const imageCost = creditsCfg.creditCosts?.image  ?? 5;
     const buildCost = creditsCfg.creditCosts?.build  ?? 20;
-    const ttsCost   = creditsCfg.creditCosts?.tts    ?? 3;
     await bot.sendMessage(chatId,
-      `💰 Credits\n\nBalance: ${currentCredits} credits\n\nCredit costs:\n• 💬 Chat: ${chatCost} credit\n• 🎨 Image: ${imageCost} credits\n• 🌐 Build: ${buildCost} credits\n• 🔊 Voice: ${ttsCost} credits\n\n${user.premium.active ? "⭐ VIP — No credit deductions!" : "Upgrade to VIP to skip all credit costs!"}`,
-      { reply_markup: creditsMenuKeyboard(hasAnyPaymentProvider()) }
+      `💰 Credits\n\nBalance: ${currentCredits} credits\n\nCredit costs:\n• 💬 Chat: ${chatCost} credit\n• 🎨 Image: ${imageCost} credits\n• 🌐 Build: ${buildCost} credits\n\n${user.premium.active ? "⭐ VIP — No credit deductions!" : "Upgrade to VIP to skip all credit costs!"}`,
+      { reply_markup: creditsMenuKeyboard() }
     );
     return;
   }

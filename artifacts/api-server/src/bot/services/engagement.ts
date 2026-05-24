@@ -42,20 +42,18 @@ export function getAchievementById(id: string): Achievement | undefined {
 
 // ── Feature display labels ────────────────────────────────────────────────────
 
-export const FEATURE_LABELS: Record<string, { icon: string; label: string; callback: string; cb?: string }> = {
-  chat:         { icon: "💬", label: "Chat",           callback: "ai_ask",       cb: "ai_ask" },
-  image:        { icon: "🎨", label: "Generate Image", callback: "img_generate", cb: "img_generate" },
-  sticker:      { icon: "🖼️", label: "Sticker",        callback: "sticker_btn",  cb: "sticker_btn" },
-  search:       { icon: "🔍", label: "Web Search",     callback: "search_btn",   cb: "search_btn" },
-  tts:          { icon: "🔊", label: "Voice",          callback: "tts_btn",      cb: "tts_btn" },
-  stt:          { icon: "🎤", label: "Transcribe",     callback: "stt_btn",      cb: "stt_btn" },
-  build:        { icon: "🌐", label: "Build",          callback: "build_menu",   cb: "build_menu" },
-  summarize:    { icon: "📝", label: "Summarize",      callback: "ai_summarize", cb: "ai_summarize" },
-  translate:    { icon: "🌍", label: "Translate",      callback: "ai_translate", cb: "ai_translate" },
-  joke:         { icon: "😂", label: "Joke",           callback: "fun_joke",     cb: "fun_joke" },
-  trivia:       { icon: "🎯", label: "Trivia",         callback: "fun_game",     cb: "fun_game" },
-  reminder:     { icon: "⏰", label: "Reminder",       callback: "remind_btn",   cb: "remind_btn" },
-  describe:     { icon: "🔬", label: "Describe",       callback: "ai_menu",      cb: "ai_menu" },
+export const FEATURE_LABELS: Record<string, { icon: string; label: string; callback: string }> = {
+  chat:         { icon: "💬", label: "Chat",           callback: "ai_ask" },
+  image:        { icon: "🎨", label: "Generate Image", callback: "img_generate" },
+  sticker:      { icon: "🖼️", label: "Sticker",        callback: "sticker_btn" },
+  search:       { icon: "🔍", label: "Web Search",     callback: "search_btn" },
+  build:        { icon: "🌐", label: "Build",          callback: "build_menu" },
+  summarize:    { icon: "📝", label: "Summarize",      callback: "ai_summarize" },
+  translate:    { icon: "🌍", label: "Translate",      callback: "ai_translate" },
+  joke:         { icon: "😂", label: "Joke",           callback: "fun_joke" },
+  trivia:       { icon: "🎯", label: "Trivia",         callback: "fun_game" },
+  reminder:     { icon: "⏰", label: "Reminder",       callback: "remind_btn" },
+  describe:     { icon: "🔬", label: "Describe",       callback: "ai_menu" },
 };
 
 // ── Check and award achievements ──────────────────────────────────────────────
@@ -137,9 +135,8 @@ export async function checkAndGrantAchievements(
   userId: number,
   featureKey?: string
 ): Promise<Achievement[]> {
-  const typeMap: Record<string, "message" | "image" | "build" | "search" | "voice" | "sticker"> = {
-    chat: "message", image: "image", build: "build", search: "search",
-    tts: "voice", stt: "voice", sticker: "sticker",
+  const typeMap: Record<string, "message" | "image" | "build" | "search" | "sticker"> = {
+    chat: "message", image: "image", build: "build", search: "search", sticker: "sticker",
   };
   const triggerType = featureKey && typeMap[featureKey] ? typeMap[featureKey] : "message";
   return checkAndAwardAchievements(userId, { type: triggerType });

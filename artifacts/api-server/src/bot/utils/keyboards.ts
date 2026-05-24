@@ -51,7 +51,7 @@ export function accountMenuKeyboard(isPremium: boolean): TelegramBot.InlineKeybo
   };
 }
 
-export function creditsMenuKeyboard(_hasPayment: boolean): TelegramBot.InlineKeyboardMarkup {
+export function creditsMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
   const rows: TelegramBot.InlineKeyboardButton[][] = [];
   rows.push([
     { text: "🌱 50 Credits — 15 ⭐", callback_data: "buy_pack_pack_50" },
@@ -985,8 +985,6 @@ export function welcomeBackKeyboard(
     chat:      { text: "💬 Chat",        cb: "ai_ask" },
     image:     { text: "🎨 Image",       cb: "img_generate" },
     build:     { text: "🌐 Build",       cb: "build_menu" },
-    tts:       { text: "🔊 Voice",       cb: "tts_btn" },
-    stt:       { text: "🎤 Transcribe",  cb: "stt_btn" },
     search:    { text: "🔍 Search",      cb: "search_btn" },
     translate: { text: "🌍 Translate",   cb: "ai_translate" },
     summarize: { text: "📝 Summarize",   cb: "ai_summarize" },

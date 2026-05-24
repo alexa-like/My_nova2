@@ -89,6 +89,51 @@ Nova is a production Telegram AI assistant with personality modes, group moderat
 
 ---
 
+---
+
+## Session 3 — Inline Keyboard UX Fixes + Full Codebase Audit (completed)
+
+**Goal:** Fix build menu UX (only showing Back button), back navigation inconsistencies, then full project audit.
+
+**Keyboard/navigation fixes:**
+- T001 — Removed duplicate `build_menu` handler (lines ~248-253) that blocked the real handler with all build options
+- T002 — Build type prompt cancel: `⬅️ Back → build_menu` + `❌ Cancel → main_menu`
+- T003 — `my_projects` empty state back button: changed from `settings_deployments` → `build_menu`
+- T004 — `my_projects` list back row: changed from `settings_deployments` → `build_menu` with "🌐 Build Another" sibling
+- T005 — After all projects deleted: back → `build_menu` instead of settings
+- T006 — `show_help` callback: removed stale `/voice <text>` command reference
+
+**Full audit fixes:**
+- T007 — `index.ts`: Removed 2 unused groupGate imports (`getMandatoryGroups`, `sendLeftGroupDM`) — only `seedDefaultMandatoryGroup` is actually called
+- T008 — `scripts/tsconfig.json`: Fixed `TS18003` typecheck error by replacing empty `"include": ["src"]` with `"files": []` (no TS sources in scripts package)
+- T009 — `ai.ts`: Reduced per-model timeout from 25 000 ms → 12 000 ms; worst-case 7-model chain now ~84 s max (previously ~175 s, exceeding Telegram webhook timeout)
+- T010 — `pendingActions.ts`: Removed dead `voice_tts_input` action type (TTS service deleted in previous session)
+- T011 — `engagement.ts` `FEATURE_LABELS`: Removed duplicate `cb` property (identical to `callback`), removed dead `tts`/`stt` entries
+- T012 — `engagement.ts` `checkAndGrantAchievements`: Removed `tts`/`stt` from typeMap (those features no longer exist)
+- T013 — `utils/suggestions.ts`: Removed dead `tts`/`stt` suggestion entries; updated `translate` and `summarize` suggestions to use live features
+- T014 — `services/suggestions.ts`: Removed dead `voice` context entry that pointed to `stt_btn`/`tts_btn`
+- T015 — `keyboards.ts` `creditsMenuKeyboard`: Removed unused `_hasPayment` parameter; updated both call sites
+- T016 — `keyboards.ts` `welcomeBackKeyboard`: Removed `tts`/`stt` entries from `FEATURE_BTNS` map
+- T017 — `keyboards.ts` credits display: Removed "🔊 Voice" line from credits cost breakdown (feature gone)
+- T018 — `privateHandler.ts`: Removed orphaned `ttsCost` variable; removed now-unused `hasAnyPaymentProvider` import
+- T019 — `callbackHandler.ts`: Removed `hasAnyPaymentProvider` (now unused); improved `tts_btn`/`stt_btn` toast message to inform users the feature was removed
+- T020 — `callbackHandler.ts` `my_projects` empty-state: Fixed duplicate "Build a Project" + "Back to Build" both pointing to `build_menu` (keeps layout clean)
+- T021 — Full typecheck passes: 0 errors across all 4 packages (`api-server`, `admin-dashboard`, `mockup-sandbox`, `scripts`)
+
+**Files changed this session:**
+- `artifacts/api-server/src/bot/handlers/callbackHandler.ts`
+- `artifacts/api-server/src/bot/handlers/privateHandler.ts`
+- `artifacts/api-server/src/bot/utils/keyboards.ts`
+- `artifacts/api-server/src/bot/utils/suggestions.ts`
+- `artifacts/api-server/src/bot/utils/pendingActions.ts`
+- `artifacts/api-server/src/bot/services/ai.ts`
+- `artifacts/api-server/src/bot/services/engagement.ts`
+- `artifacts/api-server/src/bot/services/suggestions.ts`
+- `artifacts/api-server/src/bot/index.ts`
+- `scripts/tsconfig.json`
+
+---
+
 ## Next Tasks (suggested, not yet started)
 
 - [ ] `/stats` command — show user their personal breakdown (messages, images, builds, streak, achievements) from MongoDB
@@ -97,7 +142,9 @@ Nova is a production Telegram AI assistant with personality modes, group moderat
 - [ ] MongoDB rate limiter cleanup job — the RateLimit model has a TTL index but confirm it fires correctly for your MongoDB version
 - [ ] Telegram Stars payment — `sendStarsInvoice` is wired up but the actual invoice items/prices need to be defined in `payment.ts`
 - [ ] Deploy to Render — set env secrets: `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`, `WEBHOOK_URL`
-- [ ] `modeManager.ts` is now dead code (nothing imports it) — can be deleted in a future cleanup pass
+- [ ] `modeManager.ts` is now dead code (nothing imports it) — delete it
+- [ ] Captcha store is in-memory — if server restarts mid-captcha, users get stuck muted; consider persisting captcha state to MongoDB
+- [ ] Admin dashboard chunk size is 647 KB (warn threshold 500 KB) — consider lazy-loading heavy routes to improve load time
 
 ---
 

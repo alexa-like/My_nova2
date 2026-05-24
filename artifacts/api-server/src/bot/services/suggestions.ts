@@ -33,11 +33,6 @@ const CONTEXT_SUGGESTIONS: Record<string, Suggestion[]> = {
     { text: "📁 My Projects", callback_data: "my_projects" },
     { text: "🌐 Build Another", callback_data: "build_menu" },
   ],
-  voice: [
-    { text: "🎤 Transcribe Voice", callback_data: "stt_btn" },
-    { text: "🔊 Another TTS", callback_data: "tts_btn" },
-    { text: "💬 Chat Instead", callback_data: "ai_ask" },
-  ],
   summarize: [
     { text: "🌍 Translate", callback_data: "ai_translate" },
     { text: "🗣️ Debate Me", callback_data: "ai_debate" },

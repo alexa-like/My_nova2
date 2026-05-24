@@ -15,7 +15,7 @@ import { loadPersistedRateLimits } from "./utils/rateLimiter.js";
 import { setPremiumEmojiEnabled } from "./utils/premiumEmoji.js";
 import { disconnectDB } from "./services/db.js";
 import { logger } from "../lib/logger.js";
-import { seedDefaultMandatoryGroup, getMandatoryGroups, sendLeftGroupDM } from "./services/groupGate.js";
+import { seedDefaultMandatoryGroup } from "./services/groupGate.js";
 import { handleStarPayment } from "./services/payment.js";
 
 // ── In-memory captcha store ─────────────────────────────────────────────────
