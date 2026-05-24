@@ -6,8 +6,8 @@ export interface IModelEntry {
   active: boolean;
 }
 
-export type ChatProvider = "openrouter" | "pollinations";
-export type ImageProvider = "huggingface" | "pollinations";
+export type ChatProvider = "openrouter";
+export type ImageProvider = "huggingface";
 export type TtsProvider = "huggingface" | "openrouter";
 
 export interface IProviderSlot {
@@ -111,20 +111,20 @@ const UsageLimitsSchema = new Schema(
 
 const ProviderSlotSchema = new Schema<IProviderSlot>(
   {
-    provider: { type: String, enum: ["openrouter", "pollinations"], default: "pollinations" },
-    model: { type: String, default: "openai" },
+    provider: { type: String, enum: ["openrouter"], default: "openrouter" },
+    model: { type: String, default: "meta-llama/llama-3.3-70b-instruct:free" },
   },
   { _id: false }
 );
 
 const ProvidersSchema = new Schema<IProviders>(
   {
-    freeChat:    { type: ProviderSlotSchema, default: () => ({ provider: "pollinations", model: "openai" }) },
+    freeChat:    { type: ProviderSlotSchema, default: () => ({ provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" }) },
     premiumChat: { type: ProviderSlotSchema, default: () => ({ provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" }) },
-    groupChat:   { type: ProviderSlotSchema, default: () => ({ provider: "pollinations", model: "openai" }) },
-    freeImage:    { type: String, enum: ["huggingface", "pollinations"], default: "pollinations" },
-    premiumImage: { type: String, enum: ["huggingface", "pollinations"], default: "huggingface" },
-    groupImage:   { type: String, enum: ["huggingface", "pollinations"], default: "pollinations" },
+    groupChat:   { type: ProviderSlotSchema, default: () => ({ provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" }) },
+    freeImage:    { type: String, enum: ["huggingface"], default: "huggingface" },
+    premiumImage: { type: String, enum: ["huggingface"], default: "huggingface" },
+    groupImage:   { type: String, enum: ["huggingface"], default: "huggingface" },
     tts:      { type: String, enum: ["huggingface", "openrouter"], default: "huggingface" },
     ttsVoice: { type: String, default: "alloy" },
   },

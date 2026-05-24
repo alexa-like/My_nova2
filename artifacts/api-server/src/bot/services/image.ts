@@ -27,32 +27,6 @@ const FALLBACK_MODELS = [
 const IMG2IMG_ENDPOINT =
   "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix";
 
-// ── Pollinations.ai — free, no API key required ───────────────────────────────
-async function generateImagePollinations(prompt: string): Promise<Buffer | null> {
-  try {
-    const seed = Math.floor(Math.random() * 2147483647);
-    const encoded = encodeURIComponent(prompt);
-    // flux-schnell is 4x faster than flux; 768px is faster to download than 1024px
-    const url = `https://image.pollinations.ai/prompt/${encoded}?width=768&height=768&nologo=true&model=flux-schnell&seed=${seed}&enhance=false`;
-    logger.info({ seed }, "Attempting image generation via Pollinations.ai (flux-schnell)");
-    const response = await keepAliveAxios.get(url, {
-      responseType: "arraybuffer",
-      timeout: 55000,
-      headers: { "User-Agent": "Nova-Bot/1.0" },
-    });
-    const buf = Buffer.from(response.data);
-    if (buf.byteLength > 5000) {
-      logger.info({ bytes: buf.byteLength }, "Pollinations.ai image generated successfully");
-      return buf;
-    }
-    logger.warn({ bytes: buf.byteLength }, "Pollinations.ai returned too-small response");
-    return null;
-  } catch (err: any) {
-    logger.warn({ err: err?.message }, "Pollinations.ai image generation failed");
-    return null;
-  }
-}
-
 // ── HuggingFace image generation ──────────────────────────────────────────────
 async function generateImageHuggingFace(prompt: string, config: Awaited<ReturnType<typeof getOrCreateBotConfig>>): Promise<Buffer | null> {
   const token = process.env.HUGGINGFACE_API_TOKEN;
@@ -102,79 +76,14 @@ async function generateImageHuggingFace(prompt: string, config: Awaited<ReturnTy
   return null;
 }
 
-// ── Main export — races providers in parallel when both available ──────────────
+// ── Main export ───────────────────────────────────────────────────────────────
 export async function generateImage(
   prompt: string,
-  context?: "free" | "premium" | "group"
+  _context?: "free" | "premium" | "group"
 ): Promise<Buffer | null> {
   const config = await getOrCreateBotConfig();
-  const providers = config.providers;
-
-  let imageProvider: "huggingface" | "pollinations" = "pollinations";
-  if (context === "premium") {
-    imageProvider = providers?.premiumImage ?? "huggingface";
-  } else if (context === "group") {
-    imageProvider = providers?.groupImage ?? "pollinations";
-  } else {
-    imageProvider = providers?.freeImage ?? "pollinations";
-  }
-
-  logger.info({ context, imageProvider }, "Generating image");
-
-  const hasHF = !!process.env.HUGGINGFACE_API_TOKEN;
-
-  if (imageProvider === "huggingface") {
-    if (!hasHF) {
-      // No HF token, fall straight to Pollinations
-      return generateImagePollinations(prompt);
-    }
-    // Race HF (primary) vs Pollinations (fallback) in parallel — fastest wins
-    return raceImageProviders(prompt, config, /* hfPrimary */ true);
-  }
-
-  // Pollinations is primary
-  if (hasHF) {
-    // Race Pollinations (primary) vs HF (fallback) — fastest wins
-    return raceImageProviders(prompt, config, /* hfPrimary */ false);
-  }
-
-  // Pollinations only
-  return generateImagePollinations(prompt);
-}
-
-/**
- * Fire both providers simultaneously. Return the first successful result.
- * If the non-primary finishes first but the primary is still running, wait a
- * brief grace period so the preferred provider can still win; otherwise take
- * whatever comes back first.
- */
-async function raceImageProviders(
-  prompt: string,
-  config: Awaited<ReturnType<typeof getOrCreateBotConfig>>,
-  hfPrimary: boolean
-): Promise<Buffer | null> {
-  type Result = { buf: Buffer | null; source: string };
-
-  const pollinationsPromise: Promise<Result> = generateImagePollinations(prompt).then(buf => ({ buf, source: "pollinations" }));
-  const hfPromise: Promise<Result> = generateImageHuggingFace(prompt, config).then(buf => ({ buf, source: "hf" }));
-
-  const [primary, secondary] = hfPrimary
-    ? [hfPromise, pollinationsPromise]
-    : [pollinationsPromise, hfPromise];
-
-  // Use Promise.any so we get the first non-null result
-  try {
-    const result = await Promise.any([
-      primary.then(r => { if (!r.buf) throw new Error("null"); return r; }),
-      secondary.then(r => { if (!r.buf) throw new Error("null"); return r; }),
-    ]);
-    logger.info({ source: result.source }, "Image generated (race winner)");
-    return result.buf;
-  } catch {
-    // Both failed
-    logger.warn("Both image providers failed");
-    return null;
-  }
+  logger.info("Generating image via HuggingFace");
+  return generateImageHuggingFace(prompt, config);
 }
 
 /**

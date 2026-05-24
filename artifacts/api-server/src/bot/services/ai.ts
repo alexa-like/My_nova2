@@ -4,10 +4,9 @@ import { getOrCreateBotConfig } from "../models/BotConfig.js";
 import { logger } from "../../lib/logger.js";
 
 const MAX_HISTORY = 20;
-const MAX_SUMMARY_TRIGGER = 30;
 
-// ── Free sequential fallback chain (OpenRouter) ───────────────────────────────
-const FREE_FALLBACK_MODELS = [
+// ── Single sequential fallback chain — used for all users ─────────────────────
+const FALLBACK_MODELS = [
   "meta-llama/llama-3.3-70b-instruct:free",
   "qwen/qwen-2.5-72b-instruct:free",
   "google/gemma-3-12b-it:free",
@@ -17,21 +16,6 @@ const FREE_FALLBACK_MODELS = [
   "mistralai/mistral-7b-instruct:free",
   "google/gemma-2-9b-it:free",
   "meta-llama/llama-3.1-8b-instruct:free",
-  "meta-llama/llama-3.2-3b-instruct:free",
-];
-
-// ── Premium race pool ─────────────────────────────────────────────────────────
-const PREMIUM_RACE_MODELS = [
-  "meta-llama/llama-3.1-8b-instruct:free",
-  "google/gemma-3-12b-it:free",
-  "mistralai/mistral-7b-instruct:free",
-];
-
-const PREMIUM_QUALITY_FALLBACKS = [
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "qwen/qwen-2.5-72b-instruct:free",
-  "deepseek/deepseek-r1-distill-llama-70b:free",
-  "mistralai/mixtral-8x7b-instruct:free",
   "meta-llama/llama-3.2-3b-instruct:free",
 ];
 
@@ -51,10 +35,7 @@ function needsCurrentInfo(text: string): boolean {
   return CURRENT_INFO_PATTERNS.some(p => p.test(text));
 }
 
-// ── Content moderation (lightweight, runs before every AI call) ───────────────
-// Guards against prompt injection / jailbreak attempts. Not a full NSFW filter —
-// just catches patterns that try to override the bot's system instructions.
-
+// ── Content moderation ────────────────────────────────────────────────────────
 const INJECTION_PATTERNS = [
   /ignore (all |your |previous |the )?(previous |prior |above |all )?(instructions?|rules?|prompts?|guidelines?|constraints?)/i,
   /you (are|must|should|will) (now |)(act|pretend|behave|respond|reply) as/i,
@@ -70,7 +51,6 @@ const INJECTION_PATTERNS = [
 /** Returns a refusal reason if the message violates content policy, or null if safe. */
 export function moderationCheck(text: string): string | null {
   if (!text || text.length === 0) return null;
-  // Block extremely long single-token spam (>3000 chars with no spaces)
   if (/\S{3000,}/.test(text)) return "Message contains invalid content.";
   for (const pattern of INJECTION_PATTERNS) {
     if (pattern.test(text)) return "That type of request isn't something I can help with.";
@@ -243,62 +223,6 @@ async function callOpenRouter(
   return reply;
 }
 
-// ── Pollinations.ai chat (free, no API key) ───────────────────────────────────
-async function callPollinations(
-  messages: { role: string; content: string }[],
-  model = "openai"
-): Promise<string> {
-  const seed = Math.floor(Math.random() * 2147483647);
-  const response = await axios.post(
-    "https://text.pollinations.ai/",
-    { model, messages, seed, jsonMode: false },
-    {
-      headers: { "Content-Type": "application/json" },
-      timeout: 30000,
-    }
-  );
-  const reply =
-    typeof response.data === "string"
-      ? response.data
-      : response.data?.choices?.[0]?.message?.content;
-  if (!reply) throw new Error("Empty response from Pollinations");
-  return reply;
-}
-
-// ── Premium fast path ─────────────────────────────────────────────────────────
-async function chatPremiumFast(
-  apiKey: string,
-  messages: { role: string; content: string }[],
-  maxTokens: number,
-  temperature: number
-): Promise<string> {
-  const controllers = PREMIUM_RACE_MODELS.map(() => new AbortController());
-  const racePromises = PREMIUM_RACE_MODELS.map((model, idx) =>
-    callOpenRouter(apiKey, model, messages, maxTokens, temperature, 12000, controllers[idx].signal)
-      .then((reply) => {
-        controllers.forEach((c, i) => { if (i !== idx) c.abort(); });
-        return reply;
-      })
-  );
-  try {
-    const reply = await Promise.any(racePromises);
-    if (reply) return reply;
-  } catch {
-    // all 3 fast models failed
-  }
-  for (const model of PREMIUM_QUALITY_FALLBACKS) {
-    try {
-      const reply = await callOpenRouter(apiKey, model, messages, maxTokens, temperature, 20000);
-      if (reply) return reply;
-    } catch (err: any) {
-      const status = err?.response?.status;
-      if (status === 402 || status === 429 || status === 500 || status === 503) continue;
-      break;
-    }
-  }
-  throw new Error("All premium models failed");
-}
-
 export async function chat(
   userId: number,
   chatId: number,
@@ -311,23 +235,13 @@ export async function chat(
   },
   isPremium: boolean,
   mood?: string,
-  preferredModel?: string,
-  context?: "free" | "premium" | "group"
+  _preferredModel?: string,
+  _context?: string
 ): Promise<string> {
-  // Guard: reject prompt injection / jailbreak attempts before touching memory or the AI
   const moderation = moderationCheck(userMessage);
   if (moderation) return moderation;
 
   const config = await getOrCreateBotConfig();
-
-  // Determine provider slot based on context
-  const effectiveContext = context ?? (isPremium ? "premium" : "free");
-  let providerSlot = config.providers?.freeChat ?? { provider: "pollinations", model: "openai" };
-  if (effectiveContext === "premium") {
-    providerSlot = config.providers?.premiumChat ?? { provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" };
-  } else if (effectiveContext === "group") {
-    providerSlot = config.providers?.groupChat ?? { provider: "pollinations", model: "openai" };
-  }
 
   let memory = await Memory.findOne({ userId, chatId });
   if (!memory) {
@@ -335,8 +249,6 @@ export async function chat(
   }
 
   memory.messages.push({ role: "user", content: userMessage, ts: new Date() });
-  // Trim with smooth sliding window: keep MAX_HISTORY most-recent messages
-  // (MAX_HISTORY < MAX_SUMMARY_TRIGGER ensures we trim before the array gets too large)
   if (memory.messages.length > MAX_HISTORY) {
     memory.messages = memory.messages.slice(-MAX_HISTORY);
   }
@@ -389,62 +301,23 @@ export async function chat(
   const maxTokens = settings.length === "short" ? 300 : 800;
   const temperature = settings.style === "funny" ? 0.92 : 0.78;
 
-  // ── Pollinations provider path ────────────────────────────────────────────
-  if (providerSlot.provider === "pollinations") {
-    try {
-      const reply = await callPollinations(fullMessages, providerSlot.model || "openai");
-      logger.info({ context: effectiveContext }, "Pollinations chat succeeded");
-      memory.messages.push({ role: "assistant", content: reply, ts: new Date() });
-      await memory.save();
-      return reply;
-    } catch (err: any) {
-      logger.warn({ err: err?.message }, "Pollinations chat failed — falling back to OpenRouter");
-      // fall through to OpenRouter
-    }
-  }
-
-  // ── OpenRouter provider path ──────────────────────────────────────────────
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    // No OpenRouter key — try Pollinations as final fallback
-    try {
-      const reply = await callPollinations(fullMessages, "openai");
-      memory.messages.push({ role: "assistant", content: reply, ts: new Date() });
-      await memory.save();
-      return reply;
-    } catch {
-      return settings.emoji
-        ? "AI service is not configured. 😅"
-        : "AI service is not configured.";
-    }
+    return settings.emoji
+      ? "AI service is not configured. Please set OPENROUTER_API_KEY. 😅"
+      : "AI service is not configured. Please set OPENROUTER_API_KEY.";
   }
 
-  // Premium fast path
-  if (isPremium && effectiveContext === "premium") {
-    try {
-      const reply = await chatPremiumFast(apiKey, fullMessages, maxTokens, temperature);
-      logger.info("Premium fast chat succeeded");
-      memory.messages.push({ role: "assistant", content: reply, ts: new Date() });
-      await memory.save();
-      return reply;
-    } catch {
-      logger.warn("Premium fast path failed — falling through to sequential fallback");
-    }
-  }
-
-  // Sequential fallback (free/group on OpenRouter, or premium last resort)
-  const primaryModel = preferredModel || providerSlot.model || config.activeChatModel;
-  const modelsToTry = [
-    primaryModel,
-    ...FREE_FALLBACK_MODELS.filter(m => m !== primaryModel),
-  ];
+  // ── Sequential fallback chain ─────────────────────────────────────────────
+  const primaryModel = config.activeChatModel || FALLBACK_MODELS[0];
+  const modelsToTry = [primaryModel, ...FALLBACK_MODELS.filter(m => m !== primaryModel)];
 
   for (let i = 0; i < modelsToTry.length; i++) {
     const model = modelsToTry[i];
     try {
       const reply = await callOpenRouter(apiKey, model, fullMessages, maxTokens, temperature, 25000);
       if (i > 0) {
-        logger.info({ primaryModel, usedModel: model }, "Chat fell back to free model successfully");
+        logger.info({ primaryModel, usedModel: model }, "Chat fell back to model successfully");
       }
       memory.messages.push({ role: "assistant", content: reply, ts: new Date() });
       await memory.save();
@@ -452,21 +325,12 @@ export async function chat(
     } catch (err: any) {
       const status = err?.response?.status;
       if (status === 401) {
-        logger.error({ model, status }, "OpenRouter auth failed (401) — stopping retries");
+        logger.error({ model }, "OpenRouter auth failed (401) — stopping retries");
         break;
       }
       logger.warn({ model, status, attempt: i + 1 }, "Model failed — trying next fallback");
-      continue;
     }
   }
-
-  // Final fallback — try Pollinations
-  try {
-    const reply = await callPollinations(fullMessages, "openai");
-    memory.messages.push({ role: "assistant", content: reply, ts: new Date() });
-    await memory.save();
-    return reply;
-  } catch {}
 
   return settings.emoji
     ? "Oops, my brain glitched! 😅 Try again in a moment."

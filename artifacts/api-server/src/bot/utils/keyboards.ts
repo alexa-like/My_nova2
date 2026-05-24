@@ -575,21 +575,18 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
         { text: "🖼 Image Model", callback_data: "own_img_models" },
       ],
       [
-        { text: "🔌 Providers", callback_data: "own_providers" },
         {
           text: maintenanceOn ? "🔴 Maintenance: ON" : "🟢 Maintenance: OFF",
           callback_data: "own_maint",
         },
-      ],
-      [
         { text: "✨ Premium Emoji", callback_data: "owner_premoji_status" },
+      ],
+      [
         { text: "🔍 Search User", callback_data: "own_searchuser" },
-      ],
-      [
         { text: "📩 DM User", callback_data: "own_dm_btn" },
-        { text: "📋 Scheduled", callback_data: "own_scheduled" },
       ],
       [
+        { text: "📋 Scheduled", callback_data: "own_scheduled" },
         { text: "📨 Inbox", callback_data: "own_feedback" },
       ],
     ],
@@ -733,20 +730,7 @@ export function ownerImageModelsKeyboard(
   };
 }
 
-// ── Owner: Provider & Feature keyboards ──────────────────────────────────────
-
-export function ownerProvidersKeyboard(): TelegramBot.InlineKeyboardMarkup {
-  return {
-    inline_keyboard: [
-      [
-        { text: "💬 Chat Providers", callback_data: "own_chat_providers" },
-        { text: "🖼 Image Providers", callback_data: "own_img_providers" },
-      ],
-      [{ text: "🔊 TTS Provider", callback_data: "own_tts_provider" }],
-      [{ text: "⬅️ Back", callback_data: "own_panel" }],
-    ],
-  };
-}
+// ── Owner: Feature keyboards ──────────────────────────────────────────────────
 
 export function ownerFeaturesKeyboard(features: {
   imageEnabled: boolean;
@@ -779,105 +763,6 @@ export function ownerFeaturesKeyboard(features: {
       [{ text: "⬅️ Back", callback_data: "own_panel" }],
     ],
   };
-}
-
-export function ownerChatProvidersKeyboard(providers: {
-  freeChat: { provider: string; model: string };
-  premiumChat: { provider: string; model: string };
-  groupChat: { provider: string; model: string };
-}): TelegramBot.InlineKeyboardMarkup {
-  const label = (slot: { provider: string; model: string }) => {
-    if (slot.provider === "pollinations") return "Pollinations";
-    return `OR: ${slot.model.split("/").pop()?.replace(/:free$/, "") || slot.model}`;
-  };
-  return {
-    inline_keyboard: [
-      [{ text: `👤 Free: ${label(providers.freeChat)}`, callback_data: "own_chat_slot_free" }],
-      [{ text: `💎 Premium: ${label(providers.premiumChat)}`, callback_data: "own_chat_slot_premium" }],
-      [{ text: `👥 Groups: ${label(providers.groupChat)}`, callback_data: "own_chat_slot_group" }],
-      [{ text: "⬅️ Back", callback_data: "own_providers" }],
-    ],
-  };
-}
-
-export function ownerPickChatProviderKeyboard(slot: string): TelegramBot.InlineKeyboardMarkup {
-  return {
-    inline_keyboard: [
-      [{ text: "🆓 Pollinations (free, no key)", callback_data: `own_chat_prov_${slot}_pollinations` }],
-      [{ text: "🔑 OpenRouter (API key required)", callback_data: `own_chat_prov_${slot}_openrouter` }],
-      [{ text: "⬅️ Back", callback_data: "own_chat_providers" }],
-    ],
-  };
-}
-
-export function ownerPickOpenRouterModelKeyboard(
-  slot: string,
-  models: IModelEntry[]
-): TelegramBot.InlineKeyboardMarkup {
-  const rows = models.map((m, i) => [{
-    text: m.name,
-    callback_data: `own_chat_model_${slot}_${i}`,
-  }]);
-  return {
-    inline_keyboard: [
-      ...rows,
-      [{ text: "⬅️ Back", callback_data: `own_chat_slot_${slot}` }],
-    ],
-  };
-}
-
-export function ownerImageProvidersKeyboard(providers: {
-  freeImage: string;
-  premiumImage: string;
-  groupImage: string;
-}): TelegramBot.InlineKeyboardMarkup {
-  return {
-    inline_keyboard: [
-      [{ text: `👤 Free: ${providers.freeImage}`, callback_data: "own_img_slot_free" }],
-      [{ text: `💎 Premium: ${providers.premiumImage}`, callback_data: "own_img_slot_premium" }],
-      [{ text: `👥 Groups: ${providers.groupImage}`, callback_data: "own_img_slot_group" }],
-      [{ text: "⬅️ Back", callback_data: "own_providers" }],
-    ],
-  };
-}
-
-export function ownerPickImageProviderKeyboard(slot: string): TelegramBot.InlineKeyboardMarkup {
-  return {
-    inline_keyboard: [
-      [{ text: "🤗 HuggingFace (API key required)", callback_data: `own_img_prov_${slot}_huggingface` }],
-      [{ text: "🆓 Pollinations (free, no key)", callback_data: `own_img_prov_${slot}_pollinations` }],
-      [{ text: "⬅️ Back", callback_data: "own_img_providers" }],
-    ],
-  };
-}
-
-export function ownerTtsKeyboard(tts: string, ttsVoice: string): TelegramBot.InlineKeyboardMarkup {
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: tts === "huggingface" ? "✅ HuggingFace" : "HuggingFace",
-          callback_data: "own_tts_prov_huggingface",
-        },
-        {
-          text: tts === "openrouter" ? "✅ OpenRouter" : "OpenRouter",
-          callback_data: "own_tts_prov_openrouter",
-        },
-      ],
-      [{ text: `🎙 Voice: ${ttsVoice}`, callback_data: "own_tts_voice" }],
-      [{ text: "⬅️ Back", callback_data: "own_providers" }],
-    ],
-  };
-}
-
-export function ownerPickTtsVoiceKeyboard(): TelegramBot.InlineKeyboardMarkup {
-  const voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
-  const rows: TelegramBot.InlineKeyboardButton[][] = [];
-  for (let i = 0; i < voices.length; i += 3) {
-    rows.push(voices.slice(i, i + 3).map(v => ({ text: v, callback_data: `own_tts_voice_${v}` })));
-  }
-  rows.push([{ text: "⬅️ Back", callback_data: "own_tts_provider" }]);
-  return { inline_keyboard: rows };
 }
 
 // ── User: AI Model selection keyboard ─────────────────────────────────────────
