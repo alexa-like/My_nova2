@@ -2,6 +2,9 @@ import TelegramBot from "node-telegram-bot-api";
 import { getOrCreateBotConfig, invalidateBotConfigCache, IMandatoryGroup } from "../models/BotConfig.js";
 import { logger } from "../../lib/logger.js";
 
+// ── Promotional channel reward (coins per join) ───────────────────────────────
+export const PROMO_REWARD_COINS = 50;
+
 // ── Check if a user is a member of a Telegram group ──────────────────────────
 
 export async function isUserInGroup(bot: TelegramBot, chatId: number, userId: number): Promise<boolean> {
@@ -13,7 +16,7 @@ export async function isUserInGroup(bot: TelegramBot, chatId: number, userId: nu
   }
 }
 
-// ── Get all mandatory groups that are active (chatId known) ───────────────────
+// ── Get all promotional channels (formerly mandatory groups) ──────────────────
 
 export async function getMandatoryGroups(): Promise<IMandatoryGroup[]> {
   try {
@@ -24,7 +27,7 @@ export async function getMandatoryGroups(): Promise<IMandatoryGroup[]> {
   }
 }
 
-// ── Check all mandatory groups and return those the user is NOT in ────────────
+// ── Get channels the user is NOT in (for reward prompts) ─────────────────────
 
 export async function getFailedGroups(
   bot: TelegramBot,
@@ -32,73 +35,64 @@ export async function getFailedGroups(
 ): Promise<IMandatoryGroup[]> {
   const groups = await getMandatoryGroups();
   const failed: IMandatoryGroup[] = [];
-
   for (const g of groups) {
-    if (!g.chatId || g.chatId === 0) continue; // ID not yet set — skip
+    if (!g.chatId || g.chatId === 0) continue;
     const inGroup = await isUserInGroup(bot, g.chatId, userId);
     if (!inGroup) failed.push(g);
   }
-
   return failed;
 }
 
-// ── Send "you must join" message ───────────────────────────────────────────────
+// ── Send promotional channel invite (optional, coin-based reward) ─────────────
 
-export async function sendGroupGateMessage(
+export async function sendPromoChannelMessage(
   bot: TelegramBot,
   userId: number,
-  failedGroups: IMandatoryGroup[],
-  strictOnly = false
+  channels: IMandatoryGroup[]
 ): Promise<void> {
-  const targets = strictOnly ? failedGroups.filter(g => g.strict) : failedGroups;
-  if (targets.length === 0) return;
-
-  const groupButtons = targets.map(g => [{ text: `👥 Join ${g.name}`, url: g.link }]);
-
-  await bot.sendMessage(
-    userId,
-    `👋 Hey! Join our community to get the best Nova experience.\n\n` +
-    `Our group${targets.length > 1 ? "s are" : " is"} where we share tips, updates, and support:\n\n` +
-    targets.map(g => `• ${g.name}`).join("\n") +
-    `\n\nJoin now — it only takes a second! You can still use Nova in the meantime.`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          ...groupButtons,
-          [{ text: "✅ I Joined — Mark as Done", callback_data: "gate_recheck" }],
-        ],
-      },
-    }
-  );
-}
-
-// ── Send "you left the group" DM ──────────────────────────────────────────────
-
-export async function sendLeftGroupDM(
-  bot: TelegramBot,
-  userId: number,
-  group: IMandatoryGroup
-): Promise<void> {
+  if (channels.length === 0) return;
+  const channelButtons = channels.map(g => [{ text: `📢 Join ${g.name}`, url: g.link }]);
   try {
     await bot.sendMessage(
       userId,
-      `😔 You left ${group.name}\n\n` +
-      `Nova will no longer be available to you until you rejoin the group.\n\n` +
-      `Tap the button below to rejoin anytime!`,
+      `🎁 Earn ${PROMO_REWARD_COINS} coins per channel!\n\n` +
+      `Join our channels to earn free credits — completely optional:\n\n` +
+      channels.map(g => `• ${g.name}`).join("\n") +
+      `\n\nJoin, then tap the button below to claim your reward!`,
       {
         reply_markup: {
           inline_keyboard: [
-            [{ text: `👥 Rejoin ${group.name}`, url: group.link }],
+            ...channelButtons,
+            [{ text: `✅ Claim My +${PROMO_REWARD_COINS} Coins`, callback_data: "promo_verify" }],
+            [{ text: "⬅️ Skip for now", callback_data: "main_menu" }],
           ],
         },
       }
     );
-  } catch {
-    // User may have blocked the bot — non-fatal
-  }
+  } catch { /* User may have blocked the bot */ }
 }
 
-// ── Set the chat ID for a mandatory group (owner use) ─────────────────────────
+// ── Legacy: kept for compatibility (no longer blocks bot use) ─────────────────
+
+export async function sendGroupGateMessage(
+  bot: TelegramBot,
+  userId: number,
+  channels: IMandatoryGroup[]
+): Promise<void> {
+  return sendPromoChannelMessage(bot, userId, channels);
+}
+
+// ── No-op: no longer send "you left" messages ─────────────────────────────────
+
+export async function sendLeftGroupDM(
+  _bot: TelegramBot,
+  _userId: number,
+  _group: IMandatoryGroup
+): Promise<void> {
+  // Removed: users should not be penalised for leaving a channel
+}
+
+// ── Set the chat ID for a promotional channel ─────────────────────────────────
 
 export async function setMandatoryGroupChatId(
   index: number,
@@ -120,7 +114,7 @@ export async function setMandatoryGroupChatId(
   }
 }
 
-// ── Add a new mandatory group ─────────────────────────────────────────────────
+// ── Add a new promotional channel ─────────────────────────────────────────────
 
 export async function addMandatoryGroup(
   name: string,
@@ -136,7 +130,7 @@ export async function addMandatoryGroup(
   invalidateBotConfigCache();
 }
 
-// ── Remove a mandatory group by index ─────────────────────────────────────────
+// ── Remove a promotional channel by index ─────────────────────────────────────
 
 export async function removeMandatoryGroup(index: number): Promise<boolean> {
   try {
@@ -154,27 +148,8 @@ export async function removeMandatoryGroup(index: number): Promise<boolean> {
   }
 }
 
-// ── Seed the default Nova mandatory group if not present ─────────────────────
+// ── No-op seed: do not auto-seed any default mandatory group ──────────────────
 
 export async function seedDefaultMandatoryGroup(): Promise<void> {
-  try {
-    const { BotConfig } = await import("../models/BotConfig.js");
-    const config = await BotConfig.findOne();
-    if (!config) return;
-    const groups: IMandatoryGroup[] = (config as any).mandatoryGroups ?? [];
-    const novaExists = groups.some(g => g.link.includes("bw--Kb7qnwZiODJk"));
-    if (!novaExists) {
-      groups.unshift({
-        name: "Nova Community",
-        link: "https://t.me/+bw--Kb7qnwZiODJk",
-        chatId: 0,
-        strict: true,
-      });
-      await BotConfig.updateOne({}, { $set: { mandatoryGroups: groups } });
-      invalidateBotConfigCache();
-      logger.info("Seeded default Nova mandatory group");
-    }
-  } catch (err) {
-    logger.warn({ err }, "seedDefaultMandatoryGroup failed (non-fatal)");
-  }
+  // Intentionally empty: no default channels are seeded automatically.
 }

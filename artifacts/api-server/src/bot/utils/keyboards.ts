@@ -21,17 +21,14 @@ export function mainMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
       ],
       [
         { text: "⏰ Reminders", callback_data: "reminders_btn" },
-        { text: "🔊 Voice", callback_data: "tts_btn" },
-      ],
-      [
         { text: "🎁 Daily Reward", callback_data: "daily_reward" },
+      ],
+      [
         { text: "📊 My Account", callback_data: "account_menu" },
-      ],
-      [
         { text: "💰 Credits", callback_data: "credits_menu" },
-        { text: "⭐ Go Premium", callback_data: "settings_premium" },
       ],
       [
+        { text: "⭐ Go Premium", callback_data: "settings_premium" },
         { text: "⚙️ Settings", callback_data: "settings_menu" },
       ],
     ],
@@ -249,17 +246,13 @@ export function imageMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
       ],
       [
         { text: "🖼️ Create Sticker", callback_data: "sticker_btn" },
-        { text: "🔊 Text-to-Speech", callback_data: "tts_btn" },
-      ],
-      [
         { text: "✏️ Edit via Prompt", callback_data: "img_edit" },
-        { text: "🔆 Enhance Photo", callback_data: "img_enhance" },
       ],
       [
+        { text: "🔆 Enhance Photo", callback_data: "img_enhance" },
         { text: "🎭 Stylize", callback_data: "img_stylize" },
-        { text: "🔧 Restore", callback_data: "img_restore" },
       ],
-      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+      [{ text: "⬅️ Back to Menu", callback_data: "main_menu" }],
     ],
   };
 }
@@ -1164,18 +1157,17 @@ export function mainMenuWithNewsKeyboard(hasNews = false): TelegramBot.InlineKey
       ],
       [
         { text: "⏰ Reminders", callback_data: "reminders_btn" },
-        { text: "🔊 Voice",     callback_data: "tts_btn" },
-      ],
-      [
         { text: "🎁 Daily Reward", callback_data: "daily_reward" },
-        { text: "📊 My Account",   callback_data: "account_menu" },
       ],
       [
+        { text: "📊 My Account", callback_data: "account_menu" },
         { text: "💰 Credits",    callback_data: "credits_menu" },
-        { text: "⭐ Go Premium", callback_data: "settings_premium" },
       ],
       [
-        { text: "⚙️ Settings", callback_data: "settings_menu" },
+        { text: "⭐ Go Premium", callback_data: "settings_premium" },
+        { text: "⚙️ Settings",  callback_data: "settings_menu" },
+      ],
+      [
         { text: hasNews ? "🆕 What's New!" : "🔔 What's New", callback_data: "whats_new_menu" },
       ],
     ],

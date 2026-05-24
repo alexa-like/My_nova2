@@ -94,7 +94,7 @@ import {
 } from "../services/engagement.js";
 import { trackFeature, track } from "../services/analytics.js";
 import { formatAnnouncements, getNewCount as _getNewCount } from "../services/announcements.js";
-import { getMandatoryGroups, removeMandatoryGroup, getFailedGroups } from "../services/groupGate.js";
+import { getMandatoryGroups, removeMandatoryGroup, getFailedGroups, PROMO_REWARD_COINS } from "../services/groupGate.js";
 
 // ── Trivia questions ──────────────────────────────────────────────────────────
 
@@ -854,21 +854,8 @@ export async function handleCallbackQuery(
       return;
     }
 
-    if (data === "tts_btn") {
-      setPending(userId, "voice_tts_input");
-      await editMsg(bot, query,
-        `🔊 Text-to-Speech\n\nType the text you want me to speak:\n\nTip: keep it under 300 characters for best results.`,
-        backToImgKeyboard()
-      );
-      return;
-    }
-
-    if (data === "stt_btn") {
-      await bot.answerCallbackQuery(query.id);
-      await bot.sendMessage(chatId,
-        `🎤 Voice Transcription\n\nSend me a voice message and I'll convert it to text!\n\nJust hold the microphone button in Telegram and record your message.`,
-        { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-      );
+    if (data === "tts_btn" || data === "stt_btn") {
+      await answer(bot, query.id, "Voice features are not available.");
       return;
     }
 
@@ -2365,7 +2352,7 @@ export async function handleCallbackQuery(
         flashText = `\n\n⚡ Flash Offer: ${flashOffer.title}\n${flashOffer.description} (+${flashOffer.creditsAmount} credits)`;
       }
       await editMsg(bot, query,
-        `💰 Credits\n\nBalance: ${credits} credits\n\nCredit costs:\n• 💬 Chat: 1 credit\n• 🎨 Image: 5 credits\n• 🌐 Build: 20 credits\n• 🔊 Voice: 3 credits${flashText}\n\n⭐ VIP members skip all credit deductions!`,
+        `💰 Credits\n\nBalance: ${credits} credits\n\nCredit costs:\n• 💬 Chat: 1 credit\n• 🎨 Image: 5 credits\n• 🌐 Build: 20 credits\n• 🔍 Search: 2 credits${flashText}\n\n⭐ VIP members skip all credit deductions!`,
         creditsMenuKeyboard(hasPayment)
       );
       return;
@@ -2849,26 +2836,45 @@ export async function handleCallbackQuery(
       return;
     }
 
-    // ── Gate recheck (user tapped "I Joined") ────────────────────────────────
+    // ── Promo channel reward verification ────────────────────────────────────
 
-    if (data === "gate_recheck") {
-      // NOTE: answer(bot, query.id) already fired at the top of handleCallbackQuery.
-      // A second answerCallbackQuery call will silently fail, so we use sendMessage for all feedback here.
-      const failedStrict = (await getFailedGroups(bot, user.userId)).filter(g => g.strict);
-      if (failedStrict.length === 0) {
-        try { await bot.deleteMessage(chatId, query.message!.message_id); } catch {}
-        const { getNewCount } = await import("../services/announcements.js");
-        const hasNews = getNewCount() > 0;
+    if (data === "promo_verify" || data === "gate_recheck") {
+      const channels = await getFailedGroups(bot, user.userId);
+      const allChannels = await getMandatoryGroups();
+      const joinedChannels = allChannels.filter(g => g.chatId && g.chatId !== 0)
+        .filter(g => !channels.find(f => f.chatId === g.chatId));
+
+      // Award coins for newly joined channels that haven't been rewarded yet
+      let coinsAwarded = 0;
+      for (const ch of joinedChannels) {
+        const rewardKey = `promo_${ch.chatId}`;
+        const alreadyClaimed = (user as any).recentFeatures?.includes(rewardKey);
+        if (!alreadyClaimed) {
+          coinsAwarded += PROMO_REWARD_COINS;
+          await User.findOneAndUpdate({ userId },
+            { $addToSet: { recentFeatures: rewardKey }, $inc: { credits: PROMO_REWARD_COINS } }
+          );
+        }
+      }
+
+      try { await bot.deleteMessage(chatId, query.message!.message_id); } catch {}
+      const { getNewCount } = await import("../services/announcements.js");
+      const hasNews = getNewCount() > 0;
+
+      if (coinsAwarded > 0) {
         await bot.sendMessage(chatId,
-          `✅ Verified! Welcome to Nova.\n\nHere's your menu:`,
+          `🎉 Thank you for joining!\n\n+${coinsAwarded} coins added to your account 🪙\n\nHere's your menu:`,
+          { reply_markup: mainMenuWithNewsKeyboard(hasNews) }
+        );
+      } else if (channels.length === 0) {
+        await bot.sendMessage(chatId,
+          `✅ You're all set! Here's your menu:`,
           { reply_markup: mainMenuWithNewsKeyboard(hasNews) }
         );
       } else {
-        const groupLines = failedStrict
-          .map(g => g.link ? `• ${g.link}` : `• ${g.name || "Required group"}`)
-          .join("\n");
         await bot.sendMessage(chatId,
-          `⚠️ You still haven't joined all required groups:\n\n${groupLines}\n\nJoin the group(s) above, then tap "✅ I Joined" again.`
+          `ℹ️ Join the channels first, then tap the button to claim your coins!`,
+          { reply_markup: mainMenuWithNewsKeyboard(hasNews) }
         );
       }
       return;

@@ -222,18 +222,6 @@ export async function handlePrivateMessage(
   const chatId = msg.chat.id;
   const text = msg.text || "";
 
-  // ── Mandatory group gate ────────────────────────────────────────────────────
-  // Allow /start so users can always get the "join" message, and /appeal for banned users
-  if (!text.startsWith("/start") && !text.startsWith("/appeal")) {
-    try {
-      const failedStrict = (await getFailedGroups(bot, user.userId)).filter(g => g.strict);
-      if (failedStrict.length > 0) {
-        await sendGroupGateMessage(bot, chatId, failedStrict, true);
-        // Soft gate — show the invite but allow the user to continue using the bot
-      }
-    } catch { /* non-fatal — never block on gate error */ }
-  }
-
   if (user.banned) {
     if (text.startsWith("/appeal")) {
       const appealMsg = text.replace(/^\/appeal\s*/i, "").trim();
@@ -464,8 +452,6 @@ export async function handlePrivateMessage(
       `── Create ──\n` +
       `🎨 /image <prompt> — Generate an image\n` +
       `🖼️ /sticker <prompt> — Generate a sticker\n` +
-      `🔊 /voice <text> — Text-to-speech audio\n` +
-      `🎤 /listen — Transcribe a voice message\n` +
       `🔍 /describe — Analyze or describe a photo\n` +
       `🔨 /build <idea> — Build a website or app with AI\n` +
       `🚀 /deploy <idea> — Build + deploy to Vercel\n\n` +
@@ -1188,35 +1174,6 @@ export async function handlePrivateMessage(
       return;
     }
     await handleBuildRequest(bot, chatId, user, prompt, e);
-    return;
-  }
-
-  // /voice <text> — text-to-speech
-  if (text.startsWith("/voice")) {
-    const prompt = text.replace(/^\/voice\s*/i, "").trim();
-    if (!prompt) {
-      setPending(user.userId, "voice_tts_input");
-      await bot.sendMessage(chatId,
-        "🔊 Type the text you want me to speak:",
-        { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
-      );
-      return;
-    }
-    await handleTTS(bot, chatId, user, prompt, e);
-    return;
-  }
-
-  // /listen — prompt user to send a voice message for transcription
-  if (text === "/listen" || text.startsWith("/listen ")) {
-    const config = await getOrCreateBotConfig();
-    if (!config.features?.sttEnabled) {
-      await bot.sendMessage(chatId, e ? "🎤 Voice transcription is temporarily unavailable." : "Voice transcription is temporarily unavailable.");
-      return;
-    }
-    await bot.sendMessage(chatId,
-      "🎤 Send me a voice message and I'll transcribe it for you!\n\nJust record and send a voice message now.",
-      { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
-    );
     return;
   }
 

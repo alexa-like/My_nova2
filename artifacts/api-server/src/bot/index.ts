@@ -1,7 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import { connectDB } from "./services/db.js";
 import { ensureUser, isOwner } from "./middlewares/userMiddleware.js";
-import { handlePrivateMessage, handlePhotoMessage, handleVoiceMessage, handleDocumentMessage } from "./handlers/privateHandler.js";
+import { handlePrivateMessage, handlePhotoMessage, handleDocumentMessage } from "./handlers/privateHandler.js";
 import { handleGroupMessage } from "./handlers/groupHandler.js";
 import { handleOwnerMessage, sendDailyReport } from "./handlers/ownerHandler.js";
 import { handleInlineQuery } from "./handlers/inlineHandler.js";
@@ -106,8 +106,7 @@ export async function startBot(): Promise<void> {
   loadPendingReminders(bot).catch((err) => logger.warn({ err }, "Failed to load reminders"));
   loadPersistedRateLimits().catch((err) => logger.warn({ err }, "Failed to load rate limits from DB"));
 
-  // Seed the default Nova mandatory group
-  seedDefaultMandatoryGroup().catch(() => {});
+  // (No default channels seeded — admin configures promo channels via owner panel)
 
   // Load premium emoji state from config
   try {
@@ -122,8 +121,6 @@ export async function startBot(): Promise<void> {
       { command: "start", description: "Open Nova menu" },
       { command: "help", description: "Show all commands" },
       { command: "image", description: "Generate an image" },
-      { command: "voice", description: "Convert text to speech audio" },
-      { command: "listen", description: "Transcribe a voice message to text" },
       { command: "describe", description: "Describe or analyze a photo" },
       { command: "sticker", description: "Generate a sticker" },
       { command: "search", description: "Search the web" },
@@ -194,7 +191,6 @@ export async function startBot(): Promise<void> {
       { command: "image", description: "Generate an image (mention bot)" },
       { command: "ask", description: "Quick AI answer (mention bot)" },
       { command: "translate", description: "Translate text (mention bot)" },
-      { command: "voice", description: "Convert text to speech (mention bot)" },
       { command: "describe", description: "Describe a photo (reply with mention)" },
       { command: "sticker", description: "Generate a sticker (mention bot)" },
       { command: "search", description: "Search the web (mention bot)" },
@@ -228,9 +224,9 @@ export async function startBot(): Promise<void> {
           return;
         }
 
-        // Voice messages
+        // Voice messages — feature removed
         if (msg.voice) {
-          await handleVoiceMessage(bot!, msg, user);
+          await bot!.sendMessage(msg.chat.id, "Voice messages are not supported. Please type your message instead.");
           return;
         }
 
@@ -445,16 +441,7 @@ export async function startBot(): Promise<void> {
         try { await bot!.deleteMessage(msg.chat.id, msg.message_id); } catch {}
       }
 
-      // ── Mandatory group check: DM user if they left a mandatory group ────
-      try {
-        const mandatoryGroups = await getMandatoryGroups();
-        for (const g of mandatoryGroups) {
-          if (g.chatId && g.chatId === msg.chat.id) {
-            await sendLeftGroupDM(bot!, member.id, g);
-            break;
-          }
-        }
-      } catch { /* non-fatal */ }
+      // (No DM sent on group leave — promotional channels are opt-in only)
 
       if (!groupSettings?.goodbyeMessage) return;
       const name = member.first_name || member.username || "Friend";
