@@ -32,7 +32,10 @@ export type PendingTextAction =
   | "render_set_token"
   | "build_pending"
   | "feedback_pending"
-  | "deletedata_confirm";
+  | "deletedata_confirm"
+  | "grp_set_welcome"
+  | "grp_set_goodbye"
+  | "grp_set_rules";
 
 export type PendingPhotoAction =
   | "img_edit"

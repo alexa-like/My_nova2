@@ -670,7 +670,7 @@ export async function handlePrivateMessage(
   }
 
   // /updates — show what's new in Nova
-  if (text === "/updates" || text === "/whatsnew") {
+  if (text === "/updates") {
     await bot.sendMessage(chatId,
       `✨ *What's New in Nova*\n\n` +
       `🔥 *Recent Updates:*\n\n` +
@@ -680,10 +680,10 @@ export async function handlePrivateMessage(
       `• 🌐 *Website Builder* — Improved AI models with 4 fallbacks\n` +
       `• 🔊 *Long Text TTS* — Voice now works for paragraphs, not just short phrases\n` +
       `• 👋 *Personalized Welcome* — Quick-access shortcuts to your recent tools\n` +
-      `• 🔒 *Privacy Controls* — See and manage your stored data (/privacy)\n\n` +
-      `📢 *Coming Soon:*\n` +
-      `• 🎨 Image editing improvements\n` +
-      `• 📱 More AI personalities\n\n` +
+      `• 🔒 *Privacy Controls* — See and manage your stored data (/privacy)\n` +
+      `• 🎨 *Image Editing* — Edit, enhance, stylize & restore photos with AI\n` +
+      `• 🎭 *AI Modes* — 10+ specialist modes: dev, chef, coach, therapist & more\n` +
+      `• 🛡️ *Content Moderation* — Jailbreak & prompt-injection protection active\n\n` +
       `Have feedback? Use /feedback to share your thoughts!`,
       { parse_mode: "Markdown", reply_markup: updatesKeyboard() }
     );
@@ -1919,6 +1919,39 @@ async function handlePendingText(
       }
       case "sticker_input": {
         await handleStickerGeneration(bot, chatId, user, input, e);
+        break;
+      }
+      case "grp_set_welcome": {
+        const gid = parseInt(pendingData?.groupChatId ?? "0");
+        if (!gid) { await bot.sendMessage(chatId, "❌ Could not find the group. Please try again from the group settings."); break; }
+        const { GroupSettings: GS } = await import("../models/GroupSettings.js");
+        const gs = await GS.findOneAndUpdate({ chatId: gid }, { welcomeMessage: input.trim() }, { new: true, upsert: true });
+        await bot.sendMessage(chatId,
+          `✅ Welcome message updated!\n\nNew members in the group will see:\n\n_${gs?.welcomeMessage}_`,
+          { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "🏠 Menu", callback_data: "main_menu" }]] } }
+        );
+        break;
+      }
+      case "grp_set_goodbye": {
+        const gid = parseInt(pendingData?.groupChatId ?? "0");
+        if (!gid) { await bot.sendMessage(chatId, "❌ Could not find the group. Please try again from the group settings."); break; }
+        const { GroupSettings: GS } = await import("../models/GroupSettings.js");
+        const gs = await GS.findOneAndUpdate({ chatId: gid }, { goodbyeMessage: input.trim() }, { new: true, upsert: true });
+        await bot.sendMessage(chatId,
+          `✅ Goodbye message updated!\n\nMembers leaving the group will see:\n\n_${gs?.goodbyeMessage}_`,
+          { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "🏠 Menu", callback_data: "main_menu" }]] } }
+        );
+        break;
+      }
+      case "grp_set_rules": {
+        const gid = parseInt(pendingData?.groupChatId ?? "0");
+        if (!gid) { await bot.sendMessage(chatId, "❌ Could not find the group. Please try again from the group settings."); break; }
+        const { GroupSettings: GS } = await import("../models/GroupSettings.js");
+        await GS.findOneAndUpdate({ chatId: gid }, { rules: input.trim() }, { upsert: true });
+        await bot.sendMessage(chatId,
+          `✅ Group rules updated!\n\nMembers can view the rules with /rules in the group.`,
+          { reply_markup: { inline_keyboard: [[{ text: "🏠 Menu", callback_data: "main_menu" }]] } }
+        );
         break;
       }
       case "fun_truth_reply": {

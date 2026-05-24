@@ -441,8 +441,10 @@ export async function handleCallbackQuery(
         `• 🌐 *Better /build* — 4-model fallback chain for reliable builds\n` +
         `• 🔊 *Long TTS* — Voice works for long text, not just short phrases\n` +
         `• 👋 *Personalised Welcome* — Quick-access to your recent tools\n` +
-        `• 🔒 *Privacy Controls* — See & manage your stored data (/privacy)\n\n` +
-        `📢 *Coming Soon:* Image editing, more AI modes\n\n` +
+        `• 🔒 *Privacy Controls* — See & manage your stored data (/privacy)\n` +
+        `• 🎨 *Image Editing* — Edit, enhance, stylize & restore photos\n` +
+        `• 🎭 *AI Modes* — Switch between 10+ specialist modes (/mode)\n` +
+        `• 🔍 *Content Moderation* — Jailbreak & prompt-injection protection\n\n` +
         `Have feedback? Use /feedback`,
         updatesKeyboard()
       );
@@ -2360,13 +2362,28 @@ export async function handleCallbackQuery(
       const config = await getOrCreateBotConfig();
       const flashOffer = (config as any).flashOffer;
       if (!flashOffer?.active) {
-        await answer(bot, query.id, "No active flash offer right now.");
+        await answer(bot, query.id, "No active offer right now.");
+        await editMsg(bot, query,
+          `⚡ No Flash Offer Active\n\nCheck back later — the owner occasionally activates special bonus credit drops!\n\nEarn credits now:\n• /daily — Free daily reward\n• /refer — Refer friends for bonus credits\n• /redeem — Use a redeem code`,
+          { inline_keyboard: [
+            [{ text: "🎁 Daily Reward", callback_data: "daily_claim" }],
+            [{ text: "⬅️ Credits", callback_data: "credits_menu" }, { text: "🏠 Menu", callback_data: "main_menu" }],
+          ]}
+        );
         return;
       }
-      await answer(bot, query.id, "Payment coming soon!");
+      const credited = (flashOffer.creditsAmount as number) ?? 50;
+      const freshUser = await User.findOne({ userId });
+      if (!freshUser) { await answer(bot, query.id, "User not found."); return; }
+      freshUser.credits = (freshUser.credits ?? 0) + credited;
+      await freshUser.save();
+      await answer(bot, query.id, `🎉 +${credited} credits added!`);
       await editMsg(bot, query,
-        `⚡ Flash Offer: ${flashOffer.title}\n\n${flashOffer.description}\n\nReward: +${flashOffer.creditsAmount} credits\n\n💳 Payment integration coming soon — stay tuned!`,
-        { inline_keyboard: [[{ text: "⬅️ Credits", callback_data: "credits_menu" }]] }
+        `⚡ Flash Offer Claimed!\n\n🎁 *${flashOffer.title}*\n\n${flashOffer.description}\n\n✅ *+${credited} credits* have been added to your account!\n\nNew balance: ${freshUser.credits} credits`,
+        { inline_keyboard: [
+          [{ text: "💰 View Credits", callback_data: "credits_menu" }],
+          [{ text: "🏠 Menu", callback_data: "main_menu" }],
+        ]}
       );
       return;
     }
@@ -2496,8 +2513,14 @@ export async function handleCallbackQuery(
       const groupChatId = parseInt(data.replace("grp_welcome_", ""));
       const isAdm = await (async () => { try { const m = await bot.getChatMember(groupChatId, userId); return ["creator","administrator"].includes(m.status); } catch { return false; } })();
       if (!isAdm) { await answer(bot, query.id, "Only group admins."); return; }
+      const { GroupSettings: GS } = await import("../models/GroupSettings.js");
+      const gs = await GS.findOne({ chatId: groupChatId });
+      setPending(userId, "grp_set_welcome", { groupChatId: String(groupChatId) });
       await answer(bot, query.id);
-      await bot.sendMessage(chatId, `👋 To set a welcome message, use:\n\n/welcome Your text here\n\nPlaceholders: {name} = username, {group} = group name`);
+      await bot.sendMessage(chatId,
+        `👋 *Set Welcome Message*\n\nType the welcome message to send when a new member joins.\n\nAvailable placeholders:\n• \`{name}\` — member's name\n• \`{group}\` — group name\n\n${gs?.welcomeMessage ? `Current: _${gs.welcomeMessage}_\n\n` : ""}Send your new message now, or /cancel to abort.`,
+        { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
+      );
       return;
     }
 
@@ -2505,8 +2528,14 @@ export async function handleCallbackQuery(
       const groupChatId = parseInt(data.replace("grp_goodbye_", ""));
       const isAdm = await (async () => { try { const m = await bot.getChatMember(groupChatId, userId); return ["creator","administrator"].includes(m.status); } catch { return false; } })();
       if (!isAdm) { await answer(bot, query.id, "Only group admins."); return; }
+      const { GroupSettings: GS } = await import("../models/GroupSettings.js");
+      const gs = await GS.findOne({ chatId: groupChatId });
+      setPending(userId, "grp_set_goodbye", { groupChatId: String(groupChatId) });
       await answer(bot, query.id);
-      await bot.sendMessage(chatId, `👋 To set a goodbye message, use:\n\n/setgoodbye Your text here\n\nPlaceholders: {name} = username, {group} = group name`);
+      await bot.sendMessage(chatId,
+        `👋 *Set Goodbye Message*\n\nType the message to send when a member leaves.\n\nAvailable placeholders:\n• \`{name}\` — member's name\n• \`{group}\` — group name\n\n${gs?.goodbyeMessage ? `Current: _${gs.goodbyeMessage}_\n\n` : ""}Send your new message now, or /cancel to abort.`,
+        { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
+      );
       return;
     }
 
@@ -2514,8 +2543,14 @@ export async function handleCallbackQuery(
       const groupChatId = parseInt(data.replace("grp_rules_", ""));
       const isAdm = await (async () => { try { const m = await bot.getChatMember(groupChatId, userId); return ["creator","administrator"].includes(m.status); } catch { return false; } })();
       if (!isAdm) { await answer(bot, query.id, "Only group admins."); return; }
+      const { GroupSettings: GS } = await import("../models/GroupSettings.js");
+      const gs = await GS.findOne({ chatId: groupChatId });
+      setPending(userId, "grp_set_rules", { groupChatId: String(groupChatId) });
       await answer(bot, query.id);
-      await bot.sendMessage(chatId, `📋 To set group rules, use:\n\n/setrules Your rules here\n\nMembers can view them with /rules`);
+      await bot.sendMessage(chatId,
+        `📋 *Set Group Rules*\n\nType the rules for your group. Members can view them with /rules.\n\n${gs?.rules ? `Current:\n_${gs.rules}_\n\n` : ""}Send your new rules now, or /cancel to abort.`,
+        { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
+      );
       return;
     }
 
