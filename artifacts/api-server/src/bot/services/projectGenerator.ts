@@ -1,7 +1,6 @@
 import axios from "axios";
 import { jsonrepair } from "jsonrepair";
 import { logger } from "../../lib/logger.js";
-import { getOrCreateBotConfig } from "../models/BotConfig.js";
 
 export type ProjectType = "static" | "react" | "nodejs" | "fullstack";
 
@@ -16,6 +15,45 @@ export interface GeneratedProject {
   type: ProjectType;
   files: ProjectFile[];
   deploymentTip: string;
+}
+
+// ── Known-good free models on OpenRouter, in priority order ───────────────────
+// These are tried in sequence until one succeeds.
+const FREE_MODEL_QUEUE = [
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "deepseek/deepseek-v4-flash:free",
+  "google/gemma-2-9b-it:free",
+  "microsoft/phi-4:free",
+  "mistralai/mistral-7b-instruct:free",
+  "meta-llama/llama-3.1-8b-instruct:free",
+  "meta-llama/llama-3.2-3b-instruct:free",
+];
+
+// ── Validate that a model ID looks real (not "Openrouter/free" etc.) ─────────
+function isValidModelId(id: string): boolean {
+  if (!id || typeof id !== "string") return false;
+  if (!id.includes("/")) return false;
+  if (id.toLowerCase() === "openrouter/free") return false;
+  if (id.toLowerCase().startsWith("openrouter/")) return false;
+  if (id.length < 5) return false;
+  return true;
+}
+
+// ── Build model queue: config model first (if valid), then hardcoded fallbacks ─
+async function buildModelQueue(): Promise<string[]> {
+  try {
+    const { getOrCreateBotConfig } = await import("../models/BotConfig.js");
+    const cfg = await getOrCreateBotConfig();
+    const configModel = cfg.activeCodeModel;
+    if (isValidModelId(configModel) && !FREE_MODEL_QUEUE.includes(configModel)) {
+      return [configModel, ...FREE_MODEL_QUEUE];
+    }
+    if (isValidModelId(configModel)) {
+      // Move config model to the front of the standard queue
+      return [configModel, ...FREE_MODEL_QUEUE.filter(m => m !== configModel)];
+    }
+  } catch {}
+  return [...FREE_MODEL_QUEUE];
 }
 
 // ── Prompt engineering ─────────────────────────────────────────────────────────
@@ -40,42 +78,33 @@ Required JSON shape:
 }
 
 PROJECT TYPE GUIDE:
-- "static": pure HTML + CSS + vanilla JS. For: portfolios, landing pages, calculators, clocks, games, simple tools. No build step — runs directly in browser.
-- "react": React 18 + Babel via CDN (NO npm). For: dashboards, SPAs, interactive apps. All in one index.html using CDN React + script type="text/babel".
-- "nodejs": Express + plain HTML frontend. For: chat apps, REST APIs, real-time features. Include server.js + package.json + public/index.html.
-- "fullstack": Express + MongoDB/sqlite concept + frontend. For: complex apps needing persistence.
+- "static": pure HTML + CSS + vanilla JS. For portfolios, landing pages, calculators, clocks, games, simple tools.
+- "react": React 18 + Babel via CDN. For dashboards, SPAs, interactive apps. All in one index.html.
+- "nodejs": Express + plain HTML frontend. For chat apps, REST APIs, real-time features.
+- "fullstack": Express + in-memory store + frontend. For complex apps needing persistence.
 
-QUALITY RULES (non-negotiable):
-1. Generate COMPLETE, WORKING code — no TODOs, no "// your code here", no placeholders
-2. Modern design: CSS custom properties (variables), flexbox/grid, smooth transitions, proper typography
-3. Mobile-responsive: works on phones and desktops
-4. For static/react: add realistic sample content (not Lorem Ipsum)
-5. Color scheme: professional and consistent (dark mode preferred for dashboards)
-6. Proper error states, loading states where applicable
-7. README.md must include: title, description, tech stack, how to run, features list
-8. Maximum 8 files total
-
-TECH STACK BY TYPE:
-- static: HTML5, CSS3 (variables + flexbox/grid), vanilla ES6+ JS
-- react: React 18 CDN + Babel Standalone + modern CSS
-- nodejs: Express 4, vanilla JS frontend, package.json with scripts
-- fullstack: Express 4, lowdb or in-memory store, vanilla JS
+QUALITY RULES:
+1. COMPLETE, WORKING code — no TODOs, no placeholders
+2. Modern design: CSS variables, flexbox/grid, smooth transitions
+3. Mobile-responsive
+4. Realistic sample content (not Lorem Ipsum)
+5. Dark mode preferred for dashboards
+6. Maximum 8 files total
 
 deploymentTip examples:
-- static: "Deploy free on Netlify: drag the folder to app.netlify.com/drop"
+- static: "Deploy free on Netlify: drag folder to app.netlify.com/drop"
 - react: "Deploy on Vercel: import from GitHub at vercel.com/new"
-- nodejs: "Deploy on Render: push to GitHub then connect at render.com"
-- fullstack: "Deploy backend on Railway, frontend separately on Vercel"`;
+- nodejs: "Deploy on Render: push to GitHub then connect at render.com"`;
 }
 
-// ── JSON extraction (robust) ───────────────────────────────────────────────────
+// ── JSON extraction ────────────────────────────────────────────────────────────
 
 function extractJson(raw: string): string {
   let text = raw.trim();
   text = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
   text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
   const start = text.indexOf("{");
-  if (start === -1) throw new Error("No valid JSON object found in model response.");
+  if (start === -1) throw new Error("No JSON object found");
   let depth = 0;
   let end = -1;
   for (let i = start; i < text.length; i++) {
@@ -85,11 +114,28 @@ function extractJson(raw: string): string {
       if (depth === 0) { end = i; break; }
     }
   }
-  if (end === -1) throw new Error("JSON object is not properly closed in model response.");
+  if (end === -1) throw new Error("JSON not closed");
   return text.slice(start, end + 1);
 }
 
-// ── Main generator — single active model, one retry ───────────────────────────
+// ── File sanitiser ─────────────────────────────────────────────────────────────
+
+function sanitiseFiles(files: any[]): ProjectFile[] {
+  return files
+    .filter(f => f && typeof f.path === "string" && typeof f.content === "string")
+    .map(f => ({
+      path: f.path
+        .replace(/\\/g, "/").replace(/^\/+/, "")
+        .replace(/[<>:"|?*\x00-\x1f]/g, "")
+        .replace(/\.{2,}/g, ".").replace(/\/\.+\//g, "/")
+        .replace(/\/+/g, "/").replace(/^\.+\//, "")
+        .slice(0, 255),
+      content: typeof f.content === "string" ? f.content : JSON.stringify(f.content, null, 2),
+    }))
+    .filter(f => f.path.length > 0 && f.content.length > 0 && !f.path.startsWith("."));
+}
+
+// ── Main generator ─────────────────────────────────────────────────────────────
 
 export async function generateProject(
   userRequest: string,
@@ -98,28 +144,20 @@ export async function generateProject(
 ): Promise<GeneratedProject> {
   logger.info({ userRequest }, "Generating project");
 
-  // Use only the active code model from config (no model selection exposed to user)
-  let activeModel = "meta-llama/llama-3.3-70b-instruct:free";
-  let fallbackModel = "deepseek/deepseek-v4-flash:free";
-  try {
-    const cfg = await getOrCreateBotConfig();
-    if (cfg.activeCodeModel) activeModel = cfg.activeCodeModel;
-    if (cfg.codeModels && cfg.codeModels.length > 1) {
-      const others = cfg.codeModels.filter(m => m.id !== activeModel);
-      if (others.length > 0) fallbackModel = others[0].id;
-    }
-  } catch {}
-
-  const modelsToTry = [activeModel, fallbackModel].filter(Boolean);
+  const modelQueue = await buildModelQueue();
   const prompt = buildPrompt(userRequest);
 
-  for (let attempt = 0; attempt < modelsToTry.length; attempt++) {
-    const model = modelsToTry[attempt];
+  for (let i = 0; i < modelQueue.length; i++) {
+    const model = modelQueue[i];
     let raw = "";
 
     try {
-      onStatus?.("🔨 Building your project...");
-      logger.info({ model, attempt }, "Attempting project generation");
+      if (i === 0) {
+        onStatus?.("🔨 Building your project...");
+      } else {
+        onStatus?.(`⏳ Trying another model...`);
+      }
+      logger.info({ model, attempt: i }, "Attempting project generation");
 
       const response = await axios.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -128,47 +166,67 @@ export async function generateProject(
           messages: [
             {
               role: "system",
-              content: "You are an expert full-stack web developer. You ONLY output raw JSON — never any markdown, never any explanation text. Just the JSON object.",
+              content: "You are an expert full-stack web developer. Output ONLY raw JSON — no markdown, no explanation.",
             },
             { role: "user", content: prompt },
           ],
           max_tokens: 8192,
           temperature: 0.2,
-          top_p: 0.9,
         },
         {
           headers: {
             Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
             "HTTP-Referer": process.env.APP_URL || "https://nova-bot.replit.app",
-            "X-Title": "Nova AI Bot — Project Builder",
+            "X-Title": "Nova AI Bot",
           },
-          timeout: 90000,
+          timeout: 120000,
         }
       );
       raw = response.data?.choices?.[0]?.message?.content || "";
+
     } catch (err: any) {
       const status = err?.response?.status;
-      if (status === 401) throw new Error("API key rejected (401). Check your OPENROUTER_API_KEY.");
-      if (attempt < modelsToTry.length - 1) {
-        logger.warn({ model, status }, "Model failed — retrying with fallback");
-        onStatus?.("⏳ Retrying...");
+
+      if (status === 401) {
+        throw new Error("❌ API key rejected. Ask the bot owner to check the OpenRouter key.");
+      }
+
+      if (status === 429) {
+        // Rate limited — wait briefly then try next model
+        logger.warn({ model, status: 429 }, "Rate limited — skipping to next model");
+        await new Promise(r => setTimeout(r, 1500));
         continue;
       }
-      throw new Error("⚠️ Builder AI is currently unavailable. Please try again in a moment.");
+
+      if (status === 402) {
+        // Payment required — model not available on free tier, skip
+        logger.warn({ model, status: 402 }, "Model not on free tier — skipping");
+        continue;
+      }
+
+      if (err.code === "ECONNABORTED" || err.code === "ETIMEDOUT") {
+        // Timeout — try next model
+        logger.warn({ model }, "Model timed out — trying next");
+        continue;
+      }
+
+      // Any other error — try next model
+      logger.warn({ model, status, err: err?.message }, "Model error — trying next");
+      continue;
     }
 
-    if (!raw || raw.trim().length < 10) {
-      if (attempt < modelsToTry.length - 1) { onStatus?.("⏳ Retrying..."); continue; }
-      throw new Error("⚠️ Builder AI returned an empty response. Please try again.");
+    if (!raw || raw.trim().length < 50) {
+      logger.warn({ model }, "Empty/too-short response — trying next");
+      continue;
     }
 
     let jsonStr: string;
     try {
       jsonStr = extractJson(raw);
     } catch {
-      if (attempt < modelsToTry.length - 1) { onStatus?.("⏳ Retrying..."); continue; }
-      throw new Error("⚠️ Builder AI returned an unexpected format. Please try a different description.");
+      logger.warn({ model }, "Could not extract JSON — trying next");
+      continue;
     }
 
     let parsed: GeneratedProject;
@@ -176,47 +234,41 @@ export async function generateProject(
       parsed = JSON.parse(jsonStr);
     } catch {
       try {
-        const repaired = jsonrepair(jsonStr);
-        parsed = JSON.parse(repaired);
+        parsed = JSON.parse(jsonrepair(jsonStr));
+        logger.info({ model }, "JSON auto-repaired");
       } catch {
-        if (attempt < modelsToTry.length - 1) { onStatus?.("⏳ Retrying..."); continue; }
-        throw new Error("⚠️ Builder AI returned invalid JSON. Please try again.");
+        logger.warn({ model }, "JSON parse + repair failed — trying next");
+        continue;
       }
     }
 
     if (!parsed || !Array.isArray(parsed.files) || parsed.files.length === 0) {
-      if (attempt < modelsToTry.length - 1) { onStatus?.("⏳ Retrying..."); continue; }
-      throw new Error("⚠️ Builder AI returned an incomplete project. Please try a different description.");
+      logger.warn({ model }, "Invalid project structure — trying next");
+      continue;
     }
 
-    // Sanitize file paths
-    parsed.files = parsed.files
-      .filter(f => f && typeof f.path === "string" && typeof f.content === "string")
-      .map(f => ({
-        path: f.path
-          .replace(/\\/g, "/").replace(/^\/+/, "").replace(/[<>:"|?*\x00-\x1f]/g, "")
-          .replace(/\.{2,}/g, ".").replace(/\/\.+\//g, "/").replace(/\/+/g, "/")
-          .replace(/^\.+\//, "").slice(0, 255),
-        content: typeof f.content === "string" ? f.content : JSON.stringify(f.content, null, 2),
-      }))
-      .filter(f => f.path.length > 0 && f.content.length > 0 && !f.path.startsWith("."));
-
-    if (parsed.files.length === 0) {
-      if (attempt < modelsToTry.length - 1) { onStatus?.("⏳ Retrying..."); continue; }
-      throw new Error("⚠️ All generated files were invalid. Please try a different description.");
+    const files = sanitiseFiles(parsed.files);
+    if (files.length === 0) {
+      logger.warn({ model }, "All files invalid after sanitisation — trying next");
+      continue;
     }
 
+    parsed.files = files;
     parsed.name = parsed.name || "nova-project";
-    parsed.description = parsed.description || `A ${parsed.type || "web"} project generated by Nova AI`;
+    parsed.description = parsed.description || `A web project generated by Nova AI`;
     parsed.type = (["static", "react", "nodejs", "fullstack"] as ProjectType[]).includes(parsed.type)
       ? parsed.type : "static";
-    parsed.deploymentTip = parsed.deploymentTip || "Deploy on Netlify for free: app.netlify.com/drop";
+    parsed.deploymentTip = parsed.deploymentTip || "Deploy on Netlify: app.netlify.com/drop";
 
-    logger.info({ model, name: parsed.name, type: parsed.type, files: parsed.files.length }, "Project generation complete");
+    logger.info({ model, name: parsed.name, type: parsed.type, files: files.length }, "Project generation complete");
     return parsed;
   }
 
-  throw new Error("⚠️ Project builder is temporarily unavailable. Please try again in a moment.");
+  // All models exhausted
+  logger.error({ modelsTriedCount: modelQueue.length }, "All models failed for project generation");
+  throw new Error(
+    "⚠️ All AI models are currently busy or rate-limited. Please wait a minute and try again."
+  );
 }
 
 // ── Project type label ─────────────────────────────────────────────────────────

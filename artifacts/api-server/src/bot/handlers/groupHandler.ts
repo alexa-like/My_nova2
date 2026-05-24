@@ -1417,49 +1417,6 @@ export async function handleGroupMessage(
     return;
   }
 
-  // /voice command when bot is mentioned
-  if (cleanText.toLowerCase().startsWith("/voice")) {
-    const text = cleanText.replace(/^\/voice\s*/i, "").trim();
-    if (!text) {
-      await bot.sendMessage(chatId,
-        `Give me some text!\nExample: @${botUsername} /voice Hello, this is Nova speaking`,
-        { reply_to_message_id: msg.message_id }
-      );
-      return;
-    }
-    const { getOrCreateBotConfig } = await import("../models/BotConfig.js");
-    const config = await getOrCreateBotConfig();
-    if (!config.features?.ttsEnabled) {
-      await bot.sendMessage(chatId, "Voice generation is temporarily unavailable.", { reply_to_message_id: msg.message_id });
-      return;
-    }
-    const sentMsg = await bot.sendMessage(chatId, `🔊 Generating voice...`);
-    const stopVoiceTyping = startTypingLoop(bot, chatId);
-    try {
-      const { generateTTS } = await import("../services/tts.js");
-      const provider = config.providers?.tts || "huggingface";
-      const voice = config.providers?.ttsVoice || "nova";
-      const ttsResult = await generateTTS(text, provider, voice);
-      stopVoiceTyping();
-      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-      if (!ttsResult) {
-        await bot.sendMessage(chatId, "Voice generation failed. Try again.", { reply_to_message_id: msg.message_id });
-        return;
-      }
-      if (ttsResult.format === "wav") {
-        await bot.sendAudio(chatId, ttsResult.buffer, {}, { filename: "voice.wav", contentType: "audio/wav" });
-      } else {
-        await bot.sendVoice(chatId, ttsResult.buffer);
-      }
-    } catch (err) {
-      stopVoiceTyping();
-      logger.error({ err }, "Group TTS error");
-      try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
-      await bot.sendMessage(chatId, "Voice generation failed. Please try again.");
-    }
-    return;
-  }
-
   // /describe command when bot is mentioned (reply to a photo)
   if (cleanText.toLowerCase().startsWith("/describe")) {
     const replyMsg = msg.reply_to_message;

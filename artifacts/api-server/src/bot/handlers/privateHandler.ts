@@ -55,8 +55,6 @@ import {
 import { contextSuggestionsKeyboard } from "../utils/suggestions.js";
 import { trackFeature } from "../services/analytics.js";
 import { webSearch, formatSearchResults } from "../services/webSearch.js";
-import { generateTTS } from "../services/tts.js";
-import { transcribeAudio } from "../services/stt.js";
 import { generateProject, typeLabel } from "../services/projectGenerator.js";
 import {
   createGitHubRepo,
@@ -167,51 +165,6 @@ async function sendAIReply(
   await safeSend(bot, chatId, text, extra);
 }
 
-
-export async function handleVoiceMessage(
-  bot: TelegramBot,
-  msg: TelegramBot.Message,
-  user: IUser
-): Promise<void> {
-  const chatId = msg.chat.id;
-  if (user.banned) return;
-
-  const config = await getOrCreateBotConfig();
-  if (!config.features?.sttEnabled) {
-    await bot.sendMessage(chatId, "Voice transcription is temporarily unavailable. Please type your message instead.");
-    return;
-  }
-
-  const voice = msg.voice;
-  if (!voice) {
-    await bot.sendMessage(chatId, "Please send a voice message to transcribe.");
-    return;
-  }
-
-  const status = await startLiveStatus(bot, chatId, "🎤 Transcribing your voice message");
-  try {
-    const file = await bot.getFile(voice.file_id);
-    const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
-    const response = await fetch(fileUrl);
-    if (!response.ok) throw new Error("Failed to download voice file");
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const transcript = await transcribeAudio(buffer);
-    status.stop();
-    await status.delete();
-    if (!transcript) {
-      await bot.sendMessage(chatId, "Could not transcribe your voice message. Please try again or type your message.");
-      return;
-    }
-    await bot.sendMessage(chatId, `🎤 Transcript:\n\n${transcript}`,
-      { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-    );
-  } catch (err) {
-    status.stop();
-    await status.delete();
-    logger.error({ err }, "Voice transcription error");
-    await bot.sendMessage(chatId, "Voice transcription failed. Please type your message instead.");
-  }
-}
 
 export async function handlePrivateMessage(
   bot: TelegramBot,
@@ -1699,10 +1652,6 @@ async function handlePendingText(
         );
         break;
       }
-      case "voice_tts_input": {
-        await handleTTS(bot, chatId, user, input, e);
-        break;
-      }
       case "sticker_input": {
         await handleStickerGeneration(bot, chatId, user, input, e);
         break;
@@ -2398,70 +2347,6 @@ async function sendProjectFiles(
     } catch (err) {
       logger.warn({ err, path: file.path }, "Failed to send project file as document");
     }
-  }
-}
-
-// ── TTS generation helper ─────────────────────────────────────────────────────
-
-async function handleTTS(
-  bot: TelegramBot,
-  chatId: number,
-  user: IUser,
-  text: string,
-  e: boolean
-): Promise<void> {
-  const config = await getOrCreateBotConfig();
-  if (!config.features?.ttsEnabled) {
-    await bot.sendMessage(chatId, "Voice generation is temporarily unavailable, will be available soon.");
-    return;
-  }
-  // Credit check for TTS
-  if (!user.premium.active) {
-    const ttsCost = await getCreditCost("tts");
-    const userCredits = (user as any).credits ?? 0;
-    if (userCredits < ttsCost) {
-      await bot.sendMessage(chatId,
-        `💰 Voice generation costs ${ttsCost} credits.\n\nYou have ${userCredits} credits.`,
-        { reply_markup: insufficientCreditsKeyboard() }
-      );
-      return;
-    }
-    await deductCredits(user.userId, ttsCost);
-  }
-  if (text.length > 1000) {
-    await bot.sendMessage(chatId, e ? "🔊 Text is too long! Maximum 1000 characters." : "Text too long. Maximum 1000 characters.");
-    return;
-  }
-  const ttsStatus = await startLiveStatus(bot, chatId, "🔊 Generating voice", "upload_video");
-  try {
-    const provider = config.providers?.tts || "huggingface";
-    const voice = config.providers?.ttsVoice || "nova";
-    const ttsResult = await generateTTS(text, provider, voice);
-    ttsStatus.stop();
-    await ttsStatus.delete();
-    if (!ttsResult) {
-      await bot.sendMessage(chatId, e ? "🔊 Voice generation failed. Try again!" : "Voice generation failed. Please try again.");
-      return;
-    }
-    if (ttsResult.format === "wav") {
-      await bot.sendAudio(chatId, ttsResult.buffer, { caption: e ? "🔊 Here's your audio!" : undefined }, { filename: "voice.wav", contentType: "audio/wav" });
-    } else {
-      await bot.sendVoice(chatId, ttsResult.buffer, { caption: e ? "🔊 Here's your audio!" : undefined });
-    }
-    Promise.all([
-      updateRecentFeatures(user.userId, "tts"),
-      trackFeature(user.userId, "tts"),
-      checkAndGrantAchievements(user.userId, "tts").then(async (unlocked) => {
-        if (unlocked.length > 0) {
-          await bot.sendMessage(chatId, formatAchievementToast(unlocked), { parse_mode: "Markdown" }).catch(() => {});
-        }
-      }),
-    ]).catch(() => {});
-  } catch (err) {
-    ttsStatus.stop();
-    await ttsStatus.delete();
-    logger.error({ err }, "TTS error");
-    await bot.sendMessage(chatId, e ? "🔊 Voice generation failed. Please try again later." : "Voice generation failed. Please try again.");
   }
 }
 
