@@ -2,6 +2,10 @@
 
 A production-ready Telegram AI assistant with personality modes, group moderation, image generation, premium system, and owner dashboard.
 
+## Agent Handoff
+
+**Read `AGENTHANDOFF.md` at the project root before starting any work.** It contains the full session history, current build state, files changed, and the prioritised next-task list. Update it at the end of every session — add a new entry under Session History, update Current State, and adjust the Next Tasks checklist.
+
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server + bot (port 8080)
@@ -42,7 +46,7 @@ A production-ready Telegram AI assistant with personality modes, group moderatio
 - OpenRouter as AI backend — model can be swapped in `ai.ts`
 - HuggingFace fallback: tries SDXL first, falls back to SD 1.5
 - Context memory kept per (userId, chatId) pair — groups have separate memory per user
-- Rate limiting is in-memory (resets on restart) — 20 msgs/min per user
+- Rate limiting is MongoDB-backed (RateLimit model with TTL index) — 20 msgs/min per user, survives restarts
 
 ## Product
 
@@ -64,7 +68,8 @@ Nova is a human-like Telegram AI assistant with:
 - `OWNER_ID` must be set as a secret for owner commands to work
 - HuggingFace model may be loading (cold start) — image generation can take 30-60s on first call
 - Polling mode: if multiple instances run, messages get split between them — keep one instance running
-- Rate limit resets on server restart
+- Rate limit is now MongoDB-backed so it no longer resets on restart
+- Webhook mode activates automatically if `WEBHOOK_URL` env var is set (needed for Render production)
 
 ## Pointers
 

@@ -48,4 +48,12 @@ router.get("/bot/status", async (req, res) => {
   }
 });
 
+router.post("/bot/webhook", (req, res) => {
+  res.sendStatus(200);
+  const botInstance = getBot();
+  if (botInstance) {
+    (botInstance as any).processUpdate(req.body);
+  }
+});
+
 export default router;

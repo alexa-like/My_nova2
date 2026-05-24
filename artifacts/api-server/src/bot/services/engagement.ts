@@ -5,70 +5,210 @@ import { logger } from "../../lib/logger.js";
 
 export interface Achievement {
   id: string;
-  name: string;
-  emoji: string;
-  desc: string;
+  icon: string;
+  title: string;
+  description: string;
+  secret?: boolean;
 }
 
-export const ACHIEVEMENTS: Record<string, Achievement> = {
-  first_chat:     { id: "first_chat",     emoji: "💬", name: "First Words",       desc: "Sent your first message to Nova" },
-  first_image:    { id: "first_image",    emoji: "🎨", name: "Image Creator",      desc: "Generated your first image" },
-  first_build:    { id: "first_build",    emoji: "🔨", name: "Builder",            desc: "Built your first project" },
-  first_voice:    { id: "first_voice",    emoji: "🎤", name: "Voice User",         desc: "Used voice or TTS features" },
-  first_search:   { id: "first_search",   emoji: "🔍", name: "Explorer",           desc: "Searched the web with Nova" },
-  first_sticker:  { id: "first_sticker",  emoji: "🖼️", name: "Sticker Artist",    desc: "Created your first sticker" },
-  streak_3:       { id: "streak_3",       emoji: "🔥", name: "On Fire",            desc: "Active 3 days in a row" },
-  streak_7:       { id: "streak_7",       emoji: "⚡", name: "Dedicated",          desc: "Active 7 days in a row" },
-  streak_30:      { id: "streak_30",      emoji: "👑", name: "Legendary",          desc: "Active 30 days in a row" },
-  messages_50:    { id: "messages_50",    emoji: "📢", name: "Chatterbox",         desc: "Sent 50 messages" },
-  messages_100:   { id: "messages_100",   emoji: "🚀", name: "Power User",         desc: "Sent 100 messages" },
-  feature_explorer: { id: "feature_explorer", emoji: "🗺️", name: "Feature Explorer", desc: "Used 5 different features" },
-  referrer:       { id: "referrer",       emoji: "👥", name: "Ambassador",         desc: "Referred your first friend" },
+export const ACHIEVEMENTS: Achievement[] = [
+  { id: "first_message",    icon: "💬", title: "First Words",        description: "Sent your first message to Nova" },
+  { id: "first_image",      icon: "🎨", title: "Artist",             description: "Generated your first image" },
+  { id: "first_build",      icon: "🔨", title: "Builder",            description: "Built your first website or app" },
+  { id: "first_search",     icon: "🔍", title: "Explorer",           description: "Ran your first web search" },
+  { id: "first_voice",      icon: "🔊", title: "Voice Activated",    description: "Used text-to-speech for the first time" },
+  { id: "first_sticker",    icon: "🖼️", title: "Sticker Master",     description: "Created your first sticker" },
+  { id: "streak_3",         icon: "🔥", title: "On Fire",            description: "Maintained a 3-day streak" },
+  { id: "streak_7",         icon: "⚡", title: "Week Warrior",       description: "Maintained a 7-day streak" },
+  { id: "streak_30",        icon: "🏆", title: "Legendary",          description: "Maintained a 30-day streak" },
+  { id: "messages_10",      icon: "📨", title: "Getting Started",    description: "Sent 10 messages" },
+  { id: "messages_50",      icon: "📢", title: "Chatterbox",         description: "Sent 50 messages" },
+  { id: "messages_100",     icon: "💯", title: "Century Club",       description: "Sent 100 messages" },
+  { id: "messages_500",     icon: "🌟", title: "Power User",         description: "Sent 500 messages" },
+  { id: "images_10",        icon: "🖼️", title: "Prolific Creator",   description: "Generated 10 images" },
+  { id: "builds_5",         icon: "🚀", title: "Serial Builder",     description: "Built 5 projects" },
+  { id: "premium",          icon: "💎", title: "VIP Member",         description: "Activated Premium status" },
+  { id: "referral",         icon: "👥", title: "Ambassador",         description: "Referred a friend to Nova" },
+  { id: "daily_7",          icon: "📅", title: "Consistent",         description: "Claimed daily reward 7 times" },
+  { id: "night_owl",        icon: "🦉", title: "Night Owl",          description: "Used Nova after midnight", secret: true },
+  { id: "early_bird",       icon: "🐦", title: "Early Bird",         description: "Used Nova before 6am", secret: true },
+  { id: "polyglot",         icon: "🌍", title: "Polyglot",           description: "Changed language settings" },
+  { id: "feature_explorer", icon: "🗺️", title: "Feature Explorer",  description: "Used 5 different features" },
+];
+
+export function getAchievementById(id: string): Achievement | undefined {
+  return ACHIEVEMENTS.find(a => a.id === id);
+}
+
+// ── Feature display labels ────────────────────────────────────────────────────
+
+export const FEATURE_LABELS: Record<string, { icon: string; label: string; callback: string; cb?: string }> = {
+  chat:         { icon: "💬", label: "Chat",           callback: "ai_ask",       cb: "ai_ask" },
+  image:        { icon: "🎨", label: "Generate Image", callback: "img_generate", cb: "img_generate" },
+  sticker:      { icon: "🖼️", label: "Sticker",        callback: "sticker_btn",  cb: "sticker_btn" },
+  search:       { icon: "🔍", label: "Web Search",     callback: "search_btn",   cb: "search_btn" },
+  tts:          { icon: "🔊", label: "Voice",          callback: "tts_btn",      cb: "tts_btn" },
+  stt:          { icon: "🎤", label: "Transcribe",     callback: "stt_btn",      cb: "stt_btn" },
+  build:        { icon: "🌐", label: "Build",          callback: "build_menu",   cb: "build_menu" },
+  summarize:    { icon: "📝", label: "Summarize",      callback: "ai_summarize", cb: "ai_summarize" },
+  translate:    { icon: "🌍", label: "Translate",      callback: "ai_translate", cb: "ai_translate" },
+  joke:         { icon: "😂", label: "Joke",           callback: "fun_joke",     cb: "fun_joke" },
+  trivia:       { icon: "🎯", label: "Trivia",         callback: "fun_game",     cb: "fun_game" },
+  reminder:     { icon: "⏰", label: "Reminder",       callback: "remind_btn",   cb: "remind_btn" },
+  describe:     { icon: "🔬", label: "Describe",       callback: "ai_menu",      cb: "ai_menu" },
 };
 
-// ── Feature key → achievement mapping ────────────────────────────────────────
+// ── Check and award achievements ──────────────────────────────────────────────
 
-const FIRST_USE_ACHIEVEMENTS: Record<string, string> = {
-  chat:      "first_chat",
-  image:     "first_image",
-  build:     "first_build",
-  tts:       "first_voice",
-  stt:       "first_voice",
-  search:    "first_search",
-  sticker:   "first_sticker",
-};
-
-// ── Feature display labels (for recent features display) ──────────────────────
-
-export const FEATURE_LABELS: Record<string, { label: string; emoji: string; cb: string }> = {
-  chat:      { label: "Chat",         emoji: "💬", cb: "ai_ask" },
-  image:     { label: "Image",        emoji: "🎨", cb: "img_generate" },
-  build:     { label: "Build",        emoji: "🔨", cb: "build_menu" },
-  tts:       { label: "Voice",        emoji: "🔊", cb: "tts_btn" },
-  stt:       { label: "Transcribe",   emoji: "🎤", cb: "stt_btn" },
-  search:    { label: "Search",       emoji: "🔍", cb: "search_btn" },
-  translate: { label: "Translate",    emoji: "🌍", cb: "ai_translate" },
-  summarize: { label: "Summarize",    emoji: "📝", cb: "ai_summarize" },
-  sticker:   { label: "Sticker",      emoji: "🖼️", cb: "sticker_btn" },
-  describe:  { label: "Describe",     emoji: "🔬", cb: "ai_menu" },
-};
-
-// ── Update recent features ────────────────────────────────────────────────────
-
-export async function updateRecentFeatures(userId: number, featureKey: string): Promise<void> {
+export async function checkAndAwardAchievements(
+  userId: number,
+  trigger: {
+    type: "message" | "image" | "build" | "search" | "voice" | "sticker" | "streak" | "daily" | "premium" | "referral" | "language";
+    count?: number;
+  }
+): Promise<Achievement[]> {
   try {
     const user = await User.findOne({ userId });
-    if (!user) return;
-    const recent = Array.isArray(user.recentFeatures) ? [...user.recentFeatures] : [];
-    // Remove duplicates, prepend latest, keep last 5
-    const updated = [featureKey, ...recent.filter(f => f !== featureKey)].slice(0, 5);
-    await User.updateOne({ userId }, { $set: { recentFeatures: updated } });
+    if (!user) return [];
+
+    const earned = ((user as any).achievements as string[]) ?? [];
+    const newlyEarned: Achievement[] = [];
+
+    const award = (id: string) => {
+      const ach = getAchievementById(id);
+      if (ach && !earned.includes(id)) {
+        earned.push(id);
+        newlyEarned.push(ach);
+      }
+    };
+
+    const hour = new Date().getHours();
+
+    switch (trigger.type) {
+      case "message": {
+        const count = trigger.count ?? user.usage.messages;
+        award("first_message");
+        if (count >= 10)  award("messages_10");
+        if (count >= 50)  award("messages_50");
+        if (count >= 100) award("messages_100");
+        if (count >= 500) award("messages_500");
+        if (hour >= 0 && hour < 4) award("night_owl");
+        if (hour >= 4 && hour < 6) award("early_bird");
+        break;
+      }
+      case "image": {
+        award("first_image");
+        if ((trigger.count ?? 0) >= 10) award("images_10");
+        break;
+      }
+      case "build": {
+        award("first_build");
+        if ((trigger.count ?? 0) >= 5) award("builds_5");
+        break;
+      }
+      case "search":   award("first_search");  break;
+      case "voice":    award("first_voice");   break;
+      case "sticker":  award("first_sticker"); break;
+      case "streak": {
+        const s = trigger.count ?? (user as any).loginStreak ?? (user as any).streak ?? 0;
+        if (s >= 3)  award("streak_3");
+        if (s >= 7)  award("streak_7");
+        if (s >= 30) award("streak_30");
+        break;
+      }
+      case "daily":    award("daily_7"); break;
+      case "premium":  award("premium"); break;
+      case "referral": award("referral"); break;
+      case "language": award("polyglot"); break;
+    }
+
+    if (newlyEarned.length > 0) {
+      await User.updateOne({ userId }, { $set: { achievements: earned } });
+    }
+
+    return newlyEarned;
   } catch (err) {
-    logger.warn({ err }, "Failed to update recent features (non-fatal)");
+    logger.warn({ err }, "Achievement check failed (non-fatal)");
+    return [];
   }
 }
 
-// ── Update login streak ───────────────────────────────────────────────────────
+export async function checkAndGrantAchievements(
+  userId: number,
+  featureKey?: string
+): Promise<Achievement[]> {
+  const typeMap: Record<string, "message" | "image" | "build" | "search" | "voice" | "sticker"> = {
+    chat: "message", image: "image", build: "build", search: "search",
+    tts: "voice", stt: "voice", sticker: "sticker",
+  };
+  const triggerType = featureKey && typeMap[featureKey] ? typeMap[featureKey] : "message";
+  return checkAndAwardAchievements(userId, { type: triggerType });
+}
+
+// ── Format achievement notifications ─────────────────────────────────────────
+
+export function formatAchievementNotification(achievements: Achievement[]): string {
+  if (achievements.length === 0) return "";
+  if (achievements.length === 1) {
+    const a = achievements[0];
+    return `\n\n🏅 Achievement Unlocked!\n${a.icon} ${a.title} — ${a.description}`;
+  }
+  const list = achievements.map(a => `${a.icon} ${a.title}`).join("\n");
+  return `\n\n🏅 ${achievements.length} Achievements Unlocked!\n${list}`;
+}
+
+export function formatAchievementToast(achievements: Achievement[]): string {
+  return formatAchievementNotification(achievements);
+}
+
+export function formatAchievementsText(achievementIds: string[]): string {
+  if (!achievementIds || achievementIds.length === 0) {
+    return "No achievements yet — start using Nova to earn badges! 🌟";
+  }
+  const lines = achievementIds
+    .map(id => getAchievementById(id))
+    .filter(Boolean)
+    .map(a => `${a!.icon} *${a!.title}* — ${a!.description}`);
+  return `🏆 *Your Achievements* (${achievementIds.length}/${ACHIEVEMENTS.length})\n\n${lines.join("\n")}`;
+}
+
+export async function getUserAchievements(userId: number): Promise<Achievement[]> {
+  try {
+    const user = await User.findOne({ userId });
+    const earned = ((user as any)?.achievements as string[]) ?? [];
+    return earned.map(id => getAchievementById(id)).filter(Boolean) as Achievement[];
+  } catch {
+    return [];
+  }
+}
+
+// ── Recent feature tracking ───────────────────────────────────────────────────
+
+export async function recordLastFeature(userId: number, feature: string): Promise<void> {
+  try {
+    const user = await User.findOne({ userId });
+    if (!user) return;
+    const lastFeatures: string[] = ((user as any).lastFeatures ?? (user as any).recentFeatures ?? []) as string[];
+    const filtered = lastFeatures.filter((f: string) => f !== feature);
+    const updated = [feature, ...filtered].slice(0, 5);
+    await User.updateOne({ userId }, { $set: { lastFeatures: updated, recentFeatures: updated } });
+  } catch { /* non-fatal */ }
+}
+
+export async function updateRecentFeatures(userId: number, featureKey: string): Promise<void> {
+  return recordLastFeature(userId, featureKey);
+}
+
+export async function getLastFeatures(userId: number): Promise<string[]> {
+  try {
+    const user = await User.findOne({ userId });
+    return (((user as any)?.lastFeatures ?? (user as any)?.recentFeatures) as string[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+// ── Login streak tracking ─────────────────────────────────────────────────────
 
 export async function updateLoginStreak(userId: number): Promise<number> {
   try {
@@ -77,113 +217,31 @@ export async function updateLoginStreak(userId: number): Promise<number> {
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const lastActive = user.lastActiveDate
-      ? new Date(
-          (user.lastActiveDate as Date).getFullYear(),
-          (user.lastActiveDate as Date).getMonth(),
-          (user.lastActiveDate as Date).getDate()
-        )
+    const lastActive = (user as any).lastActiveDate as Date | undefined;
+    const lastDay = lastActive
+      ? new Date(lastActive.getFullYear(), lastActive.getMonth(), lastActive.getDate())
       : null;
 
-    let newStreak = user.loginStreak ?? 0;
+    const currentStreak = ((user as any).loginStreak as number) ?? ((user as any).streak as number) ?? 0;
+    let newStreak = 1;
 
-    if (!lastActive) {
-      // First activity
-      newStreak = 1;
-    } else {
-      const diffDays = Math.round((today.getTime() - lastActive.getTime()) / 86400000);
-      if (diffDays === 0) {
-        // Same day — no change
-        return newStreak;
-      } else if (diffDays === 1) {
-        // Consecutive day
-        newStreak += 1;
-      } else {
-        // Streak broken
-        newStreak = 1;
-      }
+    if (lastDay) {
+      const daysDiff = Math.floor((today.getTime() - lastDay.getTime()) / 86400000);
+      if (daysDiff === 0)      newStreak = Math.max(1, currentStreak);
+      else if (daysDiff === 1) newStreak = currentStreak + 1;
     }
 
-    await User.updateOne({ userId }, { $set: { loginStreak: newStreak, lastActiveDate: now } });
+    await User.updateOne({ userId }, {
+      $set: { loginStreak: newStreak, streak: newStreak, lastActiveDate: now },
+    });
+
+    if (newStreak >= 3) {
+      checkAndAwardAchievements(userId, { type: "streak", count: newStreak }).catch(() => {});
+    }
+
     return newStreak;
   } catch (err) {
-    logger.warn({ err }, "Failed to update login streak (non-fatal)");
+    logger.warn({ err }, "updateLoginStreak failed (non-fatal)");
     return 0;
   }
-}
-
-// ── Check and grant achievements ──────────────────────────────────────────────
-// Returns newly unlocked achievement objects so the caller can show a toast.
-
-export async function checkAndGrantAchievements(
-  userId: number,
-  featureKey?: string
-): Promise<Achievement[]> {
-  try {
-    const user = await User.findOne({ userId });
-    if (!user) return [];
-
-    const existing = new Set(Array.isArray(user.achievements) ? user.achievements : []);
-    const newlyUnlocked: Achievement[] = [];
-
-    function tryUnlock(id: string): void {
-      if (!existing.has(id) && ACHIEVEMENTS[id]) {
-        existing.add(id);
-        newlyUnlocked.push(ACHIEVEMENTS[id]);
-      }
-    }
-
-    // First-use achievements
-    if (featureKey && FIRST_USE_ACHIEVEMENTS[featureKey]) {
-      tryUnlock(FIRST_USE_ACHIEVEMENTS[featureKey]);
-    }
-
-    // Message milestones
-    const totalMsgs = (user.usage?.messages ?? 0);
-    if (totalMsgs >= 50)  tryUnlock("messages_50");
-    if (totalMsgs >= 100) tryUnlock("messages_100");
-
-    // Streak achievements
-    const streak = user.loginStreak ?? 0;
-    if (streak >= 3)  tryUnlock("streak_3");
-    if (streak >= 7)  tryUnlock("streak_7");
-    if (streak >= 30) tryUnlock("streak_30");
-
-    // Feature explorer — used 5 different features
-    const recent = user.recentFeatures ?? [];
-    if (new Set(recent).size >= 5) tryUnlock("feature_explorer");
-
-    // Referrer achievement
-    if ((user.referrals?.length ?? 0) >= 1) tryUnlock("referrer");
-
-    if (newlyUnlocked.length > 0) {
-      await User.updateOne({ userId }, { $set: { achievements: [...existing] } });
-    }
-
-    return newlyUnlocked;
-  } catch (err) {
-    logger.warn({ err }, "Failed to check achievements (non-fatal)");
-    return [];
-  }
-}
-
-// ── Format achievements for display ──────────────────────────────────────────
-
-export function formatAchievementsText(achievementIds: string[]): string {
-  if (!achievementIds || achievementIds.length === 0) {
-    return "No achievements yet — start using Nova to earn badges! 🌟";
-  }
-  const lines = achievementIds
-    .map(id => ACHIEVEMENTS[id])
-    .filter(Boolean)
-    .map(a => `${a.emoji} *${a.name}* — ${a.desc}`);
-  return `🏆 *Your Achievements* (${achievementIds.length}/${Object.keys(ACHIEVEMENTS).length})\n\n${lines.join("\n")}`;
-}
-
-// ── Format new achievement toast ──────────────────────────────────────────────
-
-export function formatAchievementToast(achievements: Achievement[]): string {
-  if (achievements.length === 0) return "";
-  const lines = achievements.map(a => `${a.emoji} *${a.name}* — ${a.desc}`).join("\n");
-  return `🏆 Achievement Unlocked!\n\n${lines}`;
 }

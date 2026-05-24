@@ -32,8 +32,11 @@ import {
   welcomeBackKeyboard,
   achievementsKeyboard,
   privacyKeyboard,
+  privacyMenuKeyboard,
   updatesKeyboard,
   buildMenuKeyboard,
+  whatsNewKeyboard,
+  mainMenuWithNewsKeyboard,
 } from "../utils/keyboards.js";
 import { hasAnyPaymentProvider } from "../services/payment.js";
 import { getUserMode, setUserMode, MODES, getModeById, getDefaultMode } from "../services/modeManager.js";
@@ -41,10 +44,16 @@ import { encrypt, decrypt } from "../utils/crypto.js";
 import {
   updateRecentFeatures,
   checkAndGrantAchievements,
+  checkAndAwardAchievements,
   updateLoginStreak,
   formatAchievementsText,
   formatAchievementToast,
+  formatAchievementNotification,
+  recordLastFeature,
+  getLastFeatures,
+  getUserAchievements,
   FEATURE_LABELS,
+  ACHIEVEMENTS,
 } from "../services/engagement.js";
 import { contextSuggestionsKeyboard } from "../utils/suggestions.js";
 import { trackFeature } from "../services/analytics.js";
@@ -68,6 +77,10 @@ import { parseDurationToMs } from "../models/Reminder.js";
 import { isPremiumEmojiEnabled, applyPremiumEmojiSafe } from "../utils/premiumEmoji.js";
 import { track } from "../services/analytics.js";
 import { logger } from "../../lib/logger.js";
+import { getSuggestionsKeyboard, getSuggestionLine } from "../services/suggestions.js";
+import { formatAnnouncements, getNewCount } from "../services/announcements.js";
+import { getFailedGroups, sendGroupGateMessage } from "../services/groupGate.js";
+import { detectImageIntent, detectStickerIntent, detectSearchIntent, detectBuildIntent, detectSummarizeIntent, detectTranslateIntent } from "../services/intentEngine.js";
 
 // ── Per-user build/deploy cooldown (3 min) ────────────────────────────────────
 const BUILD_COOLDOWN_MS = 3 * 60 * 1000;
@@ -157,140 +170,6 @@ async function sendAIReply(
   await safeSend(bot, chatId, text, extra);
 }
 
-// ── Image intent detection ────────────────────────────────────────────────────
-
-function detectImageIntent(text: string): string | null {
-  const t = text.trim();
-  if (t.length < 5 || t.startsWith("/")) return null;
-
-  const patterns = [
-    /^(?:generate|create|make|produce)\s+(?:an?\s+)?(?:image|photo|picture|pic|illustration|artwork|drawing|painting|wallpaper|render|poster)\s+(?:of|showing|depicting|about|with|for)?\s*(.+)/i,
-    /^(?:draw|paint|illustrate|sketch|render|design)\s+(?:me\s+)?(?:an?\s+)?(.+)/i,
-    /^(?:show me|gimme|give me)\s+(?:an?\s+)?(?:image|photo|picture|pic|illustration)\s+(?:of\s+)?(.+)/i,
-    /^(?:image|photo|picture)\s+(?:of\s+|showing\s+)?(.+)/i,
-    /^(?:can you|could you|please)\s+(?:generate|create|make|draw|paint|design)\s+(?:an?\s+)?(?:image|photo|picture|illustration|drawing)\s+(?:of|showing|with|about|for)?\s*(.+)/i,
-  ];
-
-  const skip = ["me", "that", "this", "one", "some", "it", "anything", "something", "a photo", "an image", "sure", "yes"];
-
-  for (const pattern of patterns) {
-    const match = t.match(pattern);
-    const captured = match?.[1]?.trim();
-    if (match && captured && captured.length > 3) {
-      const prompt = captured.replace(/[?.!]+$/, "");
-      if (!skip.includes(prompt.toLowerCase())) return prompt;
-    }
-  }
-  return null;
-}
-
-// ── Sticker intent detection ───────────────────────────────────────────────────
-
-function detectStickerIntent(text: string): string | null {
-  const t = text.trim();
-  if (t.length < 5 || t.startsWith("/")) return null;
-  const patterns = [
-    /^(?:make|create|generate|design)\s+(?:me\s+)?(?:a\s+)?sticker\s+(?:of|showing|with|depicting|about)?\s*(.+)/i,
-    /^(?:can you|could you)\s+(?:make|create|design|generate)\s+(?:a\s+)?sticker\s+(?:of|showing|with|for)?\s*(.+)/i,
-    /^sticker\s+(?:of\s+|showing\s+|with\s+)?(.+)/i,
-    /^i\s+(?:want|need)\s+(?:a\s+)?sticker\s+(?:of|showing|with)?\s*(.+)/i,
-  ];
-  const skip = ["me", "that", "this", "one", "it", "a sticker"];
-  for (const pattern of patterns) {
-    const match = t.match(pattern);
-    const captured = match?.[1]?.trim();
-    if (match && captured && captured.length > 3 && !skip.includes(captured.toLowerCase())) {
-      return captured.replace(/[?.!]+$/, "");
-    }
-  }
-  return null;
-}
-
-// ── Search intent detection ────────────────────────────────────────────────────
-
-function detectSearchIntent(text: string): string | null {
-  const t = text.trim();
-  if (t.length < 5 || t.startsWith("/")) return null;
-  const patterns = [
-    /^(?:search for|look up|lookup|google|bing|find information about|research)\s+(.+)/i,
-    /^search\s+(.+)/i,
-    /^(?:find|get)\s+(?:information|info|details|news|facts|data)\s+(?:about|on|regarding)\s+(.+)/i,
-    /^(?:what(?:'s| is) the (?:latest|current|recent)\s+(?:news|update|information)\s+(?:about|on|regarding))\s+(.+)/i,
-    /^(?:what happened (?:to|with|in))\s+(.+)/i,
-    /^(?:tell me (?:the latest|current|recent)\s+(?:news|updates?)\s+(?:about|on))\s+(.+)/i,
-    /^(?:latest|current|recent) (?:news|updates?) (?:about|on|regarding) (.+)/i,
-  ];
-  for (const pattern of patterns) {
-    const match = t.match(pattern);
-    const captured = match?.[1]?.trim();
-    if (match && captured && captured.length > 2) {
-      return captured.replace(/[?.!]+$/, "");
-    }
-  }
-  return null;
-}
-
-// ── Build intent detection ─────────────────────────────────────────────────────
-
-function detectBuildIntent(text: string): string | null {
-  const t = text.trim();
-  if (t.length < 8 || t.startsWith("/")) return null;
-  const patterns = [
-    // Direct build commands
-    /^(?:build|create|make|generate|code|develop|design|write)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:website|web\s*app|webapp|landing\s*page|portfolio|dashboard|blog|e-?commerce\s*(?:store|shop)?|store|shop|platform|tool|calculator|game|app|application|project|site|page|frontend|backend)\b/i,
-    // Want/need phrasing
-    /^(?:i want|i need|i'd like|i would like|can you build|can you make|can you create|can you code|can you develop|could you build|could you make|could you create|please build|please make|please create|help me build|help me make|help me create)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:website|web\s*app|webapp|landing\s*page|portfolio|dashboard|app|application|site|tool|game|calculator|blog|store|shop|platform|project)\b/i,
-    // Tech-stack specific
-    /^(?:build|develop|code|create|make|generate)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:react|node(?:js|\.js)?|express|fullstack|full.stack|vue|angular|next(?:js|\.js)?|html|css|javascript|js|typescript|ts)\s+(?:app|application|project|website|site|tool|dashboard|page)\b/i,
-    // Clone requests
-    /^(?:clone|make a clone of|build a clone of|create a clone of|replicate)\s+(?:netflix|spotify|twitter|instagram|youtube|airbnb|amazon|reddit|facebook|tiktok|whatsapp|telegram|uber|discord|slack|github|trello|notion|figma)\b/i,
-    // Natural description (website/app anywhere in sentence)
-    /^.{0,60}\b(?:website|web\s*app|webapp|landing\s*page|portfolio website|personal site)\b.{0,60}$/i,
-    // "for me" phrasing
-    /^(?:build|create|make|generate|code|develop)\s+.{3,80}\s+(?:website|app|application|site|tool|game|dashboard|portfolio|blog|store)\s+for\s+(?:me|my|a)\b/i,
-    // Short direct commands (e.g. "portfolio website", "todo app")
-    /^(?:a\s+)?(?:portfolio|todo|task|weather|calculator|chat|quiz|flashcard|timer|countdown|expense|budget|recipe|fitness|music|photo|gallery|login|signup|landing|e-commerce|shop|store)\s+(?:website|site|app|page|tool|dashboard|tracker)\b/i,
-  ];
-  for (const pattern of patterns) {
-    if (t.match(pattern)) return t;
-  }
-  return null;
-}
-
-// ── Summarize intent detection ─────────────────────────────────────────────────
-
-function detectSummarizeIntent(text: string): string | null {
-  const t = text.trim();
-  if (t.length < 10 || t.startsWith("/")) return null;
-  const patterns = [
-    /^(?:summarize|summarise|tldr|tl;dr)\s*:?\s*(.+)/i,
-    /^(?:sum up|condense|shorten|make shorter)\s+(?:this|the following)\s*:?\s*(.+)/i,
-    /^(?:give me a summary of|what(?:'s| is) the (?:summary|gist|main point) of)\s+(.+)/i,
-    /^(?:summarize|summarise)\s+this\s+(?:article|text|passage|document)\s*:?\s*(.*)/i,
-  ];
-  for (const pattern of patterns) {
-    const match = t.match(pattern);
-    const captured = match?.[1]?.trim();
-    if (match && captured && captured.length > 10) return captured;
-  }
-  return null;
-}
-
-// ── Translate intent detection ─────────────────────────────────────────────────
-
-function detectTranslateIntent(text: string): { content: string; targetLang: string } | null {
-  const t = text.trim();
-  if (t.length < 5 || t.startsWith("/")) return null;
-  const m1 = t.match(/^(?:translate|convert)\s+(.+?)\s+(?:to|into|in)\s+(\w+)\s*$/i);
-  if (m1 && m1[1].length > 2) return { content: m1[1], targetLang: m1[2] };
-  const m2 = t.match(/^how do you say\s+(.+?)\s+in\s+(\w+)/i);
-  if (m2) return { content: m2[1], targetLang: m2[2] };
-  const m3 = t.match(/^(?:in|to)\s+([A-Za-z]+):\s*(.+)/i);
-  if (m3 && m3[2].length > 3) return { content: m3[2], targetLang: m3[1] };
-  const m4 = t.match(/^translate\s+(?:this\s+)?(?:to|into)\s+(\w+)\s*:?\s*(.*)/i);
-  if (m4 && m4[2].length > 3) return { content: m4[2], targetLang: m4[1] };
-  return null;
-}
 
 export async function handleVoiceMessage(
   bot: TelegramBot,
@@ -345,6 +224,18 @@ export async function handlePrivateMessage(
 ): Promise<void> {
   const chatId = msg.chat.id;
   const text = msg.text || "";
+
+  // ── Mandatory group gate ────────────────────────────────────────────────────
+  // Allow /start so users can always get the "join" message, and /appeal for banned users
+  if (!text.startsWith("/start") && !text.startsWith("/appeal")) {
+    try {
+      const failedStrict = (await getFailedGroups(bot, user.userId)).filter(g => g.strict);
+      if (failedStrict.length > 0) {
+        await sendGroupGateMessage(bot, chatId, failedStrict, true);
+        // Soft gate — show the invite but allow the user to continue using the bot
+      }
+    } catch { /* non-fatal — never block on gate error */ }
+  }
 
   if (user.banned) {
     if (text.startsWith("/appeal")) {
@@ -465,7 +356,8 @@ export async function handlePrivateMessage(
     const isNew = !user.onboardingComplete && Date.now() - user.firstSeen.getTime() < 60000;
 
     if (isNew) {
-      // ── New user: interactive onboarding ─────────────────────────────────
+      checkAndAwardAchievements(user.userId, { type: "message", count: 1 }).catch(() => {});
+      track("new_user", user.userId, chatId).catch(() => {});
       await bot.sendMessage(chatId,
         `👋 *Welcome to Nova, ${name}!*\n\n` +
         `I'm your AI assistant — more than a chatbot.\n\n` +
@@ -482,27 +374,87 @@ export async function handlePrivateMessage(
         { parse_mode: "Markdown", reply_markup: onboardingWelcomeKeyboard() }
       );
     } else {
-      // ── Returning user: personalised welcome back ─────────────────────────
-      const recentFeatures = user.recentFeatures ?? [];
+      const recentFeatures = await getLastFeatures(user.userId);
+      const hasNews = getNewCount() > 0;
       const streakLine = streak > 1 ? `\n🔥 ${streak}-day streak — keep it going!` : "";
       const premiumBadge = user.premium.active ? " ✨" : "";
-
       let greeting = `👋 *Welcome back, ${name}${premiumBadge}!*${streakLine}`;
 
       if (recentFeatures.length > 0) {
-        greeting += `\n\n*Quick access to your recent tools:*`;
-        await bot.sendMessage(chatId, greeting, {
-          parse_mode: "Markdown",
-          reply_markup: welcomeBackKeyboard(recentFeatures, user.activeMode),
-        });
-      } else {
-        greeting += `\n\nWhat would you like to do today?`;
-        await bot.sendMessage(chatId, greeting, {
-          parse_mode: "Markdown",
-          reply_markup: mainMenuKeyboard(user.activeMode),
-        });
+        const recents = recentFeatures
+          .map(f => FEATURE_LABELS[f])
+          .filter(Boolean)
+          .slice(0, 3);
+        if (recents.length > 0) {
+          greeting += `\n\n⚡ *Quick access to your recent tools:*`;
+          const recentKeyboard: TelegramBot.InlineKeyboardMarkup = {
+            inline_keyboard: [
+              recents.map(f => ({ text: `${f.icon} ${f.label}`, callback_data: f.callback })),
+              [{ text: "🏠 Open Menu", callback_data: "main_menu" }, { text: hasNews ? "🆕 What's New!" : "🔔 What's New", callback_data: "whats_new_menu" }],
+            ],
+          };
+          await bot.sendMessage(chatId, greeting, { parse_mode: "Markdown", reply_markup: recentKeyboard });
+          return;
+        }
+      }
+      greeting += `\n\nWhat would you like to do today?`;
+      await bot.sendMessage(chatId, greeting, {
+        parse_mode: "Markdown",
+        reply_markup: mainMenuWithNewsKeyboard(user.activeMode, hasNews),
+      });
+    }
+    return;
+  }
+
+  // /privacy — privacy & data transparency
+  if (text === "/privacy") {
+    track("privacy_view", user.userId, chatId).catch(() => {});
+    await bot.sendMessage(chatId,
+      `🔒 Privacy & Data\n\n` +
+      `Nova stores the following data about you:\n\n` +
+      `💬 Chat Memory — Your recent conversations so I can give contextual replies. Deleted when you clear memory.\n\n` +
+      `👤 Profile — Your Telegram name, username, and ID. Required to identify your account.\n\n` +
+      `⚙️ Preferences — Your style, language, mood, and settings. Stored to personalize responses.\n\n` +
+      `📊 Usage Stats — Message counts and feature usage. Used to enforce daily limits and track streaks.\n\n` +
+      `🔑 Tokens (if added) — GitHub, Vercel, and Render tokens are encrypted with AES-256. Not readable by anyone.\n\n` +
+      `📈 Analytics — Anonymous feature usage events. Used to improve the bot. Not shared with third parties.\n\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `Your data is never sold or shared. You can delete it at any time using the options below.`,
+      { reply_markup: privacyMenuKeyboard() }
+    );
+    return;
+  }
+
+  // /achievements — view earned badges
+  if (text === "/achievements") {
+    const earned = await getUserAchievements(user.userId);
+    const earnedIds = earned.map(a => a.id);
+    const totalAvailable = ACHIEVEMENTS.filter(a => !a.secret).length;
+    let msg = `🏅 Your Achievements (${earned.length}/${totalAvailable})\n\n`;
+    if (earned.length === 0) {
+      msg += `You haven't earned any achievements yet!\n\n`;
+      msg += `How to earn them:\n• Chat, generate images, build projects\n• Maintain daily streaks\n• Refer friends\n• Claim your daily reward`;
+    } else {
+      for (const a of earned) {
+        msg += `${a.icon} ${a.title} — ${a.description}\n`;
+      }
+      const locked = ACHIEVEMENTS.filter(a => !a.secret && !earnedIds.includes(a.id));
+      if (locked.length > 0) {
+        msg += `\n🔒 Still to unlock (${locked.length}):\n`;
+        for (const a of locked.slice(0, 5)) {
+          msg += `• ${a.title} — ${a.description}\n`;
+        }
+        if (locked.length > 5) msg += `...and ${locked.length - 5} more!`;
       }
     }
+    await bot.sendMessage(chatId, msg, { reply_markup: achievementsKeyboard() });
+    return;
+  }
+
+  // /whats_new — updates & announcements
+  if (text === "/whats_new" || text === "/whatsnew") {
+    track("whats_new_view", user.userId, chatId).catch(() => {});
+    await bot.sendMessage(chatId, formatAnnouncements(), { reply_markup: whatsNewKeyboard() });
     return;
   }
 
@@ -631,9 +583,12 @@ export async function handlePrivateMessage(
         `You are on the Free plan.\n\n` +
         `Free limits:\n` +
         `• ${freeImgLimitDisplay} images per day\n` +
+        `• 5 photo edits per day\n` +
         `• Standard AI responses\n\n` +
-        `Get Premium with a redeem code:\n/redeem CODE`,
-        { reply_markup: backKb }
+        `Upgrade to VIP:\n` +
+        `• 💳 Buy with Telegram Stars — tap 💰 Credits\n` +
+        `• 🎟️ Redeem a code — /redeem CODE`,
+        { reply_markup: { inline_keyboard: [[{ text: "⭐ Buy VIP with Stars", callback_data: "credits_menu" }], [{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] } }
       );
     }
     return;
@@ -693,6 +648,23 @@ export async function handlePrivateMessage(
       `• Payment details (processed externally)\n\n` +
       `You can clear your chat memory with /forget, or request full data deletion below.`,
       { parse_mode: "Markdown", reply_markup: privacyKeyboard() }
+    );
+    return;
+  }
+
+  // /deletedata — request full data deletion (two-step: confirmation required)
+  if (text === "/deletedata") {
+    setPending(user.userId, "deletedata_confirm");
+    await bot.sendMessage(chatId,
+      `⚠️ *Delete All My Data*\n\n` +
+      `This will permanently delete:\n` +
+      `• Your profile & settings\n` +
+      `• All chat memory\n` +
+      `• Your premium status & credits\n` +
+      `• Build history\n\n` +
+      `This action *cannot be undone*.\n\n` +
+      `Type \`DELETE MY DATA\` to confirm, or /cancel to abort.`,
+      { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
     );
     return;
   }
@@ -804,7 +776,8 @@ export async function handlePrivateMessage(
       `💰 Credits: ${statsCredits}\n\n` +
       `── Today ──\n` +
       `💬 Messages: ${user.usage.messages}\n` +
-      `🖼️ Images: ${user.usage.images}/${imageLimit >= 999999 ? "∞" : imageLimit}\n\n` +
+      `🖼️ Images: ${user.usage.images}/${imageLimit >= 999999 ? "∞" : imageLimit}\n` +
+      `✏️ Photo Edits: ${user.usage.edits ?? 0}/${user.premium.active ? "∞" : 5}\n\n` +
       `── All Time ──\n` +
       `🔨 Builds: ${builds}\n` +
       `👥 Referrals: ${user.referrals?.length ?? 0}\n` +
@@ -1178,7 +1151,7 @@ export async function handlePrivateMessage(
       return;
     }
     if (!prompt) {
-      const cached = getCachedBuild(user.userId);
+      const cached = await getCachedBuild(user.userId);
       if (cached) {
         await handleDeployToVercel(bot, chatId, user, cached.project, vercelToken, e);
       } else {
@@ -1420,7 +1393,7 @@ export async function handlePrivateMessage(
 
   // ── Mode-based message routing ────────────────────────────────────────────────
   const activeMode = await getUserMode(user.userId);
-  if (activeMode.id !== "nova") {
+  if (activeMode.id !== "nova" && activeMode.id !== "none") {
     switch (activeMode.id) {
       case "image":
         await handleImageGeneration(bot, chatId, user, text, e);
@@ -1718,6 +1691,48 @@ async function handlePendingText(
       case "ai_translate": {
         const reply = await chat(user.userId, chatId + 9999, `Translate the following to English. Only respond with the translation:\n\n"${input}"`, { style: "serious", emoji: false, length: "short" }, user.premium.active);
         await bot.sendMessage(chatId, `Translation:\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
+        break;
+      }
+      case "feedback_pending": {
+        const feedbackText = input.trim();
+        if (feedbackText.length < 3) {
+          await bot.sendMessage(chatId, "Please enter at least a few words of feedback.", { reply_markup: backToMainKeyboard() });
+          break;
+        }
+        const ownerId = process.env.OWNER_ID ? parseInt(process.env.OWNER_ID, 10) : null;
+        const senderName = user.username ? `@${user.username}` : (user.firstName || String(user.userId));
+        if (ownerId) {
+          try { await bot.sendMessage(ownerId, `📣 Feedback from ${senderName} (ID: ${user.userId}):\n\n${feedbackText}`); } catch {}
+        }
+        try {
+          const { Feedback } = await import("../models/Feedback.js");
+          await new Feedback({ userId: user.userId, username: user.username, firstName: user.firstName, message: feedbackText, type: "feedback" }).save();
+        } catch {}
+        await bot.sendMessage(chatId, `✅ Thanks for your feedback, ${user.firstName || "friend"}! It's been sent to the team.`, { reply_markup: backToMainKeyboard() });
+        break;
+      }
+      case "deletedata_confirm": {
+        if (input.trim() !== "DELETE MY DATA") {
+          await bot.sendMessage(chatId,
+            `❌ Confirmation didn't match. Type exactly \`DELETE MY DATA\` to confirm deletion, or /cancel to abort.`,
+            { parse_mode: "Markdown" }
+          );
+          setPending(user.userId, "deletedata_confirm");
+          break;
+        }
+        await bot.sendMessage(chatId, "⏳ Deleting your data…");
+        try {
+          await Promise.all([
+            User.deleteOne({ userId: user.userId }),
+            Memory.deleteMany({ userId: user.userId }),
+          ]);
+          await bot.sendMessage(chatId,
+            `✅ All your data has been permanently deleted.\n\n` +
+            `Start fresh anytime with /start. Goodbye!`
+          );
+        } catch {
+          await bot.sendMessage(chatId, "❌ Something went wrong during deletion. Please try again or contact support.");
+        }
         break;
       }
       case "ai_generate": {
@@ -2075,11 +2090,13 @@ export async function handlePhotoMessage(
     return;
   }
 
-  const photoImgLimit = await getImageLimit(user.premium.active);
-  if (user.usage.images >= photoImgLimit) {
+  const editDailyLimit = user.premium.active ? 999999 : 5;
+  const currentEdits = user.usage.edits ?? 0;
+  if (currentEdits >= editDailyLimit) {
     await bot.sendMessage(chatId,
-      `Daily image limit reached (${photoImgLimit >= 999999 ? "∞" : photoImgLimit}/day).` +
-      (user.premium.active ? "" : " Upgrade with /redeem CODE.")
+      `Daily photo edit limit reached (${editDailyLimit >= 999999 ? "∞" : editDailyLimit}/day).` +
+      (user.premium.active ? "" : " Upgrade to VIP for unlimited edits — tap 💰 Credits."),
+      { reply_markup: user.premium.active ? undefined : insufficientCreditsKeyboard() }
     );
     clearPending(user.userId);
     return;
@@ -2155,7 +2172,7 @@ export async function handlePhotoMessage(
       return;
     }
 
-    user.usage.images += 1;
+    user.usage.edits = (user.usage.edits ?? 0) + 1;
     await user.save();
     track("image_edit", user.userId, chatId).catch(() => {});
 
@@ -2268,7 +2285,7 @@ async function handleBuildRequest(
   const renderTok = await resolveRenderToken(user);
   const canDeploy = !!vercelTok;
   const canDeployRender = !!renderTok;
-  cacheUserBuild(user.userId, project, prompt);
+  await cacheUserBuild(user.userId, project, prompt);
 
   // ── Step 2a: GitHub push ────────────────────────────────────────────────────
   if (hasGitHub) {
@@ -2346,7 +2363,7 @@ async function handleBuildRequest(
     user.projects.push({ name: project.name, repoUrl: repoInfo.htmlUrl, deployUrl: undefined, createdAt: new Date() } as any);
     await user.save();
 
-    cacheUserBuild(user.userId, project, prompt, repoInfo.htmlUrl);
+    await cacheUserBuild(user.userId, project, prompt, repoInfo.htmlUrl);
 
     await bot.sendMessage(chatId,
       `🚀 Your project is ready!\n\n` +
@@ -2428,7 +2445,7 @@ async function handleDeployRequest(
     return;
   }
 
-  cacheUserBuild(user.userId, project, prompt);
+  await cacheUserBuild(user.userId, project, prompt);
 
   stopTyping();
   await handleDeployToVercel(bot, chatId, user, project, vercelToken, e, statusMsg.message_id);
@@ -2650,8 +2667,11 @@ async function handleStickerGeneration(
       return;
     }
     user.usage.images += 1;
+    user.totalImages = (user.totalImages ?? 0) + 1;
     await user.save();
-    track("image_gen", user.userId, chatId, { type: "sticker" }).catch(() => {});
+    recordLastFeature(user.userId, "sticker").catch(() => {});
+    track("sticker_gen", user.userId, chatId).catch(() => {});
+    checkAndAwardAchievements(user.userId, { type: "image", count: user.totalImages ?? 0 }).catch(() => {});
     await bot.sendPhoto(chatId, imageBuffer, {
       caption: `🖼️ Sticker: ${prompt.substring(0, 80)}\n\n💡 Save this image → open Telegram Settings → Stickers → Create your own!`,
       reply_markup: { inline_keyboard: [[{ text: "🖼️ Make Another", callback_data: "sticker_generate_btn" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] },
@@ -2784,8 +2804,11 @@ async function handleImageGeneration(
     }
 
     user.usage.images += 1;
+    user.totalImages = (user.totalImages ?? 0) + 1;
     await user.save();
+    recordLastFeature(user.userId, "image").catch(() => {});
     track("image_gen", user.userId, chatId).catch(() => {});
+    checkAndAwardAchievements(user.userId, { type: "image", count: user.totalImages ?? 0 }).catch(() => {});
     await bot.sendPhoto(chatId, imageBuffer, { caption: prompt });
   } catch (err) {
     stopImgTyping();

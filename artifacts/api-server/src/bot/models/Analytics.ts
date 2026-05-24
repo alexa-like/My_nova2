@@ -12,7 +12,20 @@ export type AnalyticsEvent =
   | "ban"
   | "warn"
   | "mute"
-  | "inline_query";
+  | "inline_query"
+  | "feature_use"
+  | "onboarding_complete"
+  | "achievement_earned"
+  | "suggestion_click"
+  | "privacy_view"
+  | "whats_new_view"
+  | "daily_claim"
+  | "build"
+  | "search"
+  | "tts"
+  | "stt"
+  | "sticker_gen"
+  | "reminder_set";
 
 export interface IAnalytics extends Document {
   event: AnalyticsEvent;
@@ -40,6 +53,19 @@ const AnalyticsSchema = new Schema<IAnalytics>(
         "warn",
         "mute",
         "inline_query",
+        "feature_use",
+        "onboarding_complete",
+        "achievement_earned",
+        "suggestion_click",
+        "privacy_view",
+        "whats_new_view",
+        "daily_claim",
+        "build",
+        "search",
+        "tts",
+        "stt",
+        "sticker_gen",
+        "reminder_set",
       ],
       index: true,
     },

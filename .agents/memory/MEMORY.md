@@ -1,0 +1,5 @@
+- [No DB migrations ever](no-db-migrations.md) — project uses MongoDB only; the Drizzle/PostgreSQL @workspace/db package is unused; never add migrations to post-merge or anywhere else
+- [Stars Payment](stars-payment.md) — Telegram Stars (XTR) in payment.ts; STAR_PACKS/STAR_PREMIUM_PLANS; pre_checkout_query handler needed; successful_payment is msg property not separate event.
+- [Webhook Mode](webhook-mode.md) — detects RENDER_EXTERNAL_URL or WEBHOOK_URL; sets webhook to ${url}/api/bot/webhook; falls back to polling in dev; route in routes/bot.ts.
+- [BuildCache MongoDB](buildcache-mongo.md) — models/BuildCache.ts 45-min TTL index; buildCache.ts functions are async; all callers must await them.
+- [Group Gate Soft](group-gate-soft.md) — gate no longer blocks; shows friendly invite without return; controlled in privateHandler.ts gate block.

@@ -5,7 +5,7 @@ import { Memory } from "../bot/models/Memory.js";
 import { GroupSettings } from "../bot/models/GroupSettings.js";
 import { Analytics } from "../bot/models/Analytics.js";
 import { getOrCreateBotConfig, invalidateBotConfigCache } from "../bot/models/BotConfig.js";
-import { getDailySummary, getTopCommands, getActiveUsers } from "../bot/services/analytics.js";
+import { getDailySummary, getTopCommands, getActiveUsers, getFeatureStats, getErrorRate } from "../bot/services/analytics.js";
 import { getBot } from "../bot/index.js";
 import { setMaintenance } from "../bot/utils/maintenanceState.js";
 import { setPremiumEmojiEnabled } from "../bot/utils/premiumEmoji.js";
@@ -171,6 +171,21 @@ router.get("/admin/analytics", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "Admin analytics error");
     res.status(500).json({ error: "Failed to load analytics" });
+  }
+});
+
+// ── GET /api/admin/analytics/features ──────────────────────────────────────
+router.get("/admin/analytics/features", async (req, res) => {
+  try {
+    const days = Number(req.query.days) || 7;
+    const [featureStats, errorRate] = await Promise.all([
+      getFeatureStats(days),
+      getErrorRate(1),
+    ]);
+    res.json({ featureStats, errorRate, days });
+  } catch (err) {
+    logger.error({ err }, "Admin feature stats error");
+    res.status(500).json({ error: "Failed to load feature stats" });
   }
 });
 

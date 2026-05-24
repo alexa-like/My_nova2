@@ -57,20 +57,20 @@ export function accountMenuKeyboard(isPremium: boolean): TelegramBot.InlineKeybo
   };
 }
 
-export function creditsMenuKeyboard(hasPayment: boolean): TelegramBot.InlineKeyboardMarkup {
+export function creditsMenuKeyboard(_hasPayment: boolean): TelegramBot.InlineKeyboardMarkup {
   const rows: TelegramBot.InlineKeyboardButton[][] = [];
-  if (hasPayment) {
-    rows.push([
-      { text: "🌱 50 Credits — $0.99", callback_data: "buy_pack_50" },
-      { text: "⚡ 150 Credits — $2.49", callback_data: "buy_pack_150" },
-    ]);
-    rows.push([
-      { text: "🚀 500 Credits — $6.99", callback_data: "buy_pack_500" },
-      { text: "💎 1500 Credits — $17.99", callback_data: "buy_pack_1500" },
-    ]);
-  } else {
-    rows.push([{ text: "💳 Payment coming soon — stay tuned!", callback_data: "credits_coming_soon" }]);
-  }
+  rows.push([
+    { text: "🌱 50 Credits — 15 ⭐", callback_data: "buy_pack_pack_50" },
+    { text: "⚡ 150 Credits — 40 ⭐", callback_data: "buy_pack_pack_150" },
+  ]);
+  rows.push([
+    { text: "🚀 500 Credits — 115 ⭐", callback_data: "buy_pack_pack_500" },
+    { text: "💎 1500 Credits — 299 ⭐", callback_data: "buy_pack_pack_1500" },
+  ]);
+  rows.push([
+    { text: "⭐ VIP Monthly — 149 ⭐", callback_data: "buy_pack_vip_monthly" },
+    { text: "👑 VIP Lifetime — 499 ⭐", callback_data: "buy_pack_vip_lifetime" },
+  ]);
   rows.push([
     { text: "🎁 Claim Daily Reward", callback_data: "daily_reward" },
     { text: "👥 Earn via Referrals", callback_data: "referral_menu" },
@@ -567,30 +567,48 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
         { text: "🏘 Groups", callback_data: "own_groups" },
       ],
       [
+        { text: "🔒 Group Gate", callback_data: "own_gate_groups" },
+        { text: "⚙️ Features", callback_data: "own_features" },
+      ],
+      [
         { text: "🧠 Chat Model", callback_data: "own_chat_models" },
         { text: "🖼 Image Model", callback_data: "own_img_models" },
       ],
       [
         { text: "🔌 Providers", callback_data: "own_providers" },
-        { text: "⚙️ Features", callback_data: "own_features" },
-      ],
-      [
         {
           text: maintenanceOn ? "🔴 Maintenance: ON" : "🟢 Maintenance: OFF",
           callback_data: "own_maint",
         },
+      ],
+      [
         { text: "✨ Premium Emoji", callback_data: "owner_premoji_status" },
-      ],
-      [
         { text: "🔍 Search User", callback_data: "own_searchuser" },
-        { text: "📩 DM User", callback_data: "own_dm_btn" },
       ],
       [
+        { text: "📩 DM User", callback_data: "own_dm_btn" },
         { text: "📋 Scheduled", callback_data: "own_scheduled" },
+      ],
+      [
         { text: "📨 Inbox", callback_data: "own_feedback" },
       ],
     ],
   };
+}
+
+export function ownerGateGroupsKeyboard(groups: Array<{ name: string; link: string; chatId: number; strict: boolean }>): TelegramBot.InlineKeyboardMarkup {
+  const rows: TelegramBot.InlineKeyboardButton[][] = [];
+  groups.forEach((g, i) => {
+    const status = g.chatId ? "🟢" : "🔴";
+    const strictLabel = g.strict ? " ⛔" : "";
+    rows.push([
+      { text: `${status} ${g.name}${strictLabel}`, callback_data: `own_gate_view_${i}` },
+      { text: "❌ Remove", callback_data: `own_gate_remove_${i}` },
+    ]);
+  });
+  rows.push([{ text: "➕ Add Group", callback_data: "own_gate_add" }]);
+  rows.push([{ text: "⬅️ Back to Dashboard", callback_data: "own_panel" }]);
+  return { inline_keyboard: rows };
 }
 
 export function backToOwnerKeyboard(): TelegramBot.InlineKeyboardMarkup {
@@ -1025,8 +1043,8 @@ export function ttsKeyboard(): TelegramBot.InlineKeyboardMarkup {
 export function onboardingWelcomeKeyboard(): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      [{ text: "🚀 Start Quick Tour", callback_data: "onboard_tour" }],
-      [{ text: "⏭ Skip — Take me to the menu", callback_data: "onboard_skip" }],
+      [{ text: "🚀 Show me around!", callback_data: "onboard_step_1" }],
+      [{ text: "⏭️ Skip — take me to the menu", callback_data: "onboard_skip" }],
     ],
   };
 }
@@ -1047,13 +1065,40 @@ export function onboardingStyleKeyboard(): TelegramBot.InlineKeyboardMarkup {
   };
 }
 
+export function onboardingStep1Keyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "Next: Images & Stickers →", callback_data: "onboard_step_2" }],
+      [{ text: "⏭️ Skip to menu", callback_data: "onboard_skip" }],
+    ],
+  };
+}
+
+export function onboardingStep2Keyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "Next: Build & Deploy →", callback_data: "onboard_step_3" }],
+      [{ text: "⏭️ Skip to menu", callback_data: "onboard_skip" }],
+    ],
+  };
+}
+
+export function onboardingStep3Keyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "Next: Rewards & Streaks →", callback_data: "onboard_step_4" }],
+      [{ text: "⏭️ Skip to menu", callback_data: "onboard_skip" }],
+    ],
+  };
+}
+
 export function onboardingDoneKeyboard(): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      [{ text: "💬 Start Chatting",   callback_data: "ai_ask" }],
-      [{ text: "🎨 Generate an Image",callback_data: "img_generate" }],
-      [{ text: "🌐 Build a Website",  callback_data: "build_menu" }],
-      [{ text: "📋 See Full Menu",    callback_data: "main_menu" }],
+      [{ text: "💬 Start Chatting",    callback_data: "ai_ask" }],
+      [{ text: "🎨 Generate an Image", callback_data: "img_generate" }],
+      [{ text: "🌐 Build a Website",   callback_data: "build_menu" }],
+      [{ text: "📋 See Full Menu",     callback_data: "main_menu" }],
     ],
   };
 }
@@ -1076,10 +1121,7 @@ export function welcomeBackKeyboard(
     sticker:   { text: "🖼️ Sticker",    cb: "sticker_btn" },
     describe:  { text: "🔬 Describe",    cb: "ai_menu" },
   };
-
   const rows: TelegramBot.InlineKeyboardButton[][] = [];
-
-  // Recent feature quick-access (up to 3, in pairs)
   const validFeatures = recentFeatures.filter(f => FEATURE_BTNS[f]).slice(0, 4);
   if (validFeatures.length > 0) {
     for (let i = 0; i < validFeatures.length; i += 2) {
@@ -1091,9 +1133,37 @@ export function welcomeBackKeyboard(
       rows.push(row);
     }
   }
-
   rows.push([{ text: "📋 Full Menu", callback_data: "main_menu" }]);
   return { inline_keyboard: rows };
+}
+
+// ── Privacy keyboard ──────────────────────────────────────────────────────────
+
+export function privacyMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🗑️ Delete My Data", callback_data: "privacy_delete_data" },
+        { text: "📤 Export My Data", callback_data: "export_btn" },
+      ],
+      [{ text: "🧹 Clear Chat Memory", callback_data: "forget_memory" }],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+    ],
+  };
+}
+
+// ── What's New keyboard ───────────────────────────────────────────────────────
+
+export function whatsNewKeyboard(): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "⭐ Go Premium", callback_data: "settings_premium" },
+        { text: "🏅 Achievements", callback_data: "achievements_menu" },
+      ],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+    ],
+  };
 }
 
 // ── Achievements keyboard ─────────────────────────────────────────────────────
@@ -1102,14 +1172,15 @@ export function achievementsKeyboard(): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
-        { text: "👤 My Profile",   callback_data: "settings_profile" },
-        { text: "⬅️ Menu",         callback_data: "main_menu" },
+        { text: "🎁 Daily Reward",  callback_data: "daily_reward" },
+        { text: "👥 Refer Friends", callback_data: "referral_menu" },
       ],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
     ],
   };
 }
 
-// ── Privacy keyboard ──────────────────────────────────────────────────────────
+// ── Privacy keyboard (compact) ────────────────────────────────────────────────
 
 export function privacyKeyboard(): TelegramBot.InlineKeyboardMarkup {
   return {
@@ -1134,6 +1205,48 @@ export function updatesKeyboard(): TelegramBot.InlineKeyboardMarkup {
   };
 }
 
+// ── Settings keyboard with Privacy ───────────────────────────────────────────
+
+export function settingsMenuWithPrivacyKeyboard(user: IUser): TelegramBot.InlineKeyboardMarkup {
+  const moodLabel = user.mood ? `😶 Mood: ${user.mood}` : "😶 Set Mood";
+  const githubLabel = user.github?.username ? `✅ GitHub` : "🔑 GitHub";
+  const emojiLabel = user.settings.emoji ? "😊 Emojis: ON" : "😑 Emojis: OFF";
+  const emojiCb = user.settings.emoji ? "settings_emoji_off" : "settings_emoji_on";
+  return {
+    inline_keyboard: [
+      [
+        { text: "👤 My Profile", callback_data: "settings_profile" },
+        { text: "📊 My Stats",   callback_data: "show_stats" },
+      ],
+      [
+        { text: "🎭 AI Style",      callback_data: "settings_style" },
+        { text: "📏 Reply Length",  callback_data: "settings_length" },
+      ],
+      [
+        { text: "🌐 Language",  callback_data: "settings_lang" },
+        { text: moodLabel,      callback_data: "settings_mood" },
+      ],
+      [
+        { text: emojiLabel,       callback_data: emojiCb },
+        { text: "🤖 AI Model",    callback_data: "model_panel" },
+      ],
+      [
+        { text: "🧹 Clear Memory", callback_data: "settings_clear_memory" },
+        { text: "💎 Premium",      callback_data: "settings_premium" },
+      ],
+      [
+        { text: githubLabel,         callback_data: "settings_github" },
+        { text: "🚀 Deployments",    callback_data: "settings_deployments" },
+      ],
+      [
+        { text: "🔒 Privacy",        callback_data: "privacy_menu" },
+        { text: "🏅 Achievements",   callback_data: "achievements_menu" },
+      ],
+      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+    ],
+  };
+}
+
 // ── Build menu keyboard ───────────────────────────────────────────────────────
 
 export function buildMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
@@ -1151,6 +1264,45 @@ export function buildMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
       [
         { text: "📁 My Projects",   callback_data: "my_projects" },
         { text: "⬅️ Menu",          callback_data: "main_menu" },
+      ],
+    ],
+  };
+}
+
+// ── Main menu with What's New indicator ───────────────────────────────────────
+
+export function mainMenuWithNewsKeyboard(activeMode?: string, hasNews = false): TelegramBot.InlineKeyboardMarkup {
+  const mode = MODES.find(m => m.id === activeMode) ?? MODES[0];
+  const modeLabel = `${mode.icon} ${mode.name}`;
+  return {
+    inline_keyboard: [
+      [
+        { text: "💬 Chat",   callback_data: "ai_menu" },
+        { text: "🎨 Create", callback_data: "img_menu" },
+      ],
+      [
+        { text: "🌐 Build",   callback_data: "build_menu" },
+        { text: "🔍 Search",  callback_data: "search_btn" },
+      ],
+      [
+        { text: "😄 Fun",    callback_data: "fun_menu" },
+        { text: "🎮 Games",  callback_data: "games_menu" },
+      ],
+      [
+        { text: "⏰ Reminders",           callback_data: "reminders_btn" },
+        { text: `🎯 Mode: ${modeLabel}`,  callback_data: "modes_menu" },
+      ],
+      [
+        { text: "🎁 Daily Reward", callback_data: "daily_reward" },
+        { text: "📊 My Account",   callback_data: "account_menu" },
+      ],
+      [
+        { text: "💰 Credits",    callback_data: "credits_menu" },
+        { text: "⭐ Go Premium", callback_data: "settings_premium" },
+      ],
+      [
+        { text: "⚙️ Settings", callback_data: "settings_menu" },
+        { text: hasNews ? "🆕 What's New!" : "🔔 What's New", callback_data: "whats_new_menu" },
       ],
     ],
   };

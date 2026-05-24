@@ -318,6 +318,14 @@ export async function handleGroupMessage(
     return;
   }
 
+  if (cmd === "/groupid") {
+    await bot.sendMessage(chatId,
+      `🆔 Group Info\n\nGroup ID: \`${chatId}\`\nGroup name: ${msg.chat.title || "Unknown"}\n\nAdmin tip: Use this ID with /setgroupid to activate the group gate.`,
+      { parse_mode: "Markdown" }
+    );
+    return;
+  }
+
   if (cmd === "/rules") {
     await bot.sendMessage(chatId, groupSettings.rules
       ? "Group Rules\n\n" + groupSettings.rules
@@ -1101,6 +1109,8 @@ export async function handleGroupMessage(
 
     if (cmd === "/unmute") {
       try {
+        // can_invite_users intentionally omitted — setting it beyond the group's
+        // default permissions causes Telegram to reject the entire call.
         await bot.restrictChatMember(chatId, target.userId, {
           permissions: {
             can_send_messages: true,
@@ -1113,18 +1123,19 @@ export async function handleGroupMessage(
             can_send_other_messages: true,
             can_add_web_page_previews: true,
             can_send_polls: true,
-            can_invite_users: true,
           },
         });
         await tryDM(bot, target.userId, `You have been unmuted in ${msg.chat.title || "a group"}. You can send messages again.`);
         await bot.sendMessage(chatId, `${name} has been unmuted.`);
       } catch (err: any) {
         const msg400 = err?.message || "";
-        if (msg400.includes("supergroup")) {
-          await bot.sendMessage(chatId, `Unmuting requires a supergroup. Convert this group in Telegram settings first.`);
+        if (msg400.includes("supergroup") || msg400.includes("upgraded")) {
+          await bot.sendMessage(chatId, `Unmuting requires a supergroup. Go to group settings in Telegram and upgrade to a supergroup first.`);
+        } else if (msg400.includes("not enough rights") || msg400.includes("CHAT_ADMIN_REQUIRED")) {
+          await bot.sendMessage(chatId, `I don't have permission to unmute members. Please promote me to admin and enable "Restrict Members".`);
         } else {
           logger.error({ err: msg400 }, "Unmute failed");
-          await bot.sendMessage(chatId, `Failed to unmute ${name}.`);
+          await bot.sendMessage(chatId, `Failed to unmute ${name}. Make sure I'm an admin with "Restrict Members" permission.`);
         }
       }
       return;

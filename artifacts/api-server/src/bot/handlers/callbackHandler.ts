@@ -50,10 +50,19 @@ import {
   ownerGroupsKeyboard,
   onboardingStyleKeyboard,
   onboardingDoneKeyboard,
+  onboardingStep1Keyboard,
+  onboardingStep2Keyboard,
+  onboardingStep3Keyboard,
+  onboardingWelcomeKeyboard,
   achievementsKeyboard,
   privacyKeyboard,
+  privacyMenuKeyboard,
   updatesKeyboard,
   buildMenuKeyboard,
+  whatsNewKeyboard,
+  settingsMenuWithPrivacyKeyboard,
+  mainMenuWithNewsKeyboard,
+  ownerGateGroupsKeyboard,
   ownerChatModelsKeyboard,
   ownerImageModelsKeyboard,
   ownerUserListKeyboard,
@@ -80,14 +89,22 @@ import {
 import { getUserMode, setUserMode, MODES, getModeById, isValidMode } from "../services/modeManager.js";
 import { logger } from "../../lib/logger.js";
 import { addCredits, getCredits } from "../services/credits.js";
-import { hasAnyPaymentProvider } from "../services/payment.js";
+import { hasAnyPaymentProvider, sendStarsInvoice } from "../services/payment.js";
 import {
-  updateRecentFeatures,
+  checkAndAwardAchievements,
   checkAndGrantAchievements,
-  formatAchievementsText,
+  formatAchievementNotification,
   formatAchievementToast,
+  formatAchievementsText,
+  updateRecentFeatures,
+  getUserAchievements,
+  getLastFeatures,
+  FEATURE_LABELS,
+  ACHIEVEMENTS,
 } from "../services/engagement.js";
-import { trackFeature } from "../services/analytics.js";
+import { trackFeature, track } from "../services/analytics.js";
+import { formatAnnouncements, getNewCount as _getNewCount } from "../services/announcements.js";
+import { getMandatoryGroups, removeMandatoryGroup, getFailedGroups } from "../services/groupGate.js";
 
 // ── Trivia questions ──────────────────────────────────────────────────────────
 
@@ -239,12 +256,20 @@ export async function handleCallbackQuery(
       return;
     }
 
+    if (data === "build_menu") {
+      await editMsg(bot, query,
+        `🌐 Build a Website or App\n\nTell me what you want and I'll generate the full code.\n\nUse the /build command followed by your description:\n\n• /build portfolio website for a photographer\n• /build todo app with dark mode\n• /build Netflix clone with React\n• /build real-time chat app with Node.js\n• /build calculator with history\n\nOr just type your idea naturally — I'll detect it automatically!`,
+        { inline_keyboard: [[{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] }
+      );
+      return;
+    }
+
     if (data === "settings_menu") {
       const freshUser = await User.findOne({ userId });
       if (!freshUser) return;
       await editMsg(bot, query,
         `Settings ⚙️\n\nStyle: ${freshUser.settings.style}  |  Lang: ${freshUser.settings.language || "en"}  |  Emojis: ${freshUser.settings.emoji ? "On" : "Off"}\nMood: ${freshUser.mood || "not set"}  |  Length: ${freshUser.settings.length}`,
-        settingsMenuKeyboard(freshUser)
+        settingsMenuWithPrivacyKeyboard(freshUser)
       );
       return;
     }
@@ -829,7 +854,7 @@ export async function handleCallbackQuery(
         );
         return;
       }
-      const cached = getCachedBuild(userId);
+      const cached = await getCachedBuild(userId);
       if (!cached) {
         await editMsg(bot, query,
           "⏳ Build session expired (45 min limit).\n\nRun /deploy <description> to generate and deploy a fresh project.",
@@ -890,7 +915,7 @@ export async function handleCallbackQuery(
         );
         return;
       }
-      const cached = getCachedBuild(userId);
+      const cached = await getCachedBuild(userId);
       if (!cached) {
         await editMsg(bot, query,
           "⏳ Build session expired. Run /build first to generate a project.",
@@ -973,7 +998,7 @@ export async function handleCallbackQuery(
 
     if (data === "build_choice_telegram") {
       await bot.answerCallbackQuery(query.id, { text: "Sending your files..." });
-      const cached = getCachedBuild(userId);
+      const cached = await getCachedBuild(userId);
       if (!cached) {
         await bot.sendMessage(chatId, "⚠️ Project session expired. Please build again.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Build Again", callback_data: "build_menu" }]] } });
         return;
@@ -1006,7 +1031,7 @@ export async function handleCallbackQuery(
 
     if (data === "build_choice_github") {
       await bot.answerCallbackQuery(query.id);
-      const cached = getCachedBuild(userId);
+      const cached = await getCachedBuild(userId);
       if (!cached) {
         await bot.sendMessage(chatId, "⚠️ Project session expired. Please build again.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Build Again", callback_data: "build_menu" }]] } });
         return;
@@ -2238,13 +2263,15 @@ export async function handleCallbackQuery(
       return;
     }
 
-    if (data === "credits_coming_soon") {
-      await answer(bot, query.id, "Payment system coming soon!");
-      return;
-    }
-
     if (data.startsWith("buy_pack_")) {
-      await answer(bot, query.id, "Payment integration coming soon. Stay tuned!");
+      const itemId = data.replace("buy_pack_", "");
+      await answer(bot, query.id);
+      try {
+        await sendStarsInvoice(bot, chatId, itemId);
+      } catch (err) {
+        logger.warn({ err, itemId }, "Failed to send Stars invoice");
+        await bot.sendMessage(chatId, "Couldn't open the payment screen. Please try again.");
+      }
       return;
     }
 
@@ -2323,9 +2350,10 @@ export async function handleCallbackQuery(
         }
       }
       await setUserMode(userId, modeId as any);
-      await answer(bot, query.id, `${mode.icon} ${mode.name} mode activated`);
+      await answer(bot, query.id, `${mode.icon} ${mode.name} activated`);
+      const isNormalMode = modeId === "none" || modeId === "nova";
       await editMsg(bot, query,
-        `${mode.icon} Mode: ${mode.name}\n\n${mode.activationHint}\n\n${modeId === "nova" ? "Chat with Nova normally — all features are available." : `Every message you send will be treated as a ${mode.name} request.`}`,
+        `${mode.icon} Mode: ${mode.name}\n\n${mode.activationHint}\n\n${isNormalMode ? "All features available — chat, images, search, and more. Just type naturally!" : `Every message you send will be handled as a ${mode.name} request.`}`,
         currentModeKeyboard(mode)
       );
       return;
@@ -2848,6 +2876,259 @@ export async function handleCallbackQuery(
         `🔊 TTS Provider\n━━━━━━━━━━━━━━━━\nVoice updated to ${voice}.`,
         ownerTtsKeyboard(p.tts, p.ttsVoice)
       );
+      return;
+    }
+
+    // ── Group Gate callbacks ─────────────────────────────────────────────────
+
+    if (data === "own_gate_groups") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const groups = await getMandatoryGroups();
+      const lines = groups.length === 0
+        ? "No groups configured yet. Add one below.\n\n🟢 = active (ID set) | 🔴 = inactive (ID missing)\n⛔ = strict (blocks bot if not joined)"
+        : `Manage groups that users must join to use Nova.\n\n🟢 = active | 🔴 = ID not set\n⛔ = strict (blocks bot) | none = notification only`;
+      await editMsg(bot, query,
+        `🔒 Group Gate\n━━━━━━━━━━━━━━━━\n${lines}`,
+        ownerGateGroupsKeyboard(groups as any)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_gate_view_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_gate_view_", ""));
+      const groups = await getMandatoryGroups();
+      const g = groups[idx];
+      if (!g) { await answer(bot, query.id, "Group not found."); return; }
+      const idLabel = g.chatId ? `✅ Set: \`${g.chatId}\`` : "❌ Not set — gate inactive";
+      const strictLabel = g.strict ? "⛔ Strict — blocks bot access" : "🔔 Notification only";
+      await editMsg(bot, query,
+        `🔒 ${g.name} (index ${idx})\n\n` +
+        `Link: ${g.link}\n` +
+        `Chat ID: ${idLabel}\n` +
+        `Mode: ${strictLabel}\n\n` +
+        `To set the Chat ID, use:\n` +
+        `/setgroupid ${idx} <chat_id>\n\n` +
+        `Tip: Forward a message from the group to get its ID.`,
+        {
+          inline_keyboard: [
+            [{ text: "❌ Remove this group", callback_data: `own_gate_remove_${idx}` }],
+            [{ text: "⬅️ Back to Gate", callback_data: "own_gate_groups" }],
+          ],
+        }
+      );
+      return;
+    }
+
+    if (data.startsWith("own_gate_remove_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_gate_remove_", ""));
+      const groups = await getMandatoryGroups();
+      const g = groups[idx];
+      if (!g) { await answer(bot, query.id, "Group not found."); return; }
+      await removeMandatoryGroup(idx);
+      await answer(bot, query.id, `Removed: ${g.name}`);
+      const updated = await getMandatoryGroups();
+      await editMsg(bot, query,
+        `🔒 Group Gate\n━━━━━━━━━━━━━━━━\n✅ Removed "${g.name}"\n\nRemaining groups:`,
+        ownerGateGroupsKeyboard(updated as any)
+      );
+      return;
+    }
+
+    if (data === "own_gate_add") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      await editMsg(bot, query,
+        `➕ Add a Gate Group\n━━━━━━━━━━━━━━━━\n` +
+        `Use the command:\n/addgroup <name> | <link>\n\n` +
+        `Example:\n/addgroup Nova VIP | https://t.me/+abc123\n\n` +
+        `After adding, set the Chat ID with:\n/setgroupid <index> <chat_id>\n\n` +
+        `How to get the Chat ID:\nForward any message from the group to this chat — Nova will reply with the ID.`,
+        { inline_keyboard: [[{ text: "⬅️ Back to Gate", callback_data: "own_gate_groups" }]] }
+      );
+      return;
+    }
+
+    // ── Gate recheck (user tapped "I Joined") ────────────────────────────────
+
+    if (data === "gate_recheck") {
+      // NOTE: answer(bot, query.id) already fired at the top of handleCallbackQuery.
+      // A second answerCallbackQuery call will silently fail, so we use sendMessage for all feedback here.
+      const failedStrict = (await getFailedGroups(bot, user.userId)).filter(g => g.strict);
+      if (failedStrict.length === 0) {
+        try { await bot.deleteMessage(chatId, query.message!.message_id); } catch {}
+        const { getNewCount } = await import("../services/announcements.js");
+        const hasNews = getNewCount() > 0;
+        await bot.sendMessage(chatId,
+          `✅ Verified! Welcome to Nova.\n\nHere's your menu:`,
+          { reply_markup: mainMenuWithNewsKeyboard(user.activeMode || "none", hasNews) }
+        );
+      } else {
+        const groupLines = failedStrict
+          .map(g => g.link ? `• ${g.link}` : `• ${g.name || "Required group"}`)
+          .join("\n");
+        await bot.sendMessage(chatId,
+          `⚠️ You still haven't joined all required groups:\n\n${groupLines}\n\nJoin the group(s) above, then tap "✅ I Joined" again.`
+        );
+      }
+      return;
+    }
+
+    // ── Onboarding flow ──────────────────────────────────────────────────────
+
+    if (data === "onboard_step_1") {
+      await answer(bot, query.id);
+      await editMsg(bot, query,
+        `💬 Step 1 of 4: AI Chat\n\n` +
+        `Just type anything and I'll respond intelligently.\n\n` +
+        `• Ask me questions, get advice, brainstorm ideas\n` +
+        `• I remember our conversation context automatically\n` +
+        `• You can set my personality with /style\n` +
+        `• Try different AI models with the Mode selector\n\n` +
+        `💡 Shortcut: Type "explain quantum computing" to try it right now.`,
+        onboardingStep1Keyboard()
+      );
+      return;
+    }
+
+    if (data === "onboard_step_2") {
+      await answer(bot, query.id);
+      await editMsg(bot, query,
+        `🎨 Step 2 of 4: Images & Stickers\n\n` +
+        `Create stunning images and custom Telegram stickers.\n\n` +
+        `• Type "draw me a sunset over mountains" → get an image\n` +
+        `• Use /sticker to create sticker-style art\n` +
+        `• Images are AI-generated from your description\n\n` +
+        `💡 Free users get ${3} images/day. Premium users get unlimited.`,
+        onboardingStep2Keyboard()
+      );
+      return;
+    }
+
+    if (data === "onboard_step_3") {
+      await answer(bot, query.id);
+      await editMsg(bot, query,
+        `🔨 Step 3 of 4: Build & Deploy\n\n` +
+        `Generate full apps and websites — and go live in seconds.\n\n` +
+        `• /build <idea> → generates your project files\n` +
+        `• /deploy <idea> → generates AND deploys live to Vercel\n` +
+        `• Push to GitHub with one tap\n` +
+        `• Supports React, Next.js, Node.js, Python, and more\n\n` +
+        `💡 Try: /build a todo app in React`,
+        onboardingStep3Keyboard()
+      );
+      return;
+    }
+
+    if (data === "onboard_step_4") {
+      await answer(bot, query.id);
+      await editMsg(bot, query,
+        `🏅 Step 4 of 4: Rewards & Streaks\n\n` +
+        `Nova rewards you for using it!\n\n` +
+        `🎁 Daily Reward — claim credits every 24 hours\n` +
+        `🔥 Streaks — use Nova daily to build your streak\n` +
+        `🏅 Achievements — 20+ badges to unlock by exploring features\n` +
+        `💰 Credits — spend on images, voice, and more\n` +
+        `👥 Referrals — share your link, earn bonus credits\n\n` +
+        `You're all set! Let's get started 🚀`,
+        onboardingDoneKeyboard()
+      );
+      return;
+    }
+
+    if (data === "onboard_skip" || data === "onboard_done") {
+      await answer(bot, query.id, data === "onboard_done" ? "Welcome to Nova! 🎉" : "Skipped — you can always ask /help");
+      try {
+        await bot.deleteMessage(chatId, query.message!.message_id);
+      } catch {}
+      // Mark user as onboarded
+      await User.findOneAndUpdate({ userId: user.userId }, { $set: { onboarded: true } });
+      track("onboarding_complete", user.userId, chatId, { skipped: data === "onboard_skip" }).catch(() => {});
+      const hasNews = true; // show What's New indicator after onboarding
+      await bot.sendMessage(chatId,
+        `${data === "onboard_done" ? "🎉 Let's go!" : "✅ No problem!"} Here's your menu — tap anything to explore.`,
+        { reply_markup: mainMenuWithNewsKeyboard(user.activeMode, hasNews) }
+      );
+      return;
+    }
+
+    // ── Privacy callbacks ────────────────────────────────────────────────────
+
+    if (data === "privacy_menu") {
+      await answer(bot, query.id);
+      track("privacy_view", user.userId, chatId).catch(() => {});
+      await editMsg(bot, query,
+        `🔒 Privacy & Data\n\n` +
+        `Nova stores the following data about you:\n\n` +
+        `💬 Chat Memory — Conversation context (cleared on demand)\n` +
+        `👤 Profile — Your Telegram name & ID\n` +
+        `⚙️ Preferences — Style, language, mood, settings\n` +
+        `📊 Usage Stats — Message counts, feature usage, streaks\n` +
+        `🔑 API Tokens — Encrypted with AES-256 if added\n` +
+        `📈 Analytics — Anonymous events (never sold or shared)\n\n` +
+        `You can delete or export your data at any time:`,
+        privacyMenuKeyboard()
+      );
+      return;
+    }
+
+    if (data === "privacy_delete_data") {
+      await answer(bot, query.id, "⚠️ This will permanently delete your account data.");
+      await editMsg(bot, query,
+        `🗑️ Delete All My Data\n\n` +
+        `⚠️ This will permanently delete:\n` +
+        `• Your chat memory and conversation history\n` +
+        `• Your profile, settings, and preferences\n` +
+        `• Your usage stats and achievements\n` +
+        `• All stored tokens and credentials\n\n` +
+        `This cannot be undone.\n\n` +
+        `To confirm, type: /deleteaccount`,
+        {
+          inline_keyboard: [
+            [{ text: "⬅️ Cancel", callback_data: "privacy_menu" }],
+          ],
+        }
+      );
+      return;
+    }
+
+    // ── What's New ───────────────────────────────────────────────────────────
+
+    if (data === "whats_new_menu") {
+      await answer(bot, query.id);
+      track("whats_new_view", user.userId, chatId).catch(() => {});
+      await editMsg(bot, query,
+        formatAnnouncements(),
+        whatsNewKeyboard()
+      );
+      return;
+    }
+
+    // ── Achievements ─────────────────────────────────────────────────────────
+
+    if (data === "achievements_menu") {
+      await answer(bot, query.id);
+      const earned = await getUserAchievements(user.userId);
+      const earnedIds = earned.map((a: any) => a.id);
+      const totalAvailable = ACHIEVEMENTS.filter(a => !a.secret).length;
+      let msg = `🏅 Your Achievements (${earned.length}/${totalAvailable})\n\n`;
+      if (earned.length === 0) {
+        msg += `You haven't earned any achievements yet!\n\n`;
+        msg += `How to earn them:\n• Chat with Nova daily\n• Generate images\n• Build projects\n• Claim daily rewards\n• Maintain streaks`;
+      } else {
+        for (const a of earned) {
+          msg += `${a.icon} ${a.title} — ${a.description}\n`;
+        }
+        const locked = ACHIEVEMENTS.filter((a: any) => !a.secret && !earnedIds.includes(a.id));
+        if (locked.length > 0) {
+          msg += `\n🔒 Still to unlock (${locked.length}):\n`;
+          for (const a of locked.slice(0, 5)) {
+            msg += `• ${a.title} — ${a.description}\n`;
+          }
+          if (locked.length > 5) msg += `...and ${locked.length - 5} more!`;
+        }
+      }
+      await editMsg(bot, query, msg, achievementsKeyboard());
       return;
     }
 

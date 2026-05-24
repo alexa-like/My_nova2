@@ -25,6 +25,7 @@ export interface IUser extends Document {
   usage: {
     messages: number;
     images: number;
+    edits: number;
     builds: number;
     lastReset: Date;
   };
@@ -46,6 +47,7 @@ export interface IUser extends Document {
   feedbackCount: number;
   streak: number;
   lastDailyReward?: Date;
+  dailyRewardCount: number;
   bonusImages: number;
   referralCode?: string;
   referredBy?: number;
@@ -53,12 +55,17 @@ export interface IUser extends Document {
   activeMode?: string;
   credits: number;
   referralRewardClaimed: boolean;
-  // ── Experience & personalization ────────────────────────────────────────────
-  recentFeatures: string[];      // last 5 feature keys used (e.g. "chat", "image", "build")
-  achievements: string[];        // earned achievement IDs
-  onboardingComplete: boolean;   // false = new user who hasn't finished onboarding
-  loginStreak: number;           // consecutive days the user has been active
-  lastActiveDate?: Date;         // date of last activity (for streak calculation)
+  recentFeatures: string[];
+  lastFeatures: string[];
+  achievements: string[];
+  onboardingComplete: boolean;
+  onboarded: boolean;
+  loginStreak: number;
+  lastActiveDate?: Date;
+  totalMessages: number;
+  totalImages: number;
+  totalBuilds: number;
+  totalSearches: number;
 }
 
 const UserSchema = new Schema<IUser>(
@@ -91,6 +98,7 @@ const UserSchema = new Schema<IUser>(
     usage: {
       messages: { type: Number, default: 0 },
       images:   { type: Number, default: 0 },
+      edits:    { type: Number, default: 0 },
       builds:   { type: Number, default: 0 },
       lastReset: { type: Date, default: Date.now },
     },
@@ -114,6 +122,7 @@ const UserSchema = new Schema<IUser>(
     feedbackCount: { type: Number, default: 0 },
     streak:        { type: Number, default: 0 },
     lastDailyReward: { type: Date },
+    dailyRewardCount: { type: Number, default: 0 },
     bonusImages:   { type: Number, default: 0 },
     referralCode:  { type: String },
     referredBy:    { type: Number },
@@ -122,10 +131,16 @@ const UserSchema = new Schema<IUser>(
     credits:       { type: Number, default: 50 },
     referralRewardClaimed: { type: Boolean, default: false },
     recentFeatures:    { type: [String], default: [] },
+    lastFeatures:      { type: [String], default: [] },
     achievements:      { type: [String], default: [] },
     onboardingComplete:{ type: Boolean, default: false },
+    onboarded:         { type: Boolean, default: false },
     loginStreak:       { type: Number, default: 0 },
     lastActiveDate:    { type: Date },
+    totalMessages:     { type: Number, default: 0 },
+    totalImages:       { type: Number, default: 0 },
+    totalBuilds:       { type: Number, default: 0 },
+    totalSearches:     { type: Number, default: 0 },
   },
   { timestamps: true }
 );

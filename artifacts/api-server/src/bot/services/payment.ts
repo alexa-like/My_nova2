@@ -1,104 +1,148 @@
+import TelegramBot from "node-telegram-bot-api";
+import { User } from "../models/User.js";
+import { addCredits } from "./credits.js";
+import { addDays } from "../utils/helpers.js";
+import { logger } from "../../lib/logger.js";
+
 export interface CreditPack {
   id: string;
-  name: string;
+  label: string;
   credits: number;
-  price: number;
-  currency: string;
-  badge?: string;
+  stars: number;
+  badge: string;
 }
 
 export interface PremiumPlan {
   id: string;
-  name: string;
-  duration: string;
-  durationDays: number;
-  price: number;
-  currency: string;
-  features: string[];
-  badge?: string;
+  label: string;
+  days: number;
+  stars: number;
+  badge: string;
+  description: string;
 }
 
-export interface PaymentProvider {
-  id: string;
-  name: string;
-  createPaymentLink(userId: number, itemId: string, amount: number, currency: string): Promise<string>;
-  verifyPayment(reference: string): Promise<{ success: boolean; userId?: number; itemId?: string }>;
-}
-
-export const CREDIT_PACKS: CreditPack[] = [
-  { id: "pack_50",   name: "Starter Pack",  credits: 50,   price: 0.99,  currency: "USD", badge: "🌱" },
-  { id: "pack_150",  name: "Basic Pack",    credits: 150,  price: 2.49,  currency: "USD", badge: "⚡" },
-  { id: "pack_500",  name: "Pro Pack",      credits: 500,  price: 6.99,  currency: "USD", badge: "🚀", },
-  { id: "pack_1500", name: "Power Pack",    credits: 1500, price: 17.99, currency: "USD", badge: "💎" },
+export const STAR_PACKS: CreditPack[] = [
+  { id: "pack_50",   label: "Starter Pack",  credits: 50,   stars: 15,  badge: "🌱" },
+  { id: "pack_150",  label: "Basic Pack",    credits: 150,  stars: 40,  badge: "⚡" },
+  { id: "pack_500",  label: "Pro Pack",      credits: 500,  stars: 115, badge: "🚀" },
+  { id: "pack_1500", label: "Power Pack",    credits: 1500, stars: 299, badge: "💎" },
 ];
 
-export const PREMIUM_PLANS: PremiumPlan[] = [
+export const STAR_PREMIUM_PLANS: PremiumPlan[] = [
   {
     id: "vip_monthly",
-    name: "VIP Monthly",
-    duration: "30d",
-    durationDays: 30,
-    price: 9.99,
-    currency: "USD",
+    label: "VIP Monthly",
+    days: 30,
+    stars: 149,
     badge: "⭐",
-    features: [
-      "Unlimited messages",
-      "Unlimited images",
-      "20 builds/day",
-      "All special modes unlocked",
-      "Priority AI responses",
-      "No credit deductions",
-    ],
+    description: "30 days of unlimited images, priority AI, all premium modes, no credit limits.",
   },
   {
     id: "vip_lifetime",
-    name: "VIP Lifetime",
-    duration: "lifetime",
-    durationDays: -1,
-    price: 49.99,
-    currency: "USD",
+    label: "VIP Lifetime",
+    days: -1,
+    stars: 499,
     badge: "👑",
-    features: [
-      "Everything in VIP Monthly",
-      "Lifetime access — never expires",
-      "Early access to new features",
-    ],
+    description: "Lifetime VIP access — never expires. Everything in VIP, forever.",
   },
 ];
 
-// ── Payment provider registry ──────────────────────────────────────────────────
-// Plug in Paystack / Stripe / crypto providers here when ready.
-// No provider is active by default — structure only.
-
-const _registeredProviders = new Map<string, PaymentProvider>();
-
-export function registerPaymentProvider(provider: PaymentProvider): void {
-  _registeredProviders.set(provider.id, provider);
-}
-
-export function getPaymentProvider(id: string): PaymentProvider | undefined {
-  return _registeredProviders.get(id);
-}
-
-export function listPaymentProviders(): PaymentProvider[] {
-  return Array.from(_registeredProviders.values());
-}
-
 export function hasAnyPaymentProvider(): boolean {
-  return _registeredProviders.size > 0;
+  return true;
 }
 
-export async function initiatePayment(
-  userId: number,
-  packId: string
-): Promise<{ url: string | null; provider: string | null }> {
-  const providers = listPaymentProviders();
-  if (providers.length === 0) return { url: null, provider: null };
+export async function sendStarsInvoice(
+  bot: TelegramBot,
+  chatId: number,
+  itemId: string
+): Promise<void> {
+  const pack = STAR_PACKS.find(p => p.id === itemId);
+  const plan = STAR_PREMIUM_PLANS.find(p => p.id === itemId);
 
-  const pack = CREDIT_PACKS.find((p) => p.id === packId) || PREMIUM_PLANS.find((p) => p.id === packId);
-  if (!pack) return { url: null, provider: null };
+  if (pack) {
+    await (bot as any).sendInvoice(
+      chatId,
+      `${pack.badge} ${pack.label} — ${pack.credits} Credits`,
+      `Get ${pack.credits} credits for AI chat, image generation, builds, and voice messages. Credits never expire.`,
+      `credits:${pack.id}`,
+      "",
+      "XTR",
+      [{ label: `${pack.credits} Credits`, amount: pack.stars }]
+    );
+    return;
+  }
 
-  const provider = providers[0];
-  const url = await provider.createPaymentLink(userId, packId, pack.price, pack.currency);
-  return { url, provider: provider.name };
+  if (plan) {
+    const durationText = plan.days === -1 ? "Lifetime" : `${plan.days} Days`;
+    await (bot as any).sendInvoice(
+      chatId,
+      `${plan.badge} ${plan.label} — VIP Access`,
+      plan.description,
+      `premium:${plan.id}`,
+      "",
+      "XTR",
+      [{ label: `VIP ${durationText}`, amount: plan.stars }]
+    );
+    return;
+  }
+
+  throw new Error(`Unknown item ID: ${itemId}`);
+}
+
+export async function handleStarPayment(
+  bot: TelegramBot,
+  msg: TelegramBot.Message
+): Promise<void> {
+  const payment = (msg as any).successful_payment;
+  if (!payment) return;
+
+  const userId = msg.from!.id;
+  const chatId = msg.chat.id;
+  const payload: string = payment.invoice_payload;
+  const stars: number = payment.total_amount;
+
+  logger.info({ userId, payload, stars }, "Telegram Stars payment received");
+
+  try {
+    if (payload.startsWith("credits:")) {
+      const packId = payload.replace("credits:", "");
+      const pack = STAR_PACKS.find(p => p.id === packId);
+      if (!pack) {
+        await bot.sendMessage(chatId, "Payment received but pack not found. Please contact the bot owner.");
+        return;
+      }
+      const newBal = await addCredits(userId, pack.credits);
+      await bot.sendMessage(
+        chatId,
+        `✅ Payment confirmed!\n\n${pack.badge} +${pack.credits} credits added to your account.\n💰 New balance: ${newBal} credits\n\nThank you for supporting Nova! 🙏`,
+        { reply_markup: { inline_keyboard: [[{ text: "💰 View Credits", callback_data: "credits_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+      );
+
+    } else if (payload.startsWith("premium:")) {
+      const planId = payload.replace("premium:", "");
+      const plan = STAR_PREMIUM_PLANS.find(p => p.id === planId);
+      if (!plan) {
+        await bot.sendMessage(chatId, "Payment received but plan not found. Please contact the bot owner.");
+        return;
+      }
+      const expiresAt = plan.days === -1 ? undefined : addDays(new Date(), plan.days);
+      await User.updateOne(
+        { userId },
+        { $set: { "premium.active": true, "premium.expiresAt": expiresAt, "premium.plan": plan.id } }
+      );
+      const durationText = plan.days === -1 ? "Lifetime" : `${plan.days} days`;
+      await bot.sendMessage(
+        chatId,
+        `✅ Payment confirmed!\n\n${plan.badge} You are now a VIP member!\nDuration: ${durationText}\nExpires: ${expiresAt ? expiresAt.toDateString() : "Never"}\n\nEnjoy unlimited images, priority AI, all premium modes, and zero credit deductions!\n\nThank you! 🙏`,
+        { reply_markup: { inline_keyboard: [[{ text: "💎 View Status", callback_data: "settings_premium" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+      );
+
+    } else {
+      logger.warn({ payload }, "Unknown Stars payment payload");
+      await bot.sendMessage(chatId, "Payment received. If your reward wasn't applied automatically, please contact the bot owner with your payment confirmation.");
+    }
+  } catch (err) {
+    logger.error({ err, userId, payload }, "Error processing Star payment");
+    await bot.sendMessage(chatId, "Payment received but something went wrong applying it. Please contact the bot owner with your Telegram payment confirmation.");
+  }
 }

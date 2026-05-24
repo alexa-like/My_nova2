@@ -11,9 +11,12 @@ import { isGroup, isPrivate } from "./utils/helpers.js";
 import { track } from "./services/analytics.js";
 import { getMaintenance, setMaintenance } from "./utils/maintenanceState.js";
 import { loadPendingReminders } from "./services/reminder.js";
+import { loadPersistedRateLimits } from "./utils/rateLimiter.js";
 import { setPremiumEmojiEnabled } from "./utils/premiumEmoji.js";
 import { disconnectDB } from "./services/db.js";
 import { logger } from "../lib/logger.js";
+import { seedDefaultMandatoryGroup, getMandatoryGroups, sendLeftGroupDM } from "./services/groupGate.js";
+import { handleStarPayment } from "./services/payment.js";
 
 // ── In-memory captcha store ─────────────────────────────────────────────────
 interface CaptchaChallenge {
@@ -57,10 +60,10 @@ const OWNER_CMDS = new Set([
   "/deletegroup", "/deleteuser", "/broadcast", "/announcement", "/schedule",
   "/grantpremium", "/revokepremium", "/banuser", "/unbanuser",
   "/clearuserdata", "/maintenance",
-  // Previously missing from gate (commands existed but were unreachable):
   "/analytics", "/dm", "/messageuser", "/botinfo",
-  // New commands:
   "/searchuser", "/listscheduled", "/cancelschedule",
+  // Group gate management:
+  "/addgroup", "/removegroup", "/listgroups", "/setgroupid", "/getgroupid",
 ]);
 
 export async function startBot(): Promise<void> {
@@ -77,13 +80,18 @@ export async function startBot(): Promise<void> {
     return;
   }
 
-  bot = new TelegramBot(token, {
-    polling: {
-      interval: 1000,
-      autoStart: true,
-      params: { timeout: 10 },
-    },
-  });
+  const webhookUrl = process.env.WEBHOOK_URL || process.env.RENDER_EXTERNAL_URL;
+  if (webhookUrl) {
+    bot = new TelegramBot(token, { webHook: false });
+    const webhookPath = `${webhookUrl.replace(/\/$/, "")}/api/bot/webhook`;
+    await bot.setWebHook(webhookPath, { max_connections: 40 });
+    logger.info({ webhookPath }, "Telegram webhook mode active");
+  } else {
+    bot = new TelegramBot(token, {
+      polling: { interval: 1000, autoStart: true, params: { timeout: 10 } },
+    });
+    logger.info("Telegram polling mode active");
+  }
 
   let botUsername = "NovaBot";
   try {
@@ -96,6 +104,10 @@ export async function startBot(): Promise<void> {
   _setBotUsername(botUsername);
 
   loadPendingReminders(bot).catch((err) => logger.warn({ err }, "Failed to load reminders"));
+  loadPersistedRateLimits().catch((err) => logger.warn({ err }, "Failed to load rate limits from DB"));
+
+  // Seed the default Nova mandatory group
+  seedDefaultMandatoryGroup().catch(() => {});
 
   // Load premium emoji state from config
   try {
@@ -210,6 +222,12 @@ export async function startBot(): Promise<void> {
       }
 
       if (isPrivate(msg)) {
+        // Telegram Stars successful payment
+        if ((msg as any).successful_payment) {
+          await handleStarPayment(bot!, msg);
+          return;
+        }
+
         // Voice messages
         if (msg.voice) {
           await handleVoiceMessage(bot!, msg, user);
@@ -311,6 +329,17 @@ export async function startBot(): Promise<void> {
       const groupSettings = await GroupSettings.findOne({ chatId: msg.chat.id });
 
       for (const member of msg.new_chat_members) {
+        // Bot itself was added to this group — send a brief intro
+        if (member.is_bot && member.username?.toLowerCase() === botUsername.toLowerCase()) {
+          try {
+            await bot!.sendMessage(msg.chat.id,
+              `👋 Hi! I'm Nova, your AI assistant.\n\n` +
+              `I respond when mentioned (@${botUsername}) or replied to.\n\n` +
+              `Admins can configure me with /settings. Type /help to see what I can do!`
+            );
+          } catch {}
+          continue;
+        }
         if (member.is_bot) continue;
         const chatId = msg.chat.id;
         const name = member.first_name || member.username || "Friend";
@@ -416,17 +445,25 @@ export async function startBot(): Promise<void> {
         try { await bot!.deleteMessage(msg.chat.id, msg.message_id); } catch {}
       }
 
+      // ── Mandatory group check: DM user if they left a mandatory group ────
+      try {
+        const mandatoryGroups = await getMandatoryGroups();
+        for (const g of mandatoryGroups) {
+          if (g.chatId && g.chatId === msg.chat.id) {
+            await sendLeftGroupDM(bot!, member.id, g);
+            break;
+          }
+        }
+      } catch { /* non-fatal */ }
+
       if (!groupSettings?.goodbyeMessage) return;
       const name = member.first_name || member.username || "Friend";
       const goodbye = groupSettings.goodbyeMessage
         .replace(/\{name\}/g, name)
         .replace(/\{group\}/g, msg.chat.title || "this group");
-      // Send goodbye privately so the group chat stays clean
       try {
         await bot!.sendMessage(member.id, goodbye);
-      } catch {
-        // User may have blocked the bot or never started it — silently skip
-      }
+      } catch {}
     } catch (err) {
       logger.error({ err }, "Error in left_chat_member handler");
     }
@@ -473,7 +510,9 @@ export async function startBot(): Promise<void> {
             // ── Correct answer ───────────────────────────────────────────────
             captchaStore.delete(captchaKey);
             await bot!.answerCallbackQuery(query.id, { text: "✅ Correct! You are now verified." });
-            // Restore full permissions in the group
+            // Restore messaging permissions in the group.
+            // NOTE: can_invite_users is intentionally omitted — attempting to set it
+            // beyond the group's default causes Telegram to reject the whole call.
             try {
               await bot!.restrictChatMember(chatId, userId, {
                 permissions: {
@@ -487,11 +526,20 @@ export async function startBot(): Promise<void> {
                   can_send_other_messages: true,
                   can_add_web_page_previews: true,
                   can_send_polls: true,
-                  can_invite_users: true,
                 },
               });
-            } catch (unmuteErr) {
-              logger.error({ err: unmuteErr, chatId, userId }, "Captcha: failed to restore member permissions after verification");
+            } catch (unmuteErr: any) {
+              const errMsg: string = unmuteErr?.message ?? String(unmuteErr);
+              logger.error({ err: errMsg, chatId, userId }, "Captcha: failed to restore member permissions after verification");
+              // Inform the user in DM so they know to contact an admin
+              try {
+                const dmId = challenge.dmChatId ?? userId;
+                if (errMsg.includes("not enough rights") || errMsg.includes("CHAT_ADMIN_REQUIRED")) {
+                  await bot!.sendMessage(dmId, "✅ You answered correctly! However the bot lacks admin rights to unmute you. Please ask a group admin to unmute you manually.");
+                } else if (errMsg.includes("supergroup")) {
+                  await bot!.sendMessage(dmId, "✅ You answered correctly! The group needs to be converted to a supergroup before restrictions work. Please contact a group admin.");
+                }
+              } catch {}
             }
             // Clean up the group "Verify" message
             if (challenge.messageId) {
@@ -584,6 +632,16 @@ export async function startBot(): Promise<void> {
     }
   });
 
+  // ── Telegram Stars payment handlers ────────────────────────────────────────
+  (bot as any).on("pre_checkout_query", async (query: any) => {
+    try {
+      await (bot as any).answerPreCheckoutQuery(query.id, true);
+    } catch (err) {
+      logger.error({ err }, "Error answering pre_checkout_query");
+      try { await (bot as any).answerPreCheckoutQuery(query.id, false, "Payment error"); } catch {}
+    }
+  });
+
   // ── Error handlers ─────────────────────────────────────────────────────────
   let pollingRestartAttempts = 0;
   const MAX_RESTART_ATTEMPTS = 10;
@@ -673,6 +731,12 @@ function scheduleDailyReport(botInstance: TelegramBot): void {
 
 export function getBot(): TelegramBot | null {
   return bot;
+}
+
+export function processWebhookUpdate(body: object): void {
+  if (bot) {
+    (bot as any).processUpdate(body);
+  }
 }
 
 let _cachedBotUsername = "NovaBot";
