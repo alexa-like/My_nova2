@@ -950,6 +950,43 @@ export async function handleOwnerPendingText(
         break;
       }
 
+      case "owner_add_code_step1": {
+        const name = input.trim();
+        if (!name || name.length < 2) {
+          await bot.sendMessage(chatId, "❌ Name too short. Try again — e.g. DeepSeek Coder or Qwen3", { reply_markup: backToOwnerKeyboard() });
+          return;
+        }
+        setPending(userId, "owner_add_code_step2", { name });
+        await bot.sendMessage(chatId,
+          `✅ Name set to: "${name}"\n\n` +
+          `Now paste the model ID from OpenRouter.\n\n` +
+          `Examples:\n` +
+          `• deepseek/deepseek-coder-v2:free\n` +
+          `• qwen/qwen-2.5-coder-32b-instruct:free\n` +
+          `• meta-llama/llama-3.3-70b-instruct:free\n\n` +
+          `Browse models at openrouter.ai/models`,
+          { reply_markup: backToOwnerKeyboard() }
+        );
+        break;
+      }
+
+      case "owner_add_code_step2": {
+        const modelId = input.trim();
+        const modelName = pendingData?.name;
+        if (!modelId || !modelName) { await bot.sendMessage(chatId, "Something went wrong. Start over.", { reply_markup: backToOwnerKeyboard() }); return; }
+        const config = await getOrCreateBotConfig();
+        if (config.codeModels.find((m) => m.id === modelId)) {
+          await bot.sendMessage(chatId, `A model with ID "${modelId}" already exists.`, { reply_markup: backToOwnerKeyboard() });
+          return;
+        }
+        config.codeModels.push({ id: modelId, name: modelName, active: false });
+        config.markModified("codeModels");
+        await config.save();
+        invalidateBotConfigCache();
+        await bot.sendMessage(chatId, `✅ Code model added!\n\nName: ${modelName}\nID: ${modelId}\n\nHead to 💻 Code Model in the dashboard to activate it.`, { reply_markup: backToOwnerKeyboard() });
+        break;
+      }
+
       // ── Legacy single-step (kept for backwards compat) ──────────────────
 
       case "owner_add_chat_model": {

@@ -100,15 +100,13 @@ function extractJson(raw: string): string {
 
 // ── Main generator ─────────────────────────────────────────────────────────────
 
-// ── Coding models ──────────────────────────────────────────────────────────────
-const CODE_MODELS = [
+const FALLBACK_CODE_MODELS = [
   "meta-llama/llama-3.3-70b-instruct:free",
   "deepseek/deepseek-v4-flash:free",
   "google/gemma-4-31b-it:free",
   "microsoft/phi-4:free",
   "meta-llama/llama-3.1-8b-instruct:free",
 ];
-
 
 export async function generateProject(
   userRequest: string,
@@ -117,18 +115,30 @@ export async function generateProject(
 ): Promise<GeneratedProject> {
   logger.info({ userRequest }, "Generating project — trying code models in order");
 
+  // Build model chain from BotConfig (active first, then others, then hardcoded fallbacks)
+  let codeModels: string[] = FALLBACK_CODE_MODELS;
+  try {
+    const cfg = await getOrCreateBotConfig();
+    if (cfg.codeModels && cfg.codeModels.length > 0) {
+      const active = cfg.activeCodeModel || cfg.codeModels[0].id;
+      const rest = cfg.codeModels.map(m => m.id).filter(id => id !== active);
+      const fallback = FALLBACK_CODE_MODELS.filter(id => id !== active && !rest.includes(id));
+      codeModels = [active, ...rest, ...fallback];
+    }
+  } catch {}
+
   const failures: string[] = [];
   const prompt = buildPrompt(userRequest);
 
-  for (let modelIdx = 0; modelIdx < CODE_MODELS.length; modelIdx++) {
-    const model = CODE_MODELS[modelIdx];
+  for (let modelIdx = 0; modelIdx < codeModels.length; modelIdx++) {
+    const model = codeModels[modelIdx];
     const shortName = model.split("/").pop() ?? model;
     let raw = "";
     try {
       if (modelIdx === 0) {
         onStatus?.("🔨 Building your project");
       } else {
-        onStatus?.(`🔄 Trying model ${modelIdx + 1}/${CODE_MODELS.length}`);
+        onStatus?.(`🔄 Trying model ${modelIdx + 1}/${codeModels.length}`);
       }
       logger.info({ model }, "Attempting project generation");
       const response = await axios.post(

@@ -63,8 +63,10 @@ export interface IMandatoryGroup {
 export interface IBotConfig extends Document {
   activeChatModel: string;
   activeImageModel: string;
+  activeCodeModel: string;
   chatModels: IModelEntry[];
   imageModels: IModelEntry[];
+  codeModels: IModelEntry[];
   premiumEmojiEnabled: boolean;
   maintenanceMode: boolean;
   usageLimits: IUsageLimits;
@@ -160,8 +162,10 @@ const BotConfigSchema = new Schema<IBotConfig>(
   {
     activeChatModel:  { type: String, default: "meta-llama/llama-3.3-70b-instruct:free" },
     activeImageModel: { type: String, default: "stabilityai/stable-diffusion-xl-base-1.0" },
+    activeCodeModel:  { type: String, default: "meta-llama/llama-3.3-70b-instruct:free" },
     chatModels:  { type: [ModelEntrySchema], default: [] },
     imageModels: { type: [ModelEntrySchema], default: [] },
+    codeModels:  { type: [ModelEntrySchema], default: [] },
     premiumEmojiEnabled: { type: Boolean, default: false },
     maintenanceMode:     { type: Boolean, default: false },
     usageLimits: { type: UsageLimitsSchema, default: () => ({}) },
@@ -191,6 +195,12 @@ const DEFAULT_CHAT_MODELS: IModelEntry[] = [
   { id: "meta-llama/llama-3.1-8b-instruct:free",                 name: "Llama 3.1 8B — Ultra Fast",            active: false },
   { id: "meta-llama/llama-3.2-3b-instruct:free",                 name: "Llama 3.2 3B — Smallest/Fastest",      active: false },
   { id: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", name: "Dolphin 24B — Uncensored",     active: false },
+];
+
+const DEFAULT_CODE_MODELS: IModelEntry[] = [
+  { id: "meta-llama/llama-3.3-70b-instruct:free", name: "Llama 3.3 70B — Best Quality", active: true  },
+  { id: "deepseek/deepseek-v4-flash:free",         name: "DeepSeek V4 Flash — Fast Coder", active: false },
+  { id: "google/gemma-4-31b-it:free",              name: "Gemma 4 31B — Google",          active: false },
 ];
 
 const DEFAULT_IMAGE_MODELS: IModelEntry[] = [
@@ -225,9 +235,17 @@ export async function getOrCreateBotConfig(): Promise<IBotConfig> {
     config = new BotConfig({
       activeChatModel:  DEFAULT_CHAT_MODELS.find(m => m.active)!.id,
       activeImageModel: DEFAULT_IMAGE_MODELS.find(m => m.active)!.id,
+      activeCodeModel:  DEFAULT_CODE_MODELS.find(m => m.active)!.id,
       chatModels:  DEFAULT_CHAT_MODELS,
       imageModels: DEFAULT_IMAGE_MODELS,
+      codeModels:  DEFAULT_CODE_MODELS,
     });
+    await config.save();
+  }
+  if (!config.codeModels || config.codeModels.length === 0) {
+    config.codeModels = DEFAULT_CODE_MODELS as any;
+    if (!config.activeCodeModel) config.activeCodeModel = DEFAULT_CODE_MODELS[0].id;
+    config.markModified("codeModels");
     await config.save();
   }
   _botConfigCache = config;

@@ -65,20 +65,18 @@ import {
   ownerGateGroupsKeyboard,
   ownerChatModelsKeyboard,
   ownerImageModelsKeyboard,
+  ownerCodeModelsKeyboard,
   ownerUserListKeyboard,
   backToOwnerKeyboard,
   githubSettingsKeyboard,
   deploymentsKeyboard,
   projectsListKeyboard,
   ownerFeaturesKeyboard,
-  modeSelectKeyboard,
-  currentModeKeyboard,
   accountMenuKeyboard,
   creditsMenuKeyboard,
   referralKeyboard,
   insufficientCreditsKeyboard,
 } from "../utils/keyboards.js";
-import { getUserMode, setUserMode, MODES, getModeById, isValidMode } from "../services/modeManager.js";
 import { logger } from "../../lib/logger.js";
 import { addCredits, getCredits } from "../services/credits.js";
 import { hasAnyPaymentProvider, sendStarsInvoice } from "../services/payment.js";
@@ -208,10 +206,9 @@ export async function handleCallbackQuery(
     // ── Navigation ─────────────────────────────────────────────────────────
 
     if (data === "main_menu" || data === "back_main") {
-      const currentMode = await getUserMode(userId);
       await editMsg(bot, query,
         `Hey ${name}! What would you like to do?\n\nPick a category below:`,
-        mainMenuKeyboard(currentMode.id)
+        mainMenuKeyboard()
       );
       return;
     }
@@ -268,7 +265,6 @@ export async function handleCallbackQuery(
 
     if (data === "show_help") {
       const badge = user.premium.active ? " ✨ Premium" : "";
-      const currentMode = await getUserMode(userId);
       await editMsg(bot, query,
         `Nova Help${badge}\n\n` +
         `Just type anything to chat with me!\n\n` +
@@ -278,13 +274,12 @@ export async function handleCallbackQuery(
         `/voice <text> — Text-to-speech\n` +
         `/search <query> — Web search\n` +
         `/build <idea> — Build a website or app\n` +
-        `/mode — Switch interaction mode\n` +
         `/remind <time> <msg> — Set a reminder\n` +
         `/translate <text> — Translate text\n` +
         `/forget — Clear memory\n` +
         `/redeem <code> — Redeem premium code\n\n` +
         `Or use the menu below — no commands needed!`,
-        mainMenuKeyboard(currentMode.id)
+        mainMenuKeyboard()
       );
       return;
     }
@@ -324,10 +319,9 @@ export async function handleCallbackQuery(
     if (data === "onboard_skip") {
       await User.findOneAndUpdate({ userId }, { onboardingComplete: true });
       await bot.answerCallbackQuery(query.id);
-      const mode = await getUserMode(userId);
       await editMsg(bot, query,
         `👋 Welcome to Nova! What would you like to do?`,
-        mainMenuKeyboard(mode.id)
+        mainMenuKeyboard()
       );
       return;
     }
@@ -396,7 +390,7 @@ export async function handleCallbackQuery(
             expiresAt: userRecord.premium.expiresAt ?? null,
           },
           credits: userRecord.credits,
-          activeMode: userRecord.activeMode ?? "nova",
+          activeMode: (userRecord as any).activeMode ?? "nova",
           usage: {
             totalMessages: userRecord.totalMessages,
             totalImages: userRecord.totalImages,
@@ -897,9 +891,13 @@ export async function handleCallbackQuery(
         if (enc) { const dec = decrypt(enc); if (dec) vercelToken = dec; }
       } catch {}
       if (!vercelToken) {
+        setPending(userId, "vercel_set_token");
         await editMsg(bot, query,
-          "🚀 No Vercel token found.\n\nAdd your Vercel token via ⚙️ Settings → 🚀 Deployments, or set VERCEL_TOKEN in Replit Secrets.",
-          backToMainKeyboard()
+          "⚡ Deploy to Vercel\n\n" +
+          "No Vercel token saved yet. Send your token now and I'll deploy immediately.\n\n" +
+          "How to get one:\nvercel.com → Settings → Tokens → Create Token\n\n" +
+          "⚠️ Your message will be deleted after saving.",
+          { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] }
         );
         return;
       }
@@ -958,9 +956,13 @@ export async function handleCallbackQuery(
         if (enc) { const dec = decrypt(enc); if (dec) renderToken = dec; }
       } catch {}
       if (!renderToken) {
+        setPending(userId, "render_set_token");
         await editMsg(bot, query,
-          "🟣 No Render token found.\n\nAdd your Render API key via ⚙️ Settings → 🚀 Deployments.\n\nGet it at: https://dashboard.render.com/u/settings → API Keys",
-          backToMainKeyboard()
+          "🟣 Deploy to Render\n\n" +
+          "No Render API key saved yet. Send your key now and I'll deploy immediately.\n\n" +
+          "Get one at: dashboard.render.com → Account Settings → API Keys\n\n" +
+          "⚠️ Your message will be deleted after saving.",
+          { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] }
         );
         return;
       }
@@ -2070,6 +2072,63 @@ export async function handleCallbackQuery(
       return;
     }
 
+    if (data === "own_code_models") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const config = await getOrCreateBotConfig();
+      const active = config.codeModels.find((m) => m.id === config.activeCodeModel);
+      await editMsg(bot, query,
+        `💻 Code Models (Website Builder)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nActive: ${active?.name || config.activeCodeModel}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
+        ownerCodeModelsKeyboard(config.codeModels, config.activeCodeModel)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_set_code_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_set_code_", ""));
+      const config = await getOrCreateBotConfig();
+      const model = config.codeModels[idx];
+      if (!model) { await answer(bot, query.id, "Model not found."); return; }
+      config.activeCodeModel = model.id;
+      await config.save();
+      invalidateBotConfigCache();
+      await answer(bot, query.id, `✅ Switched to ${model.name}`);
+      await editMsg(bot, query,
+        `💻 Code Models (Website Builder)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nActive: ${model.name}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
+        ownerCodeModelsKeyboard(config.codeModels, config.activeCodeModel)
+      );
+      return;
+    }
+
+    if (data.startsWith("own_del_code_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const idx = parseInt(data.replace("own_del_code_", ""));
+      const config = await getOrCreateBotConfig();
+      if (config.codeModels.length <= 1) { await answer(bot, query.id, "Cannot delete the only model."); return; }
+      const removed = config.codeModels.splice(idx, 1)[0];
+      if (config.activeCodeModel === removed?.id) config.activeCodeModel = config.codeModels[0].id;
+      config.markModified("codeModels");
+      await config.save();
+      invalidateBotConfigCache();
+      await answer(bot, query.id, `🗑 Removed ${removed?.name}`);
+      const active = config.codeModels.find((m) => m.id === config.activeCodeModel);
+      await editMsg(bot, query,
+        `💻 Code Models (Website Builder)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nActive: ${active?.name || config.activeCodeModel}\n\nTap to switch. 🗑 to remove.\nAdd new with ➕.`,
+        ownerCodeModelsKeyboard(config.codeModels, config.activeCodeModel)
+      );
+      return;
+    }
+
+    if (data === "own_add_code") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_add_code_step1");
+      await editMsg(bot, query,
+        `💻 Add Code Model — Step 1 of 2\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nWhat do you want to call this model?\n\nExamples: DeepSeek Coder, Qwen3 Coder\n\nJust type the display name:`,
+        backToOwnerKeyboard()
+      );
+      return;
+    }
+
     if (data === "own_do_lookup") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
       setPending(userId, "owner_lookup");
@@ -2376,49 +2435,6 @@ export async function handleCallbackQuery(
           [{ text: "💰 View Credits", callback_data: "credits_menu" }],
           [{ text: "🏠 Menu", callback_data: "main_menu" }],
         ]}
-      );
-      return;
-    }
-
-    // ── Modes menu ────────────────────────────────────────────────────────────
-
-    if (data === "modes_menu") {
-      const userRecord = await User.findOne({ userId });
-      const isPrem = userRecord?.premium?.active ?? false;
-      const currentMode = await getUserMode(userId);
-      await editMsg(bot, query,
-        `🎯 Select a Mode\n\nCurrent: ${currentMode.icon} ${currentMode.name}\n${currentMode.description}\n\nPick a mode below — every message you send will be routed to that feature:\n\n🔒 = VIP only mode`,
-        modeSelectKeyboard(currentMode.id, isPrem)
-      );
-      return;
-    }
-
-    if (data.startsWith("mode_set_")) {
-      const modeId = data.replace("mode_set_", "");
-      if (!isValidMode(modeId)) { await answer(bot, query.id, "Unknown mode."); return; }
-      const mode = getModeById(modeId)!;
-      // Check if mode is premium-only
-      if (mode.premiumOnly) {
-        const userRecord = await User.findOne({ userId });
-        const isPrem = userRecord?.premium?.active ?? false;
-        if (!isPrem) {
-          await answer(bot, query.id, `🔒 ${mode.name} is a VIP feature`);
-          await editMsg(bot, query,
-            `🔒 ${mode.icon} ${mode.name} — VIP Feature\n\n${mode.description}\n\nUpgrade to VIP to unlock this mode and get:\n• Unlimited messages\n• No credit deductions\n• All premium modes\n• Priority responses`,
-            { inline_keyboard: [
-              [{ text: "⭐ Go VIP", callback_data: "settings_premium" }],
-              [{ text: "🔄 Back to Modes", callback_data: "modes_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
-            ]}
-          );
-          return;
-        }
-      }
-      await setUserMode(userId, modeId as any);
-      await answer(bot, query.id, `${mode.icon} ${mode.name} activated`);
-      const isNormalMode = modeId === "none" || modeId === "nova";
-      await editMsg(bot, query,
-        `${mode.icon} Mode: ${mode.name}\n\n${mode.activationHint}\n\n${isNormalMode ? "All features available — chat, images, search, and more. Just type naturally!" : `Every message you send will be handled as a ${mode.name} request.`}`,
-        currentModeKeyboard(mode)
       );
       return;
     }
@@ -2845,7 +2861,7 @@ export async function handleCallbackQuery(
         const hasNews = getNewCount() > 0;
         await bot.sendMessage(chatId,
           `✅ Verified! Welcome to Nova.\n\nHere's your menu:`,
-          { reply_markup: mainMenuWithNewsKeyboard(user.activeMode || "none", hasNews) }
+          { reply_markup: mainMenuWithNewsKeyboard(hasNews) }
         );
       } else {
         const groupLines = failedStrict
@@ -2931,7 +2947,7 @@ export async function handleCallbackQuery(
       const hasNews = true; // show What's New indicator after onboarding
       await bot.sendMessage(chatId,
         `${data === "onboard_done" ? "🎉 Let's go!" : "✅ No problem!"} Here's your menu — tap anything to explore.`,
-        { reply_markup: mainMenuWithNewsKeyboard(user.activeMode, hasNews) }
+        { reply_markup: mainMenuWithNewsKeyboard(hasNews) }
       );
       return;
     }

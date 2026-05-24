@@ -49,14 +49,43 @@ Nova is a production Telegram AI assistant with personality modes, group moderat
 
 ---
 
-## Current State (as of end of Session 1)
+## Current State (as of end of Session 2)
 
 - **Build:** ✅ Clean — `pnpm --filter @workspace/api-server run typecheck` passes with 0 errors
-- **Bundle:** ✅ esbuild produces `dist/index.mjs` (8.1 MB)
+- **Bundle:** ✅ esbuild produces `dist/index.mjs`
 - **Workflows:** All 4 running (`Start application`, `admin-dashboard: web`, `api-server: API Server`, `mockup-sandbox`)
-- **Git conflicts:** ✅ All resolved — no merge conflict markers remain
-- **Bot:** Starts cleanly in dev (warns about missing env vars, continues); production validates and hard-aborts if `TELEGRAM_BOT_TOKEN` or `MONGODB_URI` missing
-- **Secrets needed to run the bot:** `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY` (optional but needed for AI), `OWNER_ID` (for owner dashboard)
+- **Bot:** Starts cleanly, defaults to AI chat + auto-intent detection; no mode locking
+- **Secrets needed to run the bot:** `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`
+
+---
+
+## Session 2 — Mode Removal + Builder Config + Deploy UX (completed)
+
+**Goal given by user:** Remove ALL mode switching (Nova defaults to AI chat + auto-detect intent). Website builder uses 3 BotConfig-driven code models (owner switchable, addable). Deploy buttons always shown after build, tokens collected inline when missing. Tokens stored permanently, never deleted.
+
+**Tasks completed:**
+- T001 — Removed mode switching entirely: `/mode` command, mode routing switch block, `modes_menu`/`mode_set_*` callbacks, `🎯 Mode` button from main menu
+- T002 — Replaced mode button with `🔊 Voice` (`tts_btn`) in both `mainMenuKeyboard` and `mainMenuWithNewsKeyboard`; removed `MODES`/`ModeDefinition` imports from keyboards.ts; removed `modeSelectKeyboard`/`currentModeKeyboard` functions
+- T003 — All `mainMenuKeyboard(activeMode)` calls → `mainMenuKeyboard()` and all `mainMenuWithNewsKeyboard(activeMode, hasNews)` → `mainMenuWithNewsKeyboard(hasNews)` across all handlers
+- T004 — `buildResultKeyboard` now always shows Vercel + Render deploy buttons (no conditional); deploy buttons always visible after every build
+- T005 — `deploy_live`/`deploy_render` callbacks now collect token inline when missing (via `setPending`) instead of just showing a settings redirect
+- T006 — After saving Vercel/Render token, shows "Deploy Now" button so user can immediately deploy
+- T007 — Added `activeCodeModel`/`codeModels` to `IBotConfig` interface and `BotConfigSchema` with 3 defaults (Llama 3.3 70B, DeepSeek V4 Flash, Gemma 4 31B); backfill logic for existing configs
+- T008 — `generateProject` in `projectGenerator.ts` now reads active code model from BotConfig (tries active first, then rest, then hardcoded fallbacks)
+- T009 — Added `ownerCodeModelsKeyboard` to keyboards.ts and `💻 Code Model` button to owner panel keyboard
+- T010 — Added `own_code_models`/`own_set_code_*`/`own_del_code_*`/`own_add_code` callbacks to callbackHandler.ts
+- T011 — Added `owner_add_code_step1`/`owner_add_code_step2` pending handlers to ownerHandler.ts
+- T012 — Added `owner_add_code_step1`/`owner_add_code_step2` to pendingActions.ts type union and OWNER_PENDING_ACTIONS set
+- T013 — No-GitHub build path now always shows both Vercel + Render deploy buttons (removed `canDeploy` conditional)
+
+**Files changed in this session:**
+- `artifacts/api-server/src/bot/utils/keyboards.ts` — remove mode functions/button, add ownerCodeModelsKeyboard, update buildResultKeyboard, update both mainMenu keyboards
+- `artifacts/api-server/src/bot/models/BotConfig.ts` — add activeCodeModel/codeModels to interface/schema/defaults/backfill
+- `artifacts/api-server/src/bot/services/projectGenerator.ts` — BotConfig-driven code model chain
+- `artifacts/api-server/src/bot/handlers/privateHandler.ts` — remove mode imports/command/routing, fix all mainMenuKeyboard calls, inline token save flow, always-show deploy path
+- `artifacts/api-server/src/bot/handlers/callbackHandler.ts` — remove mode callbacks/imports, add code model owner callbacks, inline token collect for deploy
+- `artifacts/api-server/src/bot/handlers/ownerHandler.ts` — add owner_add_code_step1/step2 pending handlers
+- `artifacts/api-server/src/bot/utils/pendingActions.ts` — add owner_add_code_step1/step2 types
 
 ---
 
@@ -64,12 +93,11 @@ Nova is a production Telegram AI assistant with personality modes, group moderat
 
 - [ ] `/stats` command — show user their personal breakdown (messages, images, builds, streak, achievements) from MongoDB
 - [ ] Achievements display in callback handler — the `achievements_menu` callback needs a proper handler using the new `getUserAchievements` from engagement.ts
-- [ ] Onboarding step callbacks — `onboard_step_1/2/3/4` callbacks are referenced by the new keyboards but the handler cases are not yet wired up in callbackHandler.ts
-- [ ] `privacy_menu` callback — now has a dedicated `privacyMenuKeyboard` but check the handler sends the right message
 - [ ] `whats_new_menu` callback — `whatsNewKeyboard` is in place; verify the handler uses `formatAnnouncements()` correctly
 - [ ] MongoDB rate limiter cleanup job — the RateLimit model has a TTL index but confirm it fires correctly for your MongoDB version
 - [ ] Telegram Stars payment — `sendStarsInvoice` is wired up but the actual invoice items/prices need to be defined in `payment.ts`
-- [ ] Deploy to Render — set env secrets there: `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`, `WEBHOOK_URL` (to `https://<your-render-app>.onrender.com`)
+- [ ] Deploy to Render — set env secrets: `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`, `WEBHOOK_URL`
+- [ ] `modeManager.ts` is now dead code (nothing imports it) — can be deleted in a future cleanup pass
 
 ---
 

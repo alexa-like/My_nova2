@@ -63,6 +63,8 @@ export type OwnerPendingAction =
   | "owner_add_chat_step2"
   | "owner_add_img_step1"
   | "owner_add_img_step2"
+  | "owner_add_code_step1"
+  | "owner_add_code_step2"
   // Legacy single-step (kept for backwards compat)
   | "owner_add_chat_model"
   | "owner_add_image_model"
@@ -102,6 +104,8 @@ export const OWNER_PENDING_ACTIONS = new Set<PendingActionType>([
   "owner_add_chat_step2",
   "owner_add_img_step1",
   "owner_add_img_step2",
+  "owner_add_code_step1",
+  "owner_add_code_step2",
   "owner_add_chat_model",
   "owner_add_image_model",
   "owner_searchuser",

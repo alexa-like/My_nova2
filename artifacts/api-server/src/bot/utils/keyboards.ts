@@ -1,13 +1,10 @@
 import TelegramBot from "node-telegram-bot-api";
 import { IUser } from "../models/User.js";
 import { IModelEntry } from "../models/BotConfig.js";
-import { MODES, ModeDefinition } from "../services/modeManager.js";
 
 // ── Main dashboard ────────────────────────────────────────────────────────────
 
-export function mainMenuKeyboard(activeMode?: string): TelegramBot.InlineKeyboardMarkup {
-  const mode = MODES.find(m => m.id === activeMode) ?? MODES[0];
-  const modeLabel = `${mode.icon} ${mode.name}`;
+export function mainMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
@@ -24,7 +21,7 @@ export function mainMenuKeyboard(activeMode?: string): TelegramBot.InlineKeyboar
       ],
       [
         { text: "⏰ Reminders", callback_data: "reminders_btn" },
-        { text: `🎯 Mode: ${modeLabel}`, callback_data: "modes_menu" },
+        { text: "🔊 Voice", callback_data: "tts_btn" },
       ],
       [
         { text: "🎁 Daily Reward", callback_data: "daily_reward" },
@@ -105,18 +102,16 @@ export function insufficientCreditsKeyboard(): TelegramBot.InlineKeyboardMarkup 
 // ── Build result keyboard ─────────────────────────────────────────────────────
 
 export function buildResultKeyboard(
-  repoUrl?: string,
-  canDeployVercel = false,
-  canDeployRender = false
+  repoUrl?: string
 ): TelegramBot.InlineKeyboardMarkup {
   const buttons: TelegramBot.InlineKeyboardButton[][] = [];
   if (repoUrl) {
     buttons.push([{ text: "🔗 Open on GitHub", url: repoUrl }]);
   }
-  const deployRow: TelegramBot.InlineKeyboardButton[] = [];
-  if (canDeployVercel) deployRow.push({ text: "⚡ Deploy to Vercel", callback_data: "deploy_live" });
-  if (canDeployRender) deployRow.push({ text: "🟣 Deploy to Render", callback_data: "deploy_render" });
-  if (deployRow.length > 0) buttons.push(deployRow);
+  buttons.push([
+    { text: "⚡ Deploy to Vercel", callback_data: "deploy_live" },
+    { text: "🟣 Deploy to Render", callback_data: "deploy_render" },
+  ]);
   buttons.push([
     { text: "📁 My Projects", callback_data: "my_projects" },
     { text: "🌐 Build Another", callback_data: "build_menu" },
@@ -575,6 +570,9 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
         { text: "🖼 Image Model", callback_data: "own_img_models" },
       ],
       [
+        { text: "💻 Code Model", callback_data: "own_code_models" },
+      ],
+      [
         {
           text: maintenanceOn ? "🔴 Maintenance: ON" : "🟢 Maintenance: OFF",
           callback_data: "own_maint",
@@ -677,6 +675,30 @@ export function ownerGroupsKeyboard(): TelegramBot.InlineKeyboardMarkup {
         { text: "📋 Group List", callback_data: "own_grouplist" },
         { text: "🗑 Delete Group", callback_data: "own_do_del_grp" },
       ],
+      [{ text: "⬅️ Back", callback_data: "own_panel" }],
+    ],
+  };
+}
+
+export function ownerCodeModelsKeyboard(
+  models: IModelEntry[],
+  activeId: string
+): TelegramBot.InlineKeyboardMarkup {
+  const modelButtons = models.map((m, i) => [
+    {
+      text: (m.id === activeId ? "✅ " : "") + m.name,
+      callback_data: `own_set_code_${i}`,
+    },
+    {
+      text: "🗑",
+      callback_data: `own_del_code_${i}`,
+    },
+  ]);
+
+  return {
+    inline_keyboard: [
+      ...modelButtons,
+      [{ text: "➕ Add New Model", callback_data: "own_add_code" }],
       [{ text: "⬅️ Back", callback_data: "own_panel" }],
     ],
   };
@@ -881,37 +903,6 @@ export function ownerUserListKeyboard(
   };
 }
 
-// ── Mode selection keyboard ───────────────────────────────────────────────────
-
-export function modeSelectKeyboard(activeMode: string, isPremium = false): TelegramBot.InlineKeyboardMarkup {
-  const rows: TelegramBot.InlineKeyboardButton[][] = [];
-  for (let i = 0; i < MODES.length; i += 2) {
-    const row: TelegramBot.InlineKeyboardButton[] = [];
-    for (let j = i; j < Math.min(i + 2, MODES.length); j++) {
-      const m = MODES[j];
-      const isActive = m.id === activeMode;
-      const isLocked = m.premiumOnly && !isPremium;
-      row.push({
-        text: (isActive ? "✅ " : isLocked ? "🔒 " : "") + `${m.icon} ${m.name}`,
-        callback_data: `mode_set_${m.id}`,
-      });
-    }
-    rows.push(row);
-  }
-  rows.push([{ text: "⬅️ Menu", callback_data: "main_menu" }]);
-  return { inline_keyboard: rows };
-}
-
-export function currentModeKeyboard(mode: ModeDefinition): TelegramBot.InlineKeyboardMarkup {
-  return {
-    inline_keyboard: [
-      [
-        { text: "🔄 Switch Mode", callback_data: "modes_menu" },
-        { text: "⬅️ Menu", callback_data: "main_menu" },
-      ],
-    ],
-  };
-}
 
 // ── TTS keyboard ──────────────────────────────────────────────────────────────
 
@@ -1156,9 +1147,7 @@ export function buildMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
 
 // ── Main menu with What's New indicator ───────────────────────────────────────
 
-export function mainMenuWithNewsKeyboard(activeMode?: string, hasNews = false): TelegramBot.InlineKeyboardMarkup {
-  const mode = MODES.find(m => m.id === activeMode) ?? MODES[0];
-  const modeLabel = `${mode.icon} ${mode.name}`;
+export function mainMenuWithNewsKeyboard(hasNews = false): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
@@ -1174,8 +1163,8 @@ export function mainMenuWithNewsKeyboard(activeMode?: string, hasNews = false): 
         { text: "🎮 Games",  callback_data: "games_menu" },
       ],
       [
-        { text: "⏰ Reminders",           callback_data: "reminders_btn" },
-        { text: `🎯 Mode: ${modeLabel}`,  callback_data: "modes_menu" },
+        { text: "⏰ Reminders", callback_data: "reminders_btn" },
+        { text: "🔊 Voice",     callback_data: "tts_btn" },
       ],
       [
         { text: "🎁 Daily Reward", callback_data: "daily_reward" },

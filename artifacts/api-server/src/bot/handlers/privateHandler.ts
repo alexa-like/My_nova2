@@ -23,8 +23,6 @@ import {
   backToSettingsKeyboard,
   repeatKeyboard,
   buildResultKeyboard,
-  modeSelectKeyboard,
-  currentModeKeyboard,
   insufficientCreditsKeyboard,
   creditsMenuKeyboard,
   onboardingWelcomeKeyboard,
@@ -39,7 +37,6 @@ import {
   mainMenuWithNewsKeyboard,
 } from "../utils/keyboards.js";
 import { hasAnyPaymentProvider } from "../services/payment.js";
-import { getUserMode, setUserMode, MODES, getModeById, getDefaultMode } from "../services/modeManager.js";
 import { encrypt, decrypt } from "../utils/crypto.js";
 import {
   updateRecentFeatures,
@@ -400,7 +397,7 @@ export async function handlePrivateMessage(
       greeting += `\n\nWhat would you like to do today?`;
       await bot.sendMessage(chatId, greeting, {
         parse_mode: "Markdown",
-        reply_markup: mainMenuWithNewsKeyboard(user.activeMode, hasNews),
+        reply_markup: mainMenuWithNewsKeyboard(hasNews),
       });
     }
     return;
@@ -502,7 +499,7 @@ export async function handlePrivateMessage(
       `📄 Send any PDF/TXT/DOCX — I'll read and analyze it!\n` +
       `🖼️ Send a photo — I'll describe or edit it!\n\n` +
       `Or tap a button below to explore everything 👇`,
-      { reply_markup: mainMenuKeyboard(user.activeMode) }
+      { reply_markup: mainMenuKeyboard() }
     );
     return;
   }
@@ -726,7 +723,7 @@ export async function handlePrivateMessage(
 
   // /menu — show main menu
   if (text === "/menu") {
-    await bot.sendMessage(chatId, e ? `Hey ${name}! What would you like to do?` : "Main menu:", { reply_markup: mainMenuKeyboard(user.activeMode) });
+    await bot.sendMessage(chatId, e ? `Hey ${name}! What would you like to do?` : "Main menu:", { reply_markup: mainMenuKeyboard() });
     return;
   }
 
@@ -1359,176 +1356,8 @@ export async function handlePrivateMessage(
     return;
   }
 
-  // /mode — show mode selection or set mode directly
-  if (text === "/mode" || text.startsWith("/mode ")) {
-    const param = text.startsWith("/mode ") ? text.slice(6).trim().toLowerCase() : "";
-    const currentMode = await getUserMode(user.userId);
-    if (param) {
-      const { isValidMode } = await import("../services/modeManager.js");
-      if (isValidMode(param)) {
-        await setUserMode(user.userId, param as any);
-        const newMode = getModeById(param)!;
-        await bot.sendMessage(chatId,
-          `${newMode.icon} Mode switched to: ${newMode.name}\n\n${newMode.activationHint}`,
-          { reply_markup: currentModeKeyboard(newMode) }
-        );
-      } else {
-        const modeList = MODES.map(m => `${m.icon} ${m.id} — ${m.name}`).join("\n");
-        await bot.sendMessage(chatId,
-          `❓ Unknown mode: "${param}"\n\nAvailable modes:\n${modeList}\n\nUsage: /mode <name>`,
-          { reply_markup: modeSelectKeyboard(currentMode.id) }
-        );
-      }
-    } else {
-      await bot.sendMessage(chatId,
-        `🎯 Select a Mode\n\nCurrent mode: ${currentMode.icon} ${currentMode.name}\n\nEach mode routes every message to a specific feature. Switch anytime!`,
-        { reply_markup: modeSelectKeyboard(currentMode.id) }
-      );
-    }
-    return;
-  }
-
   // Ignore unknown slash commands
   if (text.startsWith("/")) return;
-
-  // ── Mode-based message routing ────────────────────────────────────────────────
-  const activeMode = await getUserMode(user.userId);
-  if (activeMode.id !== "nova" && activeMode.id !== "none") {
-    switch (activeMode.id) {
-      case "image":
-        await handleImageGeneration(bot, chatId, user, text, e);
-        return;
-      case "sticker":
-        await handleStickerGeneration(bot, chatId, user, text, e);
-        return;
-      case "search": {
-        const searchStatus2 = await startLiveStatus(bot, chatId, "🔍 Searching the web");
-        try {
-          const results2 = await webSearch(text);
-          const raw2 = formatSearchResults(text, results2);
-          if (results2.length === 0) {
-            searchStatus2.stop();
-            await searchStatus2.delete();
-            await bot.sendMessage(chatId,
-              `No results found for: "${text.slice(0, 80)}"\n\nTry rephrasing.`,
-              { reply_markup: { inline_keyboard: [[{ text: "🔄 Try Again", callback_data: "search_again" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-            );
-            return;
-          }
-          searchStatus2.update("🧠 Summarizing results");
-          const aiPrompt2 = `Based on these web search results for "${text}":\n\n${raw2}\n\nSummarize the key findings in a helpful, natural response. Be concise and direct. Mention relevant sources.`;
-          const aiReply2 = await chat(user.userId, chatId + 8888, aiPrompt2, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
-          searchStatus2.stop();
-          await searchStatus2.delete();
-          const sources2 = results2.slice(0, 3).map(r => r.url).filter(Boolean);
-          await safeSend(bot, chatId,
-            `🔍 ${text.slice(0, 60)}\n\n${aiReply2}${sources2.length ? `\n\n──────\n${sources2.join("\n")}` : ""}`,
-            { reply_markup: { inline_keyboard: [[{ text: "🔍 Search Again", callback_data: "search_again" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-          );
-        } catch {
-          searchStatus2.stop();
-          await searchStatus2.delete();
-          await bot.sendMessage(chatId, "Search failed. Please try again.");
-        }
-        return;
-      }
-      case "build":
-        await handleBuildRequest(bot, chatId, user, text, e);
-        return;
-      case "voice": {
-        const ttsStatus = await bot.sendMessage(chatId, e ? "🔊 Converting to speech..." : "Converting...");
-        const stopTts = startTypingLoop(bot, chatId, "upload_video");
-        try {
-          const { generateTTS: ttsGen } = await import("../services/tts.js");
-          const ttsResult = await ttsGen(text);
-          stopTts();
-          try { await bot.deleteMessage(chatId, ttsStatus.message_id); } catch {}
-          if (!ttsResult) {
-            await bot.sendMessage(chatId, "TTS generation failed. Please try again.",
-              { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-            );
-            return;
-          }
-          await bot.sendVoice(chatId, ttsResult.buffer, {
-            caption: text.substring(0, 100),
-            reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } as any,
-          });
-        } catch {
-          stopTts();
-          try { await bot.deleteMessage(chatId, ttsStatus.message_id); } catch {}
-          await bot.sendMessage(chatId, "Voice generation failed. Please try again.");
-        }
-        return;
-      }
-      case "translate": {
-        const transStatus = await bot.sendMessage(chatId, e ? "🌍 Translating..." : "Translating...");
-        const stopTrans = startTypingLoop(bot, chatId);
-        try {
-          const transReply = await chat(
-            user.userId, chatId + 9999,
-            `Translate the following text to English. Only respond with the translation, no explanation:\n\n"${text}"`,
-            { style: "serious", emoji: false, length: "short" },
-            user.premium.active
-          );
-          stopTrans();
-          try { await bot.deleteMessage(chatId, transStatus.message_id); } catch {}
-          await safeSend(bot, chatId,
-            `🌍 Translation:\n\n${transReply}`,
-            { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-          );
-        } catch {
-          stopTrans();
-          try { await bot.deleteMessage(chatId, transStatus.message_id); } catch {}
-          await bot.sendMessage(chatId, "Translation failed. Please try again.");
-        }
-        return;
-      }
-
-      case "dev":
-      case "builder":
-      case "creator": {
-        if (!user.premium.active) {
-          if (activeMode.premiumOnly) {
-            await bot.sendMessage(chatId,
-              `🔒 ${activeMode.icon} ${activeMode.name} is a VIP feature.\n\nUpgrade to unlock:\n• ${activeMode.description}\n• No credit deductions\n• Priority responses`,
-              { reply_markup: { inline_keyboard: [
-                [{ text: "⭐ Go VIP", callback_data: "settings_premium" }],
-                [{ text: "🔄 Switch Mode", callback_data: "modes_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
-              ]}}
-            );
-            return;
-          }
-          const chatCost = await getCreditCost("chat");
-          const userCredits = (user as any).credits ?? 0;
-          if (userCredits < chatCost) {
-            await bot.sendMessage(chatId,
-              `💰 You need ${chatCost} credit to use ${activeMode.name}.\n\nYou have ${userCredits} credits.`,
-              { reply_markup: insufficientCreditsKeyboard() }
-            );
-            return;
-          }
-          await deductCredits(user.userId, chatCost);
-        }
-        const modeMsgCfg = await getOrCreateBotConfig();
-        const modeMsgLimit = user.premium.active ? modeMsgCfg.usageLimits.premiumMessages : modeMsgCfg.usageLimits.freeMessages;
-        if (modeMsgLimit >= 0 && user.usage.messages >= modeMsgLimit) {
-          await bot.sendMessage(chatId, `Daily message limit reached.${user.premium.active ? "" : " Upgrade to VIP for more."}`,
-            { reply_markup: { inline_keyboard: [[{ text: "⭐ Go VIP", callback_data: "settings_premium" }]] } });
-          return;
-        }
-        user.usage.messages += 1;
-        await user.save();
-        const modeEnhanced = activeMode.systemPrompt
-          ? `${activeMode.systemPrompt}\n\n---\n\nUser request: ${text}`
-          : text;
-        const stopModeTyping = startTypingLoop(bot, chatId);
-        const modeReply = await chat(user.userId, chatId, modeEnhanced, user.settings, user.premium.active, user.mood ?? undefined);
-        stopModeTyping();
-        await sendAIReply(bot, chatId, modeReply);
-        return;
-      }
-    }
-  }
 
   // ── Auto-detect generation intents from natural language ────────────────────
   const imagePrompt = detectImageIntent(text);
@@ -2003,16 +1832,19 @@ async function handlePendingText(
         try { if (messageId) await bot.deleteMessage(chatId, messageId); } catch {}
         if (!tok || tok.length < 10) {
           await bot.sendMessage(chatId,
-            "❌ That doesn't look like a valid Vercel token. Please try again from ⚙️ Settings → 🚀 Deployments.",
-            { reply_markup: { inline_keyboard: [[{ text: "⬅️ Deployments", callback_data: "settings_deployments" }]] } }
+            "❌ That doesn't look like a valid Vercel token. Please try again.",
+            { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
           );
           break;
         }
         const encVercel = encrypt(tok);
         await User.updateOne({ userId: user.userId }, { vercelTokenEncrypted: encVercel });
         await bot.sendMessage(chatId,
-          `✅ Vercel token saved securely!\n\n🔒 Encrypted with AES-256. Nova will use it when you run /deploy.\n\nTo remove it: ⚙️ Settings → 🚀 Deployments → Remove Vercel Token`,
-          { reply_markup: { inline_keyboard: [[{ text: "⚙️ Deployments", callback_data: "settings_deployments" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+          `✅ Vercel token saved securely!\n\n🔒 Encrypted with AES-256. Ready to deploy!`,
+          { reply_markup: { inline_keyboard: [
+            [{ text: "⚡ Deploy Now", callback_data: "deploy_live" }],
+            [{ text: "⚙️ Deployments", callback_data: "settings_deployments" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+          ]}}
         );
         break;
       }
@@ -2021,16 +1853,19 @@ async function handlePendingText(
         try { if (messageId) await bot.deleteMessage(chatId, messageId); } catch {}
         if (!tok || tok.length < 10) {
           await bot.sendMessage(chatId,
-            "❌ That doesn't look like a valid Render API key. Please try again from ⚙️ Settings → 🚀 Deployments.",
-            { reply_markup: { inline_keyboard: [[{ text: "⬅️ Deployments", callback_data: "settings_deployments" }]] } }
+            "❌ That doesn't look like a valid Render API key. Please try again.",
+            { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
           );
           break;
         }
         const encRender = encrypt(tok);
         await User.updateOne({ userId: user.userId }, { renderTokenEncrypted: encRender });
         await bot.sendMessage(chatId,
-          `✅ Render API key saved securely!\n\n🔒 Encrypted with AES-256. Nova will use it when deploying to Render.\n\nTo remove it: ⚙️ Settings → 🚀 Deployments → Remove Render Token`,
-          { reply_markup: { inline_keyboard: [[{ text: "⚙️ Deployments", callback_data: "settings_deployments" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+          `✅ Render API key saved securely!\n\n🔒 Encrypted with AES-256. Ready to deploy!`,
+          { reply_markup: { inline_keyboard: [
+            [{ text: "🟣 Deploy Now", callback_data: "deploy_render" }],
+            [{ text: "⚙️ Deployments", callback_data: "settings_deployments" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+          ]}}
         );
         break;
       }
@@ -2039,11 +1874,11 @@ async function handlePendingText(
         break;
       }
       default:
-        await bot.sendMessage(chatId, "Something went wrong. Try again from the menu.", { reply_markup: mainMenuKeyboard(user.activeMode) });
+        await bot.sendMessage(chatId, "Something went wrong. Try again from the menu.", { reply_markup: mainMenuKeyboard() });
     }
   } catch (err) {
     logger.error({ err, actionType }, "Error handling pending text action");
-    await bot.sendMessage(chatId, "Something went wrong, try again later.", { reply_markup: mainMenuKeyboard(user.activeMode) });
+    await bot.sendMessage(chatId, "Something went wrong, try again later.", { reply_markup: mainMenuKeyboard() });
   } finally {
     stopTyping();
   }
@@ -2314,10 +2149,6 @@ async function handleBuildRequest(
 
   const label = typeLabel(project.type);
   const fileCount = project.files.length;
-  const vercelTok = await resolveVercelToken(user);
-  const renderTok = await resolveRenderToken(user);
-  const canDeploy = !!vercelTok;
-  const canDeployRender = !!renderTok;
   await cacheUserBuild(user.userId, project, prompt);
 
   // ── Step 2a: GitHub push ────────────────────────────────────────────────────
@@ -2381,7 +2212,7 @@ async function handleBuildRequest(
         await buildStatus.delete();
         await bot.sendMessage(chatId,
           `⚠️ Uploaded ${lastDone}/${fileCount} files. Repo: ${repoInfo.htmlUrl}\n\nSending remaining files directly...`,
-          { reply_markup: buildResultKeyboard(repoInfo.htmlUrl, canDeploy) }
+          { reply_markup: buildResultKeyboard(repoInfo.htmlUrl) }
         );
         await sendProjectFiles(bot, chatId, project, e, lastDone);
         return;
@@ -2405,7 +2236,7 @@ async function handleBuildRequest(
       `🔗 ${repoInfo.htmlUrl}\n\n` +
       `${fileCount} files · ${label}\n\n` +
       `💡 ${project.deploymentTip}`,
-      { reply_markup: buildResultKeyboard(repoInfo.htmlUrl, canDeploy, canDeployRender) }
+      { reply_markup: buildResultKeyboard(repoInfo.htmlUrl) }
     );
     return;
   }
@@ -2420,7 +2251,10 @@ async function handleBuildRequest(
         { text: "📤 Push to GitHub", callback_data: "build_choice_github" },
         { text: "📱 Send to Telegram", callback_data: "build_choice_telegram" },
       ],
-      ...(canDeploy ? [[{ text: "⚡ Deploy to Vercel", callback_data: "deploy_live" }]] : []),
+      [
+        { text: "⚡ Deploy to Vercel", callback_data: "deploy_live" },
+        { text: "🟣 Deploy to Render", callback_data: "deploy_render" },
+      ],
       [{ text: "⬅️ Menu", callback_data: "main_menu" }],
     ],
   };
