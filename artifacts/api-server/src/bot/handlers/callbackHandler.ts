@@ -383,6 +383,52 @@ export async function handleCallbackQuery(
       return;
     }
 
+    if (data === "export_btn") {
+      await bot.answerCallbackQuery(query.id, { text: "Preparing your data export..." });
+      try {
+        const userRecord = await User.findOne({ userId });
+        if (!userRecord) { await bot.sendMessage(chatId, "Could not find your data."); return; }
+        const exportData = {
+          exportedAt: new Date().toISOString(),
+          profile: {
+            userId: userRecord.userId,
+            username: userRecord.username ?? null,
+            firstName: userRecord.firstName ?? null,
+            memberSince: userRecord.firstSeen,
+            lastSeen: userRecord.lastSeen,
+          },
+          settings: userRecord.settings,
+          premium: {
+            active: userRecord.premium.active,
+            plan: userRecord.premium.plan ?? null,
+            expiresAt: userRecord.premium.expiresAt ?? null,
+          },
+          credits: userRecord.credits,
+          activeMode: userRecord.activeMode ?? "nova",
+          usage: {
+            totalMessages: userRecord.totalMessages,
+            totalImages: userRecord.totalImages,
+            totalBuilds: userRecord.totalBuilds,
+            totalSearches: userRecord.totalSearches,
+          },
+          projects: userRecord.projects.map(p => ({ name: p.name, repoUrl: p.repoUrl, deployUrl: p.deployUrl ?? null, createdAt: p.createdAt })),
+          achievements: userRecord.achievements,
+          referrals: userRecord.referrals.length,
+          referralCode: userRecord.referralCode ?? null,
+        };
+        const json = JSON.stringify(exportData, null, 2);
+        const buf = Buffer.from(json, "utf-8");
+        await bot.sendDocument(
+          chatId, buf,
+          { caption: `📤 Your Nova AI data export\n\nThis file contains all data we store about you.` },
+          { filename: `nova-export-${userId}.json`, contentType: "application/json" }
+        );
+      } catch (err) {
+        await bot.sendMessage(chatId, "Failed to export data. Please try again.");
+      }
+      return;
+    }
+
     // ── Updates / What's New callback ────────────────────────────────────────
 
     if (data === "updates_menu") {
@@ -825,6 +871,15 @@ export async function handleCallbackQuery(
       await editMsg(bot, query,
         `🔊 Text-to-Speech\n\nType the text you want me to speak:\n\nTip: keep it under 300 characters for best results.`,
         backToImgKeyboard()
+      );
+      return;
+    }
+
+    if (data === "stt_btn") {
+      await bot.answerCallbackQuery(query.id);
+      await bot.sendMessage(chatId,
+        `🎤 Voice Transcription\n\nSend me a voice message and I'll convert it to text!\n\nJust hold the microphone button in Telegram and record your message.`,
+        { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
       );
       return;
     }

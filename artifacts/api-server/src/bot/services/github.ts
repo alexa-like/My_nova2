@@ -108,7 +108,7 @@ export async function pushAllFiles(
       if (r.status === "rejected") {
         failed++;
         // Import logger lazily to avoid circular import
-        console.error(`[github] Failed to push file: ${r.reason?.message ?? r.reason}`);
+        logger.warn({ reason: r.reason?.message ?? String(r.reason) }, "Failed to push file to GitHub");
       }
     }
     done = Math.min(i + BATCH_SIZE, files.length);

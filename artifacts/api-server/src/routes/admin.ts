@@ -305,9 +305,11 @@ router.post("/admin/users/:userId/message", async (req, res) => {
 });
 
 // ── POST /api/admin/broadcast ───────────────────────────────────────────────
+const BROADCAST_MAX_LEN = 4000; // Telegram message limit is 4096
 router.post("/admin/broadcast", async (req, res) => {
   const { message, premiumOnly } = req.body as { message: string; premiumOnly?: boolean };
   if (!message?.trim()) { res.status(400).json({ error: "message is required" }); return; }
+  if (message.length > BROADCAST_MAX_LEN) { res.status(400).json({ error: `Message too long (max ${BROADCAST_MAX_LEN} chars)` }); return; }
   const bot = getBot();
   if (!bot) { res.status(503).json({ error: "Bot is offline" }); return; }
   try {
@@ -441,18 +443,26 @@ router.patch("/admin/config", async (req, res) => {
 });
 
 // ── PUT /api/admin/config/limits ─────────────────────────────────────────────
+const LIMIT_BOUNDS: Record<string, [number, number]> = {
+  freeMessages:       [-1, 10000],
+  freeImages:         [-1, 1000],
+  freeBuilds:         [-1, 100],
+  premiumMessages:    [-1, 100000],
+  premiumImages:      [-1, 10000],
+  premiumBuilds:      [-1, 1000],
+  resetIntervalHours: [1, 168],
+};
 router.put("/admin/config/limits", async (req, res) => {
   try {
     const config = await getOrCreateBotConfig();
     const limits = req.body as Record<string, number>;
-    const limitKeys = [
-      "freeMessages", "freeImages", "freeBuilds",
-      "premiumMessages", "premiumImages", "premiumBuilds",
-      "resetIntervalHours",
-    ];
+    const limitKeys = Object.keys(LIMIT_BOUNDS);
     for (const key of limitKeys) {
-      if (key in limits && typeof limits[key] === "number") {
-        (config.usageLimits as any)[key] = limits[key];
+      if (key in limits) {
+        const val = Number(limits[key]);
+        if (!Number.isFinite(val)) continue;
+        const [min, max] = LIMIT_BOUNDS[key];
+        (config.usageLimits as any)[key] = Math.max(min, Math.min(max, Math.floor(val)));
       }
     }
     config.markModified("usageLimits");

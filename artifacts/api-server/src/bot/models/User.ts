@@ -145,4 +145,11 @@ const UserSchema = new Schema<IUser>(
   { timestamps: true }
 );
 
+// Performance indexes for common query patterns
+UserSchema.index({ lastSeen: -1 });                  // sort by recent activity
+UserSchema.index({ banned: 1 });                     // filter banned users
+UserSchema.index({ "premium.active": 1 });           // filter premium users
+UserSchema.index({ referralCode: 1 }, { sparse: true }); // referral code lookups
+UserSchema.index({ "premium.active": 1, banned: 1 }); // broadcast filters
+
 export const User = mongoose.model<IUser>("User", UserSchema);

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { User } from "../bot/models/User.js";
 import { RedeemCode } from "../bot/models/RedeemCode.js";
 import { Memory } from "../bot/models/Memory.js";
@@ -7,7 +7,15 @@ import { getBot } from "../bot/index.js";
 
 const router = Router();
 
-router.get("/bot/status", async (req, res) => {
+// Lightweight API key guard (reuses same ADMIN_API_KEY as admin routes)
+function requireApiKey(req: Request, res: Response, next: NextFunction): void {
+  const key = process.env.ADMIN_API_KEY;
+  const provided = req.headers["x-api-key"] || req.query["api_key"];
+  if (!key || provided === key) { next(); return; }
+  res.status(401).json({ error: "Unauthorized" });
+}
+
+router.get("/bot/status", requireApiKey, async (req, res) => {
   const bot = getBot();
   if (!bot) {
     res.json({ status: "offline", message: "Bot is not running" });

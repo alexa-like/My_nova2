@@ -30,8 +30,27 @@ app.use(
     },
   }),
 );
-app.use(cors());
-app.use(express.json());
+// Restrict CORS to trusted origins only
+const ALLOWED_ORIGINS = [
+  process.env.APP_URL,
+  process.env.RENDER_EXTERNAL_URL,
+  process.env.SERVER_URL,
+  "http://localhost:5173",
+  "http://localhost:3000",
+].filter(Boolean) as string[];
+
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow same-origin (no origin header) and Replit preview domains
+    if (!origin || ALLOWED_ORIGINS.some(o => origin.startsWith(o)) || origin.includes(".replit.") || origin.includes(".repl.co")) {
+      cb(null, true);
+    } else {
+      cb(null, false);
+    }
+  },
+  credentials: true,
+}));
+app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
