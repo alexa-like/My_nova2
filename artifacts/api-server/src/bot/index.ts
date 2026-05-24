@@ -15,6 +15,7 @@ import { setPremiumEmojiEnabled } from "./utils/premiumEmoji.js";
 import { disconnectDB } from "./services/db.js";
 import { logger } from "../lib/logger.js";
 import { seedDefaultMandatoryGroup, getMandatoryGroups, sendLeftGroupDM } from "./services/groupGate.js";
+import { handleStarPayment } from "./services/payment.js";
 
 // ── In-memory captcha store ─────────────────────────────────────────────────
 interface CaptchaChallenge {
@@ -78,13 +79,18 @@ export async function startBot(): Promise<void> {
     return;
   }
 
-  bot = new TelegramBot(token, {
-    polling: {
-      interval: 1000,
-      autoStart: true,
-      params: { timeout: 10 },
-    },
-  });
+  const webhookUrl = process.env.WEBHOOK_URL || process.env.RENDER_EXTERNAL_URL;
+  if (webhookUrl) {
+    bot = new TelegramBot(token, { webHook: false });
+    const webhookPath = `${webhookUrl.replace(/\/$/, "")}/api/bot/webhook`;
+    await bot.setWebHook(webhookPath, { max_connections: 40 });
+    logger.info({ webhookPath }, "Telegram webhook mode active");
+  } else {
+    bot = new TelegramBot(token, {
+      polling: { interval: 1000, autoStart: true, params: { timeout: 10 } },
+    });
+    logger.info("Telegram polling mode active");
+  }
 
   let botUsername = "NovaBot";
   try {
@@ -214,6 +220,12 @@ export async function startBot(): Promise<void> {
       }
 
       if (isPrivate(msg)) {
+        // Telegram Stars successful payment
+        if ((msg as any).successful_payment) {
+          await handleStarPayment(bot!, msg);
+          return;
+        }
+
         // Voice messages
         if (msg.voice) {
           await handleVoiceMessage(bot!, msg, user);
@@ -607,6 +619,16 @@ export async function startBot(): Promise<void> {
     }
   });
 
+  // ── Telegram Stars payment handlers ────────────────────────────────────────
+  (bot as any).on("pre_checkout_query", async (query: any) => {
+    try {
+      await (bot as any).answerPreCheckoutQuery(query.id, true);
+    } catch (err) {
+      logger.error({ err }, "Error answering pre_checkout_query");
+      try { await (bot as any).answerPreCheckoutQuery(query.id, false, "Payment error"); } catch {}
+    }
+  });
+
   // ── Error handlers ─────────────────────────────────────────────────────────
   let pollingRestartAttempts = 0;
   const MAX_RESTART_ATTEMPTS = 10;
@@ -696,6 +718,12 @@ function scheduleDailyReport(botInstance: TelegramBot): void {
 
 export function getBot(): TelegramBot | null {
   return bot;
+}
+
+export function processWebhookUpdate(body: object): void {
+  if (bot) {
+    (bot as any).processUpdate(body);
+  }
 }
 
 let _cachedBotUsername = "NovaBot";

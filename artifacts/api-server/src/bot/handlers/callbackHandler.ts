@@ -74,7 +74,7 @@ import {
 import { getUserMode, setUserMode, MODES, getModeById, isValidMode } from "../services/modeManager.js";
 import { logger } from "../../lib/logger.js";
 import { addCredits, getCredits } from "../services/credits.js";
-import { hasAnyPaymentProvider } from "../services/payment.js";
+import { hasAnyPaymentProvider, sendStarsInvoice } from "../services/payment.js";
 import { checkAndAwardAchievements, formatAchievementNotification, getUserAchievements, getLastFeatures, FEATURE_LABELS, ACHIEVEMENTS } from "../services/engagement.js";
 import { formatAnnouncements } from "../services/announcements.js";
 import { getMandatoryGroups, removeMandatoryGroup, getFailedGroups } from "../services/groupGate.js";
@@ -689,7 +689,7 @@ export async function handleCallbackQuery(
         );
         return;
       }
-      const cached = getCachedBuild(userId);
+      const cached = await getCachedBuild(userId);
       if (!cached) {
         await editMsg(bot, query,
           "⏳ Build session expired (45 min limit).\n\nRun /deploy <description> to generate and deploy a fresh project.",
@@ -750,7 +750,7 @@ export async function handleCallbackQuery(
         );
         return;
       }
-      const cached = getCachedBuild(userId);
+      const cached = await getCachedBuild(userId);
       if (!cached) {
         await editMsg(bot, query,
           "⏳ Build session expired. Run /build first to generate a project.",
@@ -833,7 +833,7 @@ export async function handleCallbackQuery(
 
     if (data === "build_choice_telegram") {
       await bot.answerCallbackQuery(query.id, { text: "Sending your files..." });
-      const cached = getCachedBuild(userId);
+      const cached = await getCachedBuild(userId);
       if (!cached) {
         await bot.sendMessage(chatId, "⚠️ Project session expired. Please build again.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Build Again", callback_data: "build_menu" }]] } });
         return;
@@ -866,7 +866,7 @@ export async function handleCallbackQuery(
 
     if (data === "build_choice_github") {
       await bot.answerCallbackQuery(query.id);
-      const cached = getCachedBuild(userId);
+      const cached = await getCachedBuild(userId);
       if (!cached) {
         await bot.sendMessage(chatId, "⚠️ Project session expired. Please build again.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Build Again", callback_data: "build_menu" }]] } });
         return;
@@ -2098,13 +2098,15 @@ export async function handleCallbackQuery(
       return;
     }
 
-    if (data === "credits_coming_soon") {
-      await answer(bot, query.id, "Payment system coming soon!", true);
-      return;
-    }
-
     if (data.startsWith("buy_pack_")) {
-      await answer(bot, query.id, "Payment integration coming soon. Stay tuned!", true);
+      const itemId = data.replace("buy_pack_", "");
+      await answer(bot, query.id);
+      try {
+        await sendStarsInvoice(bot, chatId, itemId);
+      } catch (err) {
+        logger.warn({ err, itemId }, "Failed to send Stars invoice");
+        await bot.sendMessage(chatId, "Couldn't open the payment screen. Please try again.");
+      }
       return;
     }
 

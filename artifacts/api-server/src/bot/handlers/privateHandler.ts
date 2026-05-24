@@ -347,7 +347,7 @@ export async function handlePrivateMessage(
       const failedStrict = (await getFailedGroups(bot, user.userId)).filter(g => g.strict);
       if (failedStrict.length > 0) {
         await sendGroupGateMessage(bot, chatId, failedStrict, true);
-        return;
+        // Soft gate — show the invite but allow the user to continue using the bot
       }
     } catch { /* non-fatal — never block on gate error */ }
   }
@@ -682,9 +682,12 @@ export async function handlePrivateMessage(
         `You are on the Free plan.\n\n` +
         `Free limits:\n` +
         `• ${freeImgLimitDisplay} images per day\n` +
+        `• 5 photo edits per day\n` +
         `• Standard AI responses\n\n` +
-        `Get Premium with a redeem code:\n/redeem CODE`,
-        { reply_markup: backKb }
+        `Upgrade to VIP:\n` +
+        `• 💳 Buy with Telegram Stars — tap 💰 Credits\n` +
+        `• 🎟️ Redeem a code — /redeem CODE`,
+        { reply_markup: { inline_keyboard: [[{ text: "⭐ Buy VIP with Stars", callback_data: "credits_menu" }], [{ text: "⬅️ Back to Menu", callback_data: "main_menu" }]] } }
       );
     }
     return;
@@ -803,7 +806,8 @@ export async function handlePrivateMessage(
       `💰 Credits: ${statsCredits}\n\n` +
       `── Today ──\n` +
       `💬 Messages: ${user.usage.messages}\n` +
-      `🖼️ Images: ${user.usage.images}/${imageLimit >= 999999 ? "∞" : imageLimit}\n\n` +
+      `🖼️ Images: ${user.usage.images}/${imageLimit >= 999999 ? "∞" : imageLimit}\n` +
+      `✏️ Photo Edits: ${user.usage.edits ?? 0}/${user.premium.active ? "∞" : 5}\n\n` +
       `── All Time ──\n` +
       `🔨 Builds: ${builds}\n` +
       `👥 Referrals: ${user.referrals?.length ?? 0}\n` +
@@ -1177,7 +1181,7 @@ export async function handlePrivateMessage(
       return;
     }
     if (!prompt) {
-      const cached = getCachedBuild(user.userId);
+      const cached = await getCachedBuild(user.userId);
       if (cached) {
         await handleDeployToVercel(bot, chatId, user, cached.project, vercelToken, e);
       } else {
@@ -2063,11 +2067,13 @@ export async function handlePhotoMessage(
     return;
   }
 
-  const photoImgLimit = await getImageLimit(user.premium.active);
-  if (user.usage.images >= photoImgLimit) {
+  const editDailyLimit = user.premium.active ? 999999 : 5;
+  const currentEdits = user.usage.edits ?? 0;
+  if (currentEdits >= editDailyLimit) {
     await bot.sendMessage(chatId,
-      `Daily image limit reached (${photoImgLimit >= 999999 ? "∞" : photoImgLimit}/day).` +
-      (user.premium.active ? "" : " Upgrade with /redeem CODE.")
+      `Daily photo edit limit reached (${editDailyLimit >= 999999 ? "∞" : editDailyLimit}/day).` +
+      (user.premium.active ? "" : " Upgrade to VIP for unlimited edits — tap 💰 Credits."),
+      { reply_markup: user.premium.active ? undefined : insufficientCreditsKeyboard() }
     );
     clearPending(user.userId);
     return;
@@ -2143,7 +2149,7 @@ export async function handlePhotoMessage(
       return;
     }
 
-    user.usage.images += 1;
+    user.usage.edits = (user.usage.edits ?? 0) + 1;
     await user.save();
     track("image_edit", user.userId, chatId).catch(() => {});
 
@@ -2256,7 +2262,7 @@ async function handleBuildRequest(
   const renderTok = await resolveRenderToken(user);
   const canDeploy = !!vercelTok;
   const canDeployRender = !!renderTok;
-  cacheUserBuild(user.userId, project, prompt);
+  await cacheUserBuild(user.userId, project, prompt);
 
   // ── Step 2a: GitHub push ────────────────────────────────────────────────────
   if (hasGitHub) {
@@ -2334,7 +2340,7 @@ async function handleBuildRequest(
     user.projects.push({ name: project.name, repoUrl: repoInfo.htmlUrl, deployUrl: undefined, createdAt: new Date() } as any);
     await user.save();
 
-    cacheUserBuild(user.userId, project, prompt, repoInfo.htmlUrl);
+    await cacheUserBuild(user.userId, project, prompt, repoInfo.htmlUrl);
 
     await bot.sendMessage(chatId,
       `🚀 Your project is ready!\n\n` +
@@ -2416,7 +2422,7 @@ async function handleDeployRequest(
     return;
   }
 
-  cacheUserBuild(user.userId, project, prompt);
+  await cacheUserBuild(user.userId, project, prompt);
 
   stopTyping();
   await handleDeployToVercel(bot, chatId, user, project, vercelToken, e, statusMsg.message_id);

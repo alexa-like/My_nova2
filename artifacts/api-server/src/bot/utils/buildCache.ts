@@ -1,4 +1,6 @@
+import { BuildCacheModel } from "../models/BuildCache.js";
 import type { GeneratedProject } from "../services/projectGenerator.js";
+import { logger } from "../../lib/logger.js";
 
 export interface CachedBuild {
   project: GeneratedProject;
@@ -7,23 +9,43 @@ export interface CachedBuild {
   repoUrl?: string;
 }
 
-const cache = new Map<number, CachedBuild>();
-const TTL_MS = 45 * 60 * 1000; // 45 minutes
-
-export function cacheUserBuild(userId: number, project: GeneratedProject, prompt: string, repoUrl?: string): void {
-  cache.set(userId, { project, prompt, savedAt: Date.now(), repoUrl });
+export async function cacheUserBuild(
+  userId: number,
+  project: GeneratedProject,
+  prompt: string,
+  repoUrl?: string
+): Promise<void> {
+  try {
+    await BuildCacheModel.findOneAndUpdate(
+      { userId },
+      { userId, project, prompt, repoUrl, savedAt: new Date() },
+      { upsert: true, new: true }
+    );
+  } catch (err) {
+    logger.warn({ err, userId }, "Failed to cache build in MongoDB — non-fatal");
+  }
 }
 
-export function getCachedBuild(userId: number): CachedBuild | null {
-  const entry = cache.get(userId);
-  if (!entry) return null;
-  if (Date.now() - entry.savedAt > TTL_MS) {
-    cache.delete(userId);
+export async function getCachedBuild(userId: number): Promise<CachedBuild | null> {
+  try {
+    const doc = await BuildCacheModel.findOne({ userId });
+    if (!doc) return null;
+    return {
+      project: doc.project as GeneratedProject,
+      prompt: doc.prompt,
+      savedAt: doc.savedAt.getTime(),
+      repoUrl: doc.repoUrl,
+    };
+  } catch (err) {
+    logger.warn({ err, userId }, "Failed to retrieve cached build — non-fatal");
     return null;
   }
-  return entry;
 }
 
-export function clearUserBuild(userId: number): void {
-  cache.delete(userId);
+export async function clearUserBuild(userId: number): Promise<void> {
+  try {
+    await BuildCacheModel.deleteOne({ userId });
+  } catch (err) {
+    logger.warn({ err, userId }, "Failed to clear cached build — non-fatal");
+  }
 }

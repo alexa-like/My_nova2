@@ -57,15 +57,15 @@ export async function sendGroupGateMessage(
 
   await bot.sendMessage(
     userId,
-    `🔒 Access Required\n\n` +
-    `To use Nova, you need to be a member of our community:\n\n` +
+    `👋 Hey! Join our community to get the best Nova experience.\n\n` +
+    `Our group${targets.length > 1 ? "s are" : " is"} where we share tips, updates, and support:\n\n` +
     targets.map(g => `• ${g.name}`).join("\n") +
-    `\n\nJoin the group${targets.length > 1 ? "s" : ""} below and then send /start again.`,
+    `\n\nJoin now — it only takes a second! You can still use Nova in the meantime.`,
     {
       reply_markup: {
         inline_keyboard: [
           ...groupButtons,
-          [{ text: "✅ I Joined — Check Again", callback_data: "gate_recheck" }],
+          [{ text: "✅ I Joined — Mark as Done", callback_data: "gate_recheck" }],
         ],
       },
     }

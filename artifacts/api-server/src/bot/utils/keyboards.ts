@@ -57,20 +57,20 @@ export function accountMenuKeyboard(isPremium: boolean): TelegramBot.InlineKeybo
   };
 }
 
-export function creditsMenuKeyboard(hasPayment: boolean): TelegramBot.InlineKeyboardMarkup {
+export function creditsMenuKeyboard(_hasPayment: boolean): TelegramBot.InlineKeyboardMarkup {
   const rows: TelegramBot.InlineKeyboardButton[][] = [];
-  if (hasPayment) {
-    rows.push([
-      { text: "🌱 50 Credits — $0.99", callback_data: "buy_pack_50" },
-      { text: "⚡ 150 Credits — $2.49", callback_data: "buy_pack_150" },
-    ]);
-    rows.push([
-      { text: "🚀 500 Credits — $6.99", callback_data: "buy_pack_500" },
-      { text: "💎 1500 Credits — $17.99", callback_data: "buy_pack_1500" },
-    ]);
-  } else {
-    rows.push([{ text: "💳 Payment coming soon — stay tuned!", callback_data: "credits_coming_soon" }]);
-  }
+  rows.push([
+    { text: "🌱 50 Credits — 15 ⭐", callback_data: "buy_pack_pack_50" },
+    { text: "⚡ 150 Credits — 40 ⭐", callback_data: "buy_pack_pack_150" },
+  ]);
+  rows.push([
+    { text: "🚀 500 Credits — 115 ⭐", callback_data: "buy_pack_pack_500" },
+    { text: "💎 1500 Credits — 299 ⭐", callback_data: "buy_pack_pack_1500" },
+  ]);
+  rows.push([
+    { text: "⭐ VIP Monthly — 149 ⭐", callback_data: "buy_pack_vip_monthly" },
+    { text: "👑 VIP Lifetime — 499 ⭐", callback_data: "buy_pack_vip_lifetime" },
+  ]);
   rows.push([
     { text: "🎁 Claim Daily Reward", callback_data: "daily_reward" },
     { text: "👥 Earn via Referrals", callback_data: "referral_menu" },
