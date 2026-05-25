@@ -26,6 +26,7 @@ export function mainMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
       [
         { text: "📊 My Account", callback_data: "account_menu" },
         { text: "💰 Credits", callback_data: "credits_menu" },
+        { text: "🪙 Earn Coins", callback_data: "earn_coins" },
       ],
       [
         { text: "⭐ Go Premium", callback_data: "settings_premium" },
@@ -558,7 +559,7 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
         { text: "🏘 Groups", callback_data: "own_groups" },
       ],
       [
-        { text: "🔒 Group Gate", callback_data: "own_gate_groups" },
+        { text: "💰 Promotions", callback_data: "own_promo_menu" },
         { text: "⚙️ Features", callback_data: "own_features" },
       ],
       [
@@ -587,18 +588,39 @@ export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKey
   };
 }
 
-export function ownerGateGroupsKeyboard(groups: Array<{ name: string; link: string; chatId: number; strict: boolean }>): TelegramBot.InlineKeyboardMarkup {
+export function ownerPromoGroupsKeyboard(
+  groups: Array<{ id: string; title: string; active: boolean; reward: number; verifiedCount: number }>
+): TelegramBot.InlineKeyboardMarkup {
   const rows: TelegramBot.InlineKeyboardButton[][] = [];
-  groups.forEach((g, i) => {
-    const status = g.chatId ? "🟢" : "🔴";
-    const strictLabel = g.strict ? " ⛔" : "";
+  for (const g of groups) {
+    const status = g.active ? "🟢" : "⏸";
     rows.push([
-      { text: `${status} ${g.name}${strictLabel}`, callback_data: `own_gate_view_${i}` },
-      { text: "❌ Remove", callback_data: `own_gate_remove_${i}` },
+      { text: `${status} ${g.title} · ${g.reward}🪙 · ${g.verifiedCount} joined`, callback_data: `own_promo_view_${g.id}` },
     ]);
-  });
-  rows.push([{ text: "➕ Add Group", callback_data: "own_gate_add" }]);
+  }
+  rows.push([{ text: "➕ Add Promo Group", callback_data: "own_promo_add" }]);
   rows.push([{ text: "⬅️ Back to Dashboard", callback_data: "own_panel" }]);
+  return { inline_keyboard: rows };
+}
+
+export function promoGroupDetailKeyboard(id: string, active: boolean): TelegramBot.InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: active ? "⏸ Deactivate" : "▶️ Activate", callback_data: `own_promo_toggle_${id}` }],
+      [{ text: "🗑 Remove Group", callback_data: `own_promo_remove_${id}` }],
+      [{ text: "⬅️ Back to Promotions", callback_data: "own_promo_menu" }],
+    ],
+  };
+}
+
+export function earnCoinsPromoKeyboard(
+  groups: Array<{ id: string; title: string; reward: number; link: string }>
+): TelegramBot.InlineKeyboardMarkup {
+  const rows: TelegramBot.InlineKeyboardButton[][] = [];
+  for (const g of groups) {
+    rows.push([{ text: `🌐 ${g.title} — earn ${g.reward} 🪙`, callback_data: `promo_view_${g.id}` }]);
+  }
+  rows.push([{ text: "⬅️ Back", callback_data: "credits_menu" }]);
   return { inline_keyboard: rows };
 }
 
@@ -850,6 +872,7 @@ export function groupSettingsKeyboard(
         { text: `📋 Rules`, callback_data: `grp_rules_${c}` },
         { text: `👋 Goodbye`, callback_data: `grp_goodbye_${c}` },
       ],
+      [{ text: `🔗 Generate Invite Link`, callback_data: `grp_invite_${c}` }],
       [{ text: "❌ Close", callback_data: "grp_settings_close" }],
     ],
   };

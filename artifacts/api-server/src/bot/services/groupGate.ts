@@ -1,155 +1,160 @@
 import TelegramBot from "node-telegram-bot-api";
-import { getOrCreateBotConfig, invalidateBotConfigCache, IMandatoryGroup } from "../models/BotConfig.js";
+import { PromoGroup, IPromoGroup } from "../models/PromoGroup.js";
+import { User } from "../models/User.js";
 import { logger } from "../../lib/logger.js";
 
-// ── Promotional channel reward (coins per join) ───────────────────────────────
-export const PROMO_REWARD_COINS = 50;
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// ── Check if a user is a member of a Telegram group ──────────────────────────
+export function extractUsernameFromLink(link: string): string | null {
+  const clean = link.trim();
+  // https://t.me/username  or  t.me/username
+  const match = clean.match(/(?:https?:\/\/)?t\.me\/([A-Za-z][A-Za-z0-9_]{3,})$/);
+  return match ? `@${match[1]}` : null;
+}
 
-export async function isUserInGroup(bot: TelegramBot, chatId: number, userId: number): Promise<boolean> {
+export async function checkMembership(
+  bot: TelegramBot,
+  identifier: string | number,
+  userId: number
+): Promise<boolean> {
   try {
-    const member = await bot.getChatMember(chatId, userId);
+    const member = await bot.getChatMember(identifier as any, userId);
     return ["member", "administrator", "creator"].includes(member.status);
   } catch {
     return false;
   }
 }
 
-// ── Get all promotional channels (formerly mandatory groups) ──────────────────
+// ── CRUD ─────────────────────────────────────────────────────────────────────
 
-export async function getMandatoryGroups(): Promise<IMandatoryGroup[]> {
+export async function getPromoGroups(): Promise<IPromoGroup[]> {
   try {
-    const config = await getOrCreateBotConfig();
-    return (config as any).mandatoryGroups as IMandatoryGroup[] ?? [];
+    return await PromoGroup.find().sort({ createdAt: -1 });
   } catch {
     return [];
   }
 }
 
-// ── Get channels the user is NOT in (for reward prompts) ─────────────────────
-
-export async function getFailedGroups(
-  bot: TelegramBot,
-  userId: number
-): Promise<IMandatoryGroup[]> {
-  const groups = await getMandatoryGroups();
-  const failed: IMandatoryGroup[] = [];
-  for (const g of groups) {
-    if (!g.chatId || g.chatId === 0) continue;
-    const inGroup = await isUserInGroup(bot, g.chatId, userId);
-    if (!inGroup) failed.push(g);
-  }
-  return failed;
-}
-
-// ── Send promotional channel invite (optional, coin-based reward) ─────────────
-
-export async function sendPromoChannelMessage(
-  bot: TelegramBot,
-  userId: number,
-  channels: IMandatoryGroup[]
-): Promise<void> {
-  if (channels.length === 0) return;
-  const channelButtons = channels.map(g => [{ text: `📢 Join ${g.name}`, url: g.link }]);
+export async function getActivePromoGroups(): Promise<IPromoGroup[]> {
   try {
-    await bot.sendMessage(
-      userId,
-      `🎁 Earn ${PROMO_REWARD_COINS} coins per channel!\n\n` +
-      `Join our channels to earn free credits — completely optional:\n\n` +
-      channels.map(g => `• ${g.name}`).join("\n") +
-      `\n\nJoin, then tap the button below to claim your reward!`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            ...channelButtons,
-            [{ text: `✅ Claim My +${PROMO_REWARD_COINS} Coins`, callback_data: "promo_verify" }],
-            [{ text: "⬅️ Skip for now", callback_data: "main_menu" }],
-          ],
-        },
-      }
-    );
-  } catch { /* User may have blocked the bot */ }
-}
-
-// ── Legacy: kept for compatibility (no longer blocks bot use) ─────────────────
-
-export async function sendGroupGateMessage(
-  bot: TelegramBot,
-  userId: number,
-  channels: IMandatoryGroup[]
-): Promise<void> {
-  return sendPromoChannelMessage(bot, userId, channels);
-}
-
-// ── No-op: no longer send "you left" messages ─────────────────────────────────
-
-export async function sendLeftGroupDM(
-  _bot: TelegramBot,
-  _userId: number,
-  _group: IMandatoryGroup
-): Promise<void> {
-  // Removed: users should not be penalised for leaving a channel
-}
-
-// ── Set the chat ID for a promotional channel ─────────────────────────────────
-
-export async function setMandatoryGroupChatId(
-  index: number,
-  chatId: number
-): Promise<boolean> {
-  try {
-    const { BotConfig } = await import("../models/BotConfig.js");
-    const config = await BotConfig.findOne();
-    if (!config) return false;
-    const groups: IMandatoryGroup[] = (config as any).mandatoryGroups ?? [];
-    if (index < 0 || index >= groups.length) return false;
-    groups[index].chatId = chatId;
-    await BotConfig.updateOne({}, { $set: { mandatoryGroups: groups } });
-    invalidateBotConfigCache();
-    return true;
-  } catch (err) {
-    logger.warn({ err }, "setMandatoryGroupChatId failed");
-    return false;
+    return await PromoGroup.find({ active: true }).sort({ createdAt: -1 });
+  } catch {
+    return [];
   }
 }
 
-// ── Add a new promotional channel ─────────────────────────────────────────────
-
-export async function addMandatoryGroup(
-  name: string,
+export async function addPromoGroup(
+  title: string,
   link: string,
-  chatId = 0,
-  strict = false
-): Promise<void> {
-  const { BotConfig } = await import("../models/BotConfig.js");
-  await BotConfig.updateOne(
-    {},
-    { $push: { mandatoryGroups: { name, link, chatId, strict } } }
-  );
-  invalidateBotConfigCache();
+  reward: number,
+  addedBy: number
+): Promise<IPromoGroup> {
+  const username = extractUsernameFromLink(link) ?? undefined;
+  const promo = new PromoGroup({ title, link, username, reward, active: true, addedBy, verifiedUsers: [] });
+  await promo.save();
+  return promo;
 }
 
-// ── Remove a promotional channel by index ─────────────────────────────────────
-
-export async function removeMandatoryGroup(index: number): Promise<boolean> {
+export async function removePromoGroup(id: string): Promise<boolean> {
   try {
-    const { BotConfig } = await import("../models/BotConfig.js");
-    const config = await BotConfig.findOne();
-    if (!config) return false;
-    const groups: IMandatoryGroup[] = (config as any).mandatoryGroups ?? [];
-    if (index < 0 || index >= groups.length) return false;
-    groups.splice(index, 1);
-    await BotConfig.updateOne({}, { $set: { mandatoryGroups: groups } });
-    invalidateBotConfigCache();
-    return true;
+    const result = await PromoGroup.deleteOne({ _id: id });
+    return result.deletedCount > 0;
   } catch {
     return false;
   }
 }
 
-// ── No-op seed: do not auto-seed any default mandatory group ──────────────────
+export async function togglePromoGroup(id: string): Promise<boolean | null> {
+  try {
+    const promo = await PromoGroup.findById(id);
+    if (!promo) return null;
+    promo.active = !promo.active;
+    await promo.save();
+    return promo.active;
+  } catch {
+    return null;
+  }
+}
+
+// ── Claim reward ──────────────────────────────────────────────────────────────
+
+export type ClaimResult =
+  | { status: "awarded"; reward: number }
+  | { status: "already_claimed" }
+  | { status: "not_member" }
+  | { status: "not_found" }
+  | { status: "inactive" };
+
+export async function claimPromoReward(
+  bot: TelegramBot,
+  userId: number,
+  promoId: string
+): Promise<ClaimResult> {
+  try {
+    const promo = await PromoGroup.findById(promoId);
+    if (!promo) return { status: "not_found" };
+    if (!promo.active) return { status: "inactive" };
+
+    if (promo.verifiedUsers.includes(userId)) return { status: "already_claimed" };
+
+    const identifier: string | number = promo.username ?? promo.link;
+    const inGroup = await checkMembership(bot, identifier, userId);
+    if (!inGroup) return { status: "not_member" };
+
+    await PromoGroup.updateOne(
+      { _id: promoId },
+      { $addToSet: { verifiedUsers: userId } }
+    );
+    await User.updateOne({ userId }, { $inc: { credits: promo.reward } });
+
+    return { status: "awarded", reward: promo.reward };
+  } catch (err) {
+    logger.warn({ err, userId, promoId }, "claimPromoReward failed");
+    return { status: "not_found" };
+  }
+}
+
+// ── Broadcast new promo to all users ─────────────────────────────────────────
+
+export async function broadcastNewPromo(
+  bot: TelegramBot,
+  promo: IPromoGroup
+): Promise<{ sent: number; failed: number }> {
+  const users = await User.find({ banned: { $ne: true } }).select("userId").lean();
+  let sent = 0;
+  let failed = 0;
+  const promoId = (promo._id as any).toString();
+  for (const u of users) {
+    try {
+      await bot.sendMessage(
+        u.userId,
+        `🪙 New Coin Opportunity!\n\n` +
+        `📢 *${promo.title}*\n\n` +
+        `Join this group and earn *${promo.reward} coins* instantly!\n\n` +
+        `Tap the button below to view and claim your reward:`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: `🌐 View & Earn ${promo.reward} Coins`, callback_data: `promo_view_${promoId}` }],
+              [{ text: "⬅️ Not Now", callback_data: "main_menu" }],
+            ],
+          },
+        }
+      );
+      sent++;
+      // Small delay to avoid hitting Telegram rate limits
+      await new Promise(r => setTimeout(r, 35));
+    } catch {
+      failed++;
+    }
+  }
+  logger.info({ sent, failed, promoId }, "Promo broadcast complete");
+  return { sent, failed };
+}
+
+// ── Legacy no-op (kept so index.ts import compiles) ──────────────────────────
 
 export async function seedDefaultMandatoryGroup(): Promise<void> {
-  // Intentionally empty: no default channels are seeded automatically.
+  // Intentionally empty
 }

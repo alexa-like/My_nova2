@@ -62,7 +62,9 @@ import {
   whatsNewKeyboard,
   settingsMenuWithPrivacyKeyboard,
   mainMenuWithNewsKeyboard,
-  ownerGateGroupsKeyboard,
+  ownerPromoGroupsKeyboard,
+  promoGroupDetailKeyboard,
+  earnCoinsPromoKeyboard,
   ownerChatModelsKeyboard,
   ownerImageModelsKeyboard,
   ownerCodeModelsKeyboard,
@@ -94,7 +96,7 @@ import {
 } from "../services/engagement.js";
 import { trackFeature, track } from "../services/analytics.js";
 import { formatAnnouncements, getNewCount as _getNewCount } from "../services/announcements.js";
-import { getMandatoryGroups, removeMandatoryGroup, getFailedGroups, PROMO_REWARD_COINS } from "../services/groupGate.js";
+import { getPromoGroups, getActivePromoGroups, removePromoGroup, togglePromoGroup, claimPromoReward } from "../services/groupGate.js";
 
 // ── Trivia questions ──────────────────────────────────────────────────────────
 
@@ -2556,6 +2558,21 @@ export async function handleCallbackQuery(
       return;
     }
 
+    if (data.startsWith("grp_invite_")) {
+      const groupChatId = parseInt(data.replace("grp_invite_", ""));
+      await answer(bot, query.id);
+      try {
+        const inviteLink = await bot.exportChatInviteLink(groupChatId);
+        await bot.sendMessage(chatId,
+          `🔗 Invite link for group \`${groupChatId}\`:\n\n${inviteLink}\n\nThis link grants direct access to the group.`,
+          { parse_mode: "Markdown" }
+        );
+      } catch {
+        await bot.sendMessage(chatId, `❌ Couldn't generate invite link. Make sure Nova is an admin in the group with the "Invite Users" permission.`);
+      }
+      return;
+    }
+
     // ── Daily reward claim ────────────────────────────────────────────────
 
     if (data === "daily_claim") {
@@ -2759,116 +2776,180 @@ export async function handleCallbackQuery(
       return;
     }
 
-    // ── Group Gate callbacks ─────────────────────────────────────────────────
+    // ── Owner: Promotions dashboard ──────────────────────────────────────────
 
-    if (data === "own_gate_groups") {
+    if (data === "own_promo_menu") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const groups = await getMandatoryGroups();
-      const lines = groups.length === 0
-        ? "No groups configured yet. Add one below.\n\n🟢 = active (ID set) | 🔴 = inactive (ID missing)\n⛔ = strict (blocks bot if not joined)"
-        : `Manage groups that users must join to use Nova.\n\n🟢 = active | 🔴 = ID not set\n⛔ = strict (blocks bot) | none = notification only`;
+      const promos = await getPromoGroups();
+      const mapped = promos.map(p => ({
+        id: (p._id as any).toString(),
+        title: p.title,
+        active: p.active,
+        reward: p.reward,
+        verifiedCount: p.verifiedUsers.length,
+      }));
+      const headerText = promos.length === 0
+        ? `💰 Promotions\n━━━━━━━━━━━━━━━━\nNo promo groups yet.\n\nAdd one below — users see it in "Earn Coins" and earn coins for joining.`
+        : `💰 Promotions\n━━━━━━━━━━━━━━━━\n${promos.length} promo group${promos.length === 1 ? "" : "s"} configured.\n\n🟢 = active  ⏸ = paused`;
+      await editMsg(bot, query, headerText, ownerPromoGroupsKeyboard(mapped));
+      return;
+    }
+
+    if (data.startsWith("own_promo_view_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const promoId = data.replace("own_promo_view_", "");
+      const promos = await getPromoGroups();
+      const p = promos.find(x => (x._id as any).toString() === promoId);
+      if (!p) { await answer(bot, query.id, "Not found."); return; }
+      const pid = (p._id as any).toString();
+      const preview = p.verifiedUsers.length <= 10
+        ? p.verifiedUsers.map(id => `• \`${id}\``).join("\n") || "None yet"
+        : `${p.verifiedUsers.slice(0, 10).map(id => `• \`${id}\``).join("\n")}\n...and ${p.verifiedUsers.length - 10} more`;
       await editMsg(bot, query,
-        `🔒 Group Gate\n━━━━━━━━━━━━━━━━\n${lines}`,
-        ownerGateGroupsKeyboard(groups as any)
+        `💰 ${p.title}\n━━━━━━━━━━━━━━━━\n` +
+        `Status: ${p.active ? "🟢 Active" : "⏸ Paused"}\n` +
+        `Reward: ${p.reward} 🪙\n` +
+        `Link: ${p.link}\n` +
+        `Verified users: ${p.verifiedUsers.length}\n\n` +
+        `*Who claimed:*\n${preview}`,
+        promoGroupDetailKeyboard(pid, p.active),
+        "Markdown"
       );
       return;
     }
 
-    if (data.startsWith("own_gate_view_")) {
+    if (data.startsWith("own_promo_remove_")) {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const idx = parseInt(data.replace("own_gate_view_", ""));
-      const groups = await getMandatoryGroups();
-      const g = groups[idx];
-      if (!g) { await answer(bot, query.id, "Group not found."); return; }
-      const idLabel = g.chatId ? `✅ Set: \`${g.chatId}\`` : "❌ Not set — gate inactive";
-      const strictLabel = g.strict ? "⛔ Strict — blocks bot access" : "🔔 Notification only";
+      const promoId = data.replace("own_promo_remove_", "");
+      const promos = await getPromoGroups();
+      const p = promos.find(x => (x._id as any).toString() === promoId);
+      if (!p) { await answer(bot, query.id, "Not found."); return; }
+      await removePromoGroup(promoId);
+      await answer(bot, query.id, `Removed: ${p.title}`);
+      const updated = await getPromoGroups();
+      const mapped = updated.map(pg => ({
+        id: (pg._id as any).toString(),
+        title: pg.title,
+        active: pg.active,
+        reward: pg.reward,
+        verifiedCount: pg.verifiedUsers.length,
+      }));
+      await editMsg(bot, query, `💰 Promotions\n━━━━━━━━━━━━━━━━\n✅ Removed "${p.title}"`, ownerPromoGroupsKeyboard(mapped));
+      return;
+    }
+
+    if (data.startsWith("own_promo_toggle_")) {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const promoId = data.replace("own_promo_toggle_", "");
+      const newState = await togglePromoGroup(promoId);
+      if (newState === null) { await answer(bot, query.id, "Not found."); return; }
+      await answer(bot, query.id, newState ? "Activated" : "Paused");
+      const promos = await getPromoGroups();
+      const p = promos.find(x => (x._id as any).toString() === promoId);
+      if (!p) return;
+      const pid = (p._id as any).toString();
+      const preview = p.verifiedUsers.length <= 10
+        ? p.verifiedUsers.map(id => `• \`${id}\``).join("\n") || "None yet"
+        : `${p.verifiedUsers.slice(0, 10).map(id => `• \`${id}\``).join("\n")}\n...and ${p.verifiedUsers.length - 10} more`;
       await editMsg(bot, query,
-        `🔒 ${g.name} (index ${idx})\n\n` +
-        `Link: ${g.link}\n` +
-        `Chat ID: ${idLabel}\n` +
-        `Mode: ${strictLabel}\n\n` +
-        `To set the Chat ID, use:\n` +
-        `/setgroupid ${idx} <chat_id>\n\n` +
-        `Tip: Forward a message from the group to get its ID.`,
+        `💰 ${p.title}\n━━━━━━━━━━━━━━━━\n` +
+        `Status: ${p.active ? "🟢 Active" : "⏸ Paused"}\n` +
+        `Reward: ${p.reward} 🪙\n` +
+        `Link: ${p.link}\n` +
+        `Verified users: ${p.verifiedUsers.length}\n\n` +
+        `*Who claimed:*\n${preview}`,
+        promoGroupDetailKeyboard(pid, p.active),
+        "Markdown"
+      );
+      return;
+    }
+
+    if (data === "own_promo_add") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      setPending(userId, "owner_add_promo_link");
+      await editMsg(bot, query,
+        `➕ Add Promo Group\n━━━━━━━━━━━━━━━━\n` +
+        `Step 1 of 3: Send the *group link*.\n\n` +
+        `Examples:\n• https://t.me/yourcommunity\n• https://t.me/+InviteCode\n\n` +
+        `The group must be public so Nova can verify membership.`,
+        { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "own_promo_menu" }]] },
+        "Markdown"
+      );
+      return;
+    }
+
+    // ── User: Earn coins (promo groups) ───────────────────────────────────────
+
+    if (data === "earn_coins") {
+      await answer(bot, query.id);
+      const promos = await getActivePromoGroups();
+      if (promos.length === 0) {
+        await editMsg(bot, query,
+          `🪙 Earn Coins\n━━━━━━━━━━━━━━━━\nNo active promotions right now.\n\nCheck back later — the owner adds new groups that reward you with coins for joining!`,
+          { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "credits_menu" }]] }
+        );
+        return;
+      }
+      const mapped = promos.map(p => ({
+        id: (p._id as any).toString(),
+        title: p.title,
+        reward: p.reward,
+        link: p.link,
+      }));
+      await editMsg(bot, query,
+        `🪙 Earn Coins\n━━━━━━━━━━━━━━━━\nJoin groups below to earn free coins instantly.\n\nOne reward per group per account. Tap to view details:`,
+        earnCoinsPromoKeyboard(mapped)
+      );
+      return;
+    }
+
+    if (data.startsWith("promo_view_")) {
+      await answer(bot, query.id);
+      const promoId = data.replace("promo_view_", "");
+      const promos = await getActivePromoGroups();
+      const p = promos.find(x => (x._id as any).toString() === promoId);
+      if (!p) {
+        await editMsg(bot, query, `❌ This promotion is no longer available.`, { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "earn_coins" }]] });
+        return;
+      }
+      const alreadyClaimed = p.verifiedUsers.includes(userId);
+      const pid = (p._id as any).toString();
+      await editMsg(bot, query,
+        `🪙 *${p.title}*\n━━━━━━━━━━━━━━━━\n` +
+        `Reward: *${p.reward} coins* 🪙\n\n` +
+        (alreadyClaimed
+          ? `✅ You've already claimed this reward!`
+          : `1. Join the group using the link below\n2. Come back and tap *Claim ${p.reward} Coins*`),
         {
           inline_keyboard: [
-            [{ text: "❌ Remove this group", callback_data: `own_gate_remove_${idx}` }],
-            [{ text: "⬅️ Back to Gate", callback_data: "own_gate_groups" }],
+            [{ text: `🌐 Open Group`, url: p.link }],
+            ...(alreadyClaimed ? [] : [[{ text: `✅ Claim ${p.reward} Coins`, callback_data: `promo_claim_${pid}` }]]),
+            [{ text: "⬅️ Back", callback_data: "earn_coins" }],
           ],
-        }
+        },
+        "Markdown"
       );
       return;
     }
 
-    if (data.startsWith("own_gate_remove_")) {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const idx = parseInt(data.replace("own_gate_remove_", ""));
-      const groups = await getMandatoryGroups();
-      const g = groups[idx];
-      if (!g) { await answer(bot, query.id, "Group not found."); return; }
-      await removeMandatoryGroup(idx);
-      await answer(bot, query.id, `Removed: ${g.name}`);
-      const updated = await getMandatoryGroups();
-      await editMsg(bot, query,
-        `🔒 Group Gate\n━━━━━━━━━━━━━━━━\n✅ Removed "${g.name}"\n\nRemaining groups:`,
-        ownerGateGroupsKeyboard(updated as any)
-      );
-      return;
-    }
-
-    if (data === "own_gate_add") {
-      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      await editMsg(bot, query,
-        `➕ Add a Gate Group\n━━━━━━━━━━━━━━━━\n` +
-        `Use the command:\n/addgroup <name> | <link>\n\n` +
-        `Example:\n/addgroup Nova VIP | https://t.me/+abc123\n\n` +
-        `After adding, set the Chat ID with:\n/setgroupid <index> <chat_id>\n\n` +
-        `How to get the Chat ID:\nForward any message from the group to this chat — Nova will reply with the ID.`,
-        { inline_keyboard: [[{ text: "⬅️ Back to Gate", callback_data: "own_gate_groups" }]] }
-      );
-      return;
-    }
-
-    // ── Promo channel reward verification ────────────────────────────────────
-
-    if (data === "promo_verify" || data === "gate_recheck") {
-      const channels = await getFailedGroups(bot, user.userId);
-      const allChannels = await getMandatoryGroups();
-      const joinedChannels = allChannels.filter(g => g.chatId && g.chatId !== 0)
-        .filter(g => !channels.find(f => f.chatId === g.chatId));
-
-      // Award coins for newly joined channels that haven't been rewarded yet
-      let coinsAwarded = 0;
-      for (const ch of joinedChannels) {
-        const rewardKey = `promo_${ch.chatId}`;
-        const alreadyClaimed = (user as any).recentFeatures?.includes(rewardKey);
-        if (!alreadyClaimed) {
-          coinsAwarded += PROMO_REWARD_COINS;
-          await User.findOneAndUpdate({ userId },
-            { $addToSet: { recentFeatures: rewardKey }, $inc: { credits: PROMO_REWARD_COINS } }
-          );
-        }
-      }
-
-      try { await bot.deleteMessage(chatId, query.message!.message_id); } catch {}
-      const { getNewCount } = await import("../services/announcements.js");
-      const hasNews = getNewCount() > 0;
-
-      if (coinsAwarded > 0) {
-        await bot.sendMessage(chatId,
-          `🎉 Thank you for joining!\n\n+${coinsAwarded} coins added to your account 🪙\n\nHere's your menu:`,
-          { reply_markup: mainMenuWithNewsKeyboard(hasNews) }
+    if (data.startsWith("promo_claim_")) {
+      await answer(bot, query.id);
+      const promoId = data.replace("promo_claim_", "");
+      const result = await claimPromoReward(bot, userId, promoId);
+      if (result.status === "awarded") {
+        await editMsg(bot, query,
+          `🎉 *+${result.reward} coins added!*\n\nThanks for joining the group. The coins are now in your account 🪙`,
+          { inline_keyboard: [[{ text: "🪙 Earn More", callback_data: "earn_coins" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] },
+          "Markdown"
         );
-      } else if (channels.length === 0) {
-        await bot.sendMessage(chatId,
-          `✅ You're all set! Here's your menu:`,
-          { reply_markup: mainMenuWithNewsKeyboard(hasNews) }
-        );
+      } else if (result.status === "already_claimed") {
+        await answer(bot, query.id, "Already claimed!", true);
+      } else if (result.status === "not_member") {
+        await answer(bot, query.id, "You haven't joined the group yet. Join first, then claim.", true);
+      } else if (result.status === "inactive") {
+        await editMsg(bot, query, `❌ This promotion is no longer active.`, { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "earn_coins" }]] });
       } else {
-        await bot.sendMessage(chatId,
-          `ℹ️ Join the channels first, then tap the button to claim your coins!`,
-          { reply_markup: mainMenuWithNewsKeyboard(hasNews) }
-        );
+        await answer(bot, query.id, "Something went wrong. Try again.", true);
       }
       return;
     }

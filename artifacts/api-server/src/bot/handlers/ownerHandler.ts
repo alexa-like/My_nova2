@@ -8,10 +8,10 @@ import { addDays, formatDate } from "../utils/helpers.js";
 import { parseDuration } from "../models/RedeemCode.js";
 import { setPending } from "../utils/pendingActions.js";
 import { logger } from "../../lib/logger.js";
-import { ownerMainKeyboard, backToOwnerKeyboard, ownerGateGroupsKeyboard } from "../utils/keyboards.js";
+import { ownerMainKeyboard, backToOwnerKeyboard } from "../utils/keyboards.js";
 import { getDailySummary, getTopCommands, getActiveUsers } from "../services/analytics.js";
 import { addCredits, setCredits, resetCredits } from "../services/credits.js";
-import { getMandatoryGroups, addMandatoryGroup, removeMandatoryGroup, setMandatoryGroupChatId } from "../services/groupGate.js";
+import { addPromoGroup, broadcastNewPromo } from "../services/groupGate.js";
 
 // In-memory scheduled broadcasts
 const scheduledBroadcasts = new Map<string, NodeJS.Timeout>();
@@ -82,69 +82,19 @@ export async function handleOwnerMessage(
     return;
   }
 
-  // ── Group Gate commands ────────────────────────────────────────────────────
+  // ── Promo group commands (legacy slash commands kept for power users) ─────────────────────────────────────────────────
 
-  if (cmd === "/listgroups") {
-    const groups = await getMandatoryGroups();
-    if (groups.length === 0) {
-      await bot.sendMessage(chatId, `🔒 No mandatory groups configured.\n\nUse /addgroup <name> | <link> to add one.\nExample:\n/addgroup Nova Community | https://t.me/+bw--Kb7qnwZiODJk`, { reply_markup: backToOwnerKeyboard() });
+  if (cmd === "/listpromos") {
+    const { getPromoGroups } = await import("../services/groupGate.js");
+    const promos = await getPromoGroups();
+    if (promos.length === 0) {
+      await bot.sendMessage(chatId, `💰 No promo groups yet.\n\nUse the dashboard → Promotions → Add Promo Group.`, { reply_markup: backToOwnerKeyboard() });
       return;
     }
-    const lines = groups.map((g, i) => {
-      const idLabel = g.chatId ? `ID: ${g.chatId}` : `ID: not set (🔴 gate inactive)`;
-      const strictLabel = g.strict ? "⛔ STRICT (blocks bot)" : "🔔 notification only";
-      return `${i}. ${g.name}\n   Link: ${g.link}\n   ${idLabel}\n   Mode: ${strictLabel}`;
-    }).join("\n\n");
-    await bot.sendMessage(chatId, `🔒 Mandatory Groups (${groups.length})\n\n${lines}\n\n━━━━━━━━━━\nTo set a group's chat ID:\n/setgroupid <index> <chat_id>\n\nExample: /setgroupid 0 -1001234567890`, { reply_markup: backToOwnerKeyboard() });
-    return;
-  }
-
-  if (cmd === "/addgroup") {
-    const raw = args.join(" ");
-    const parts = raw.split("|").map(p => p.trim());
-    if (parts.length < 2 || !parts[0] || !parts[1]) {
-      await bot.sendMessage(chatId, `Usage: /addgroup <name> | <link>\n\nExample:\n/addgroup Nova Community | https://t.me/+bw--Kb7qnwZiODJk\n\nNote: New groups added this way are notification-only (non-strict). The Nova group is always strict.`, { reply_markup: backToOwnerKeyboard() });
-      return;
-    }
-    const [name, link] = parts;
-    await addMandatoryGroup(name, link, 0, false);
-    const groups = await getMandatoryGroups();
-    const newIndex = groups.length - 1;
-    await bot.sendMessage(chatId, `✅ Added group: "${name}"\nLink: ${link}\nMode: notification only (non-strict)\n\n⚠️ Gate is INACTIVE until you set the chat ID:\n/setgroupid ${newIndex} <chat_id>\n\nTo get the chat ID, add me to the group and forward a message here, or use a bot like @userinfobot.`, { reply_markup: backToOwnerKeyboard() });
-    return;
-  }
-
-  if (cmd === "/removegroup") {
-    const idx = parseInt(args[0]);
-    if (isNaN(idx)) {
-      await bot.sendMessage(chatId, `Usage: /removegroup <index>\n\nGet indexes with /listgroups`, { reply_markup: backToOwnerKeyboard() });
-      return;
-    }
-    const groups = await getMandatoryGroups();
-    if (idx < 0 || idx >= groups.length) {
-      await bot.sendMessage(chatId, `❌ No group at index ${idx}. Use /listgroups to see valid indexes.`, { reply_markup: backToOwnerKeyboard() });
-      return;
-    }
-    const name = groups[idx].name;
-    const removed = await removeMandatoryGroup(idx);
-    await bot.sendMessage(chatId, removed ? `✅ Removed group: "${name}"` : `❌ Failed to remove group.`, { reply_markup: backToOwnerKeyboard() });
-    return;
-  }
-
-  if (cmd === "/setgroupid") {
-    const idx = parseInt(args[0]);
-    const id = parseInt(args[1]);
-    if (isNaN(idx) || isNaN(id)) {
-      await bot.sendMessage(chatId, `Usage: /setgroupid <index> <chat_id>\n\nExample: /setgroupid 0 -1001234567890\n\nGet indexes with /listgroups\nChat IDs are negative numbers for groups/supergroups.`, { reply_markup: backToOwnerKeyboard() });
-      return;
-    }
-    const ok = await setMandatoryGroupChatId(idx, id);
-    await bot.sendMessage(chatId, ok ? `✅ Group ID set! The gate for group ${idx} is now ACTIVE.\n\nUsers not in the group will be blocked from using Nova.` : `❌ Invalid index. Use /listgroups to see valid indexes.`, { reply_markup: backToOwnerKeyboard() });
-    return;
-  }
-
-  if (cmd === "/getgroupid") {
-    await bot.sendMessage(chatId, `ℹ️ To find a group's chat ID:\n\n1. Add me to the group\n2. Forward any message from that group to me here\n3. I'll show you the chat ID\n\nOr use @userinfobot in the group to get the ID.`, { reply_markup: backToOwnerKeyboard() });
+    const lines = promos.map((p, i) =>
+      `${i + 1}. ${p.active ? "🟢" : "⏸"} *${p.title}* — ${p.reward}🪙\n   Verified: ${p.verifiedUsers.length}\n   Link: ${p.link}`
+    ).join("\n\n");
+    await bot.sendMessage(chatId, `💰 Promo Groups (${promos.length})\n\n${lines}`, { parse_mode: "Markdown", reply_markup: backToOwnerKeyboard() });
     return;
   }
 
@@ -873,6 +823,62 @@ export async function handleOwnerPendingText(
         if (isNaN(gid)) { await bot.sendMessage(chatId, "Invalid group ID.", { reply_markup: backToOwnerKeyboard() }); return; }
         await GroupSettings.deleteOne({ chatId: gid });
         await bot.sendMessage(chatId, `✅ Group ${gid} removed from database.`, { reply_markup: backToOwnerKeyboard() });
+        break;
+      }
+
+      // ── Promo group 3-step flow ──────────────────────────────────────────
+
+      case "owner_add_promo_link": {
+        const link = input.trim();
+        if (!link.startsWith("http") || !link.includes("t.me/")) {
+          await bot.sendMessage(chatId, `❌ That doesn't look like a valid Telegram link.\n\nExamples:\n• https://t.me/yourcommunity\n• https://t.me/+InviteCodeHere\n\nTry again:`, { reply_markup: backToOwnerKeyboard() });
+          setPending(userId, "owner_add_promo_link");
+          return;
+        }
+        setPending(userId, "owner_add_promo_title", { link });
+        await bot.sendMessage(chatId,
+          `✅ Link saved: ${link}\n\nNow send a *display name* for this group.\n\nThis is what users will see in the "Earn Coins" section.\n\nExample: Nova Official Community`,
+          { parse_mode: "Markdown", reply_markup: backToOwnerKeyboard() }
+        );
+        break;
+      }
+
+      case "owner_add_promo_title": {
+        const title = input.trim();
+        if (!title || title.length < 2) {
+          await bot.sendMessage(chatId, "❌ Name too short. Please give it a clear name.", { reply_markup: backToOwnerKeyboard() });
+          setPending(userId, "owner_add_promo_title", { link: pendingData?.link ?? "" });
+          return;
+        }
+        setPending(userId, "owner_add_promo_reward", { link: pendingData?.link ?? "", title });
+        await bot.sendMessage(chatId,
+          `✅ Name set: *${title}*\n\nNow send the *coin reward* amount — how many coins users earn for joining.\n\nExample: 50`,
+          { parse_mode: "Markdown", reply_markup: backToOwnerKeyboard() }
+        );
+        break;
+      }
+
+      case "owner_add_promo_reward": {
+        const reward = parseInt(input.trim());
+        const link2 = pendingData?.link ?? "";
+        const title2 = pendingData?.title ?? "";
+        if (isNaN(reward) || reward < 1) {
+          await bot.sendMessage(chatId, "❌ Invalid amount. Enter a positive number like 50.", { reply_markup: backToOwnerKeyboard() });
+          setPending(userId, "owner_add_promo_reward", { link: link2, title: title2 });
+          return;
+        }
+        if (!link2 || !title2) {
+          await bot.sendMessage(chatId, "❌ Something went wrong. Start over from the dashboard.", { reply_markup: backToOwnerKeyboard() });
+          return;
+        }
+        const promo = await addPromoGroup(title2, link2, reward, userId);
+        await bot.sendMessage(chatId,
+          `✅ Promo group added!\n\n*${title2}*\nLink: ${link2}\nReward: ${reward} 🪙\n\n📢 Broadcasting to all users now...`,
+          { parse_mode: "Markdown", reply_markup: backToOwnerKeyboard() }
+        );
+        broadcastNewPromo(bot, promo).then(({ sent, failed }) => {
+          bot.sendMessage(chatId, `📢 Broadcast complete!\n✅ Sent: ${sent}\n❌ Failed: ${failed}`, { reply_markup: backToOwnerKeyboard() }).catch(() => {});
+        }).catch(() => {});
         break;
       }
 

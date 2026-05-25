@@ -29,6 +29,9 @@ interface CaptchaChallenge {
   dmMessageId?: number;   // private chat message ID for the question
   expiresAt: number;
   attempts: number;       // wrong answer count — max 3 before removal
+  memberId: number;       // user ID of the new member (for DM on removal)
+  groupName: string;      // group display name (for DM on removal)
+  groupLink?: string;     // public group link (e.g. t.me/username) for rejoin button
 }
 const captchaStore = new Map<string, CaptchaChallenge>(); // key: `chatId:userId`
 
@@ -351,13 +354,6 @@ export async function startBot(): Promise<void> {
           const captcha = generateCaptcha();
           const captchaKey = `${chatId}:${member.id}`;
 
-          // Mute immediately — muted users can still tap URL buttons
-          try {
-            await bot!.restrictChatMember(chatId, member.id, {
-              permissions: { can_send_messages: false, can_send_other_messages: false },
-            });
-          } catch {}
-
           // Pre-generate shuffled choices — deterministic offsets avoid an infinite loop
           const correctAnswer = captcha.answer;
           const offsets = [-3, -2, -1, 1, 2, 3, 4, 5, 6, 7].sort(() => Math.random() - 0.5);
@@ -371,6 +367,8 @@ export async function startBot(): Promise<void> {
           while (wrongAnswers.length < 3) wrongAnswers.push(pad++);
           const choices = [...wrongAnswers, correctAnswer].sort(() => Math.random() - 0.5);
 
+          const groupLink = msg.chat.username ? `https://t.me/${msg.chat.username}` : undefined;
+
           captchaStore.set(captchaKey, {
             answer: captcha.answer,
             question: captcha.question,
@@ -379,16 +377,19 @@ export async function startBot(): Promise<void> {
             messageId: 0,
             expiresAt: Date.now() + 5 * 60 * 1000,
             attempts: 0,
+            memberId: member.id,
+            groupName,
+            groupLink,
           });
 
-          // Group message: URL button opens DM with the bot (works even for muted users)
+          // Group message: URL button opens DM with the bot
           const verifyUrl = `https://t.me/${botUsername}?start=captcha_${chatId}_${member.id}`;
           try {
             const challengeMsg = await bot!.sendMessage(chatId,
               `👋 Welcome, ${name}!\n\n` +
               `To send messages here you need to verify you are human.\n\n` +
               `Tap the button below — it opens a private chat where you answer one quick math question.\n\n` +
-              `⏳ You have 5 minutes and 3 attempts.`,
+              `⏳ You have 5 minutes and 3 attempts. If you don't verify, you will be removed.`,
               {
                 reply_markup: {
                   inline_keyboard: [[{ text: "✅ Verify I'm human", url: verifyUrl }]],
@@ -409,6 +410,18 @@ export async function startBot(): Promise<void> {
                 await bot!.banChatMember(chatId, member.id);
                 await bot!.unbanChatMember(chatId, member.id);
                 await bot!.sendMessage(chatId, `⏰ ${name} was removed for not completing verification in time.`);
+              } catch {}
+              // DM the removed user
+              try {
+                const dmKeyboard = pending.groupLink
+                  ? { inline_keyboard: [[{ text: `🔗 Rejoin ${pending.groupName}`, url: pending.groupLink }]] }
+                  : undefined;
+                await bot!.sendMessage(
+                  member.id,
+                  `⏰ You were removed from *${pending.groupName}* because you didn't complete the verification in time.\n\n` +
+                  `To re-enter the group, tap the button below and complete the quick math question when you rejoin.`,
+                  { parse_mode: "Markdown", reply_markup: dmKeyboard }
+                );
               } catch {}
             }
           }, 5 * 60 * 1000);

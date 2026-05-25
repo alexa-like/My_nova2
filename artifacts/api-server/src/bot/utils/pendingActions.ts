@@ -36,6 +36,7 @@ export type PendingTextAction =
   | "grp_set_goodbye"
   | "grp_set_rules";
 
+
 export type PendingPhotoAction =
   | "img_edit"
   | "img_enhance"
@@ -70,7 +71,11 @@ export type OwnerPendingAction =
   // Search & DM
   | "owner_searchuser"
   | "owner_dm_step1"
-  | "owner_dm_step2";
+  | "owner_dm_step2"
+  // Promo group adding (3 steps: link → title → reward)
+  | "owner_add_promo_link"
+  | "owner_add_promo_title"
+  | "owner_add_promo_reward";
 
 export type PendingActionType =
   | PendingTextAction
@@ -110,6 +115,9 @@ export const OWNER_PENDING_ACTIONS = new Set<PendingActionType>([
   "owner_searchuser",
   "owner_dm_step1",
   "owner_dm_step2",
+  "owner_add_promo_link",
+  "owner_add_promo_title",
+  "owner_add_promo_reward",
 ]);
 
 interface PendingAction {

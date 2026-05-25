@@ -73,7 +73,6 @@ import { track } from "../services/analytics.js";
 import { logger } from "../../lib/logger.js";
 import { getSuggestionsKeyboard, getSuggestionLine } from "../services/suggestions.js";
 import { formatAnnouncements, getNewCount } from "../services/announcements.js";
-import { getFailedGroups, sendGroupGateMessage } from "../services/groupGate.js";
 import { detectImageIntent, detectStickerIntent, detectSearchIntent, detectBuildIntent, detectSummarizeIntent, detectTranslateIntent } from "../services/intentEngine.js";
 
 // ── Per-user build/deploy cooldown (3 min) ────────────────────────────────────
