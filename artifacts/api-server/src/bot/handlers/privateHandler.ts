@@ -35,7 +35,6 @@ import {
   updatesKeyboard,
   buildMenuKeyboard,
   whatsNewKeyboard,
-  mainMenuWithNewsKeyboard,
   referralKeyboard,
 } from "../utils/keyboards.js";
 import { encrypt, decrypt } from "../utils/crypto.js";
@@ -52,8 +51,7 @@ import {
   FEATURE_LABELS,
   ACHIEVEMENTS,
 } from "../services/engagement.js";
-import { contextSuggestionsKeyboard } from "../utils/suggestions.js";
-import { trackFeature } from "../services/analytics.js";
+import { trackFeature, track } from "../services/analytics.js";
 import { webSearch, formatSearchResults } from "../services/webSearch.js";
 import { generateProject, typeLabel } from "../services/projectGenerator.js";
 import { cacheUserBuild, getCachedBuild } from "../utils/buildCache.js";
@@ -62,9 +60,7 @@ import { downloadTelegramDocument, extractTextFromDocument } from "../services/d
 import { createReminder, listUserReminders, cancelReminder } from "../services/reminder.js";
 import { parseDurationToMs } from "../models/Reminder.js";
 import { isPremiumEmojiEnabled, applyPremiumEmojiSafe } from "../utils/premiumEmoji.js";
-import { track } from "../services/analytics.js";
 import { logger } from "../../lib/logger.js";
-import { getSuggestionsKeyboard, getSuggestionLine } from "../services/suggestions.js";
 import { formatAnnouncements, getNewCount } from "../services/announcements.js";
 import { detectImageIntent, detectStickerIntent, detectSearchIntent, detectBuildIntent, detectSummarizeIntent, detectTranslateIntent } from "../services/intentEngine.js";
 
@@ -254,7 +250,17 @@ export async function handlePrivateMessage(
       const { getActivePromoGroups } = await import("../services/groupGate.js");
       const { earnCoinsPromoKeyboard } = await import("../utils/keyboards.js");
       const promoGroups = await getActivePromoGroups();
-      await bot.sendMessage(chatId, "🪙 Earn Coins\n\nJoin these groups to earn bonus credits:", { reply_markup: earnCoinsPromoKeyboard(promoGroups) });
+      if (promoGroups.length === 0) {
+        await bot.sendMessage(chatId, "🪙 Earn Coins\n\nNo active promotions right now. Check back later!", { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+        return;
+      }
+      const mapped = promoGroups.map(g => ({
+        id: (g._id as any).toString(),
+        title: g.title,
+        reward: g.reward,
+        link: g.link,
+      }));
+      await bot.sendMessage(chatId, "🪙 Earn Coins\n\nJoin these groups to earn bonus credits:", { reply_markup: earnCoinsPromoKeyboard(mapped) });
       return;
     }
     if (text === "👥 Refer") {
@@ -291,7 +297,7 @@ export async function handlePrivateMessage(
       if (remList.length === 0) {
         await bot.sendMessage(chatId, "⏰ You have no active reminders.\n\nSet one with: /remind 10m Call John", { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
       } else {
-        const remLines = remList.map((r, i) => `${i + 1}. ${r.message} (${formatDate(r.scheduledAt)})`).join("\n");
+        const remLines = remList.map((r, i) => `${i + 1}. ${r.message} (${formatDate(r.triggerAt)})`).join("\n");
         await bot.sendMessage(chatId, `⏰ Your Reminders\n\n${remLines}`, { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
       }
       return;

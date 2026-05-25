@@ -14,7 +14,7 @@ export function mainMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
       [{ text: "⭐ Premium" }, { text: "⚙️ Settings" }, { text: "❓ Help" }],
     ],
     resize_keyboard: true,
-    persistent: true,
+    is_persistent: true,
   };
 }
 
