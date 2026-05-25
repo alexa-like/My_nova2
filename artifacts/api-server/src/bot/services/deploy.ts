@@ -1,4 +1,5 @@
 import axios from "axios";
+import { jsonrepair } from "jsonrepair";
 import { logger } from "../../lib/logger.js";
 
 const VERCEL_API = "https://api.vercel.com";
@@ -177,25 +178,35 @@ export async function deployToRender(
     logger.warn({ err }, "Render deploy trigger failed (service may auto-deploy from GitHub)");
   }
 
-  // Poll up to 4 minutes for the service to go live
-  const MAX_POLLS = 48;
+  // Poll up to 5 minutes checking actual deploy status (not just URL existence)
+  const MAX_POLLS = 60;
   const POLL_MS = 5000;
 
   for (let i = 0; i < MAX_POLLS; i++) {
     await new Promise((r) => setTimeout(r, POLL_MS));
 
     try {
-      const resp = await axios.get(`${RENDER_API}/services/${serviceId}`, {
+      const resp = await axios.get(`${RENDER_API}/services/${serviceId}/deploys?limit=1`, {
         headers: renderHeaders(token),
         timeout: 15000,
       });
-      const svc = resp.data.service || resp.data;
-      const suspended = svc?.suspended;
-      const liveUrl: string = svc?.serviceDetails?.url || serviceUrl || "";
+      const deploys: any[] = resp.data;
+      const latest = deploys?.[0]?.deploy;
+      const deployStatus: string = latest?.status ?? "";
 
-      if (liveUrl && suspended !== "suspended") {
-        logger.info({ serviceId, url: liveUrl }, "Render deployment live");
+      if (deployStatus === "live") {
+        // Fetch the live URL from the service
+        const svcResp = await axios.get(`${RENDER_API}/services/${serviceId}`, {
+          headers: renderHeaders(token),
+          timeout: 15000,
+        }).catch(() => null);
+        const liveUrl: string =
+          svcResp?.data?.service?.serviceDetails?.url ||
+          svcResp?.data?.serviceDetails?.url ||
+          serviceUrl ||
+          `https://${serviceId}.onrender.com`;
         const fullUrl = liveUrl.startsWith("http") ? liveUrl : `https://${liveUrl}`;
+        logger.info({ serviceId, url: fullUrl }, "Render deployment live");
         return {
           id: serviceId,
           url: fullUrl,
@@ -203,7 +214,14 @@ export async function deployToRender(
           provider: "render",
         };
       }
-    } catch {
+
+      if (deployStatus === "build_failed" || deployStatus === "canceled") {
+        throw new Error(`Render build ${deployStatus}. Check your Render dashboard for details.`);
+      }
+    } catch (pollErr: any) {
+      if (pollErr?.message?.includes("build_failed") || pollErr?.message?.includes("canceled")) {
+        throw pollErr;
+      }
       continue;
     }
 
@@ -213,8 +231,9 @@ export async function deployToRender(
     }
   }
 
-  // Return dashboard even if not confirmed live yet
+  // Timed out — return dashboard link so user can check manually
   const dashUrl = `https://dashboard.render.com/static/${serviceId}`;
+  logger.warn({ serviceId }, "Render polling timed out — returning dashboard URL");
   return { id: serviceId, url: dashUrl, inspectorUrl: dashUrl, provider: "render" };
 }
 
@@ -268,7 +287,12 @@ export async function autoFixProjectFiles(
       .replace(/^```(?:json)?\n?/, "")
       .replace(/\n?```$/, "")
       .trim();
-    const parsed = JSON.parse(cleaned);
+    let parsed: any;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      parsed = JSON.parse(jsonrepair(cleaned));
+    }
 
     if (Array.isArray(parsed.files) && parsed.files.length > 0) {
       logger.info({ fixedFiles: parsed.files.length }, "Auto-fix files generated");

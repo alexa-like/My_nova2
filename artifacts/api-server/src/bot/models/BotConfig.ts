@@ -198,9 +198,10 @@ const DEFAULT_CHAT_MODELS: IModelEntry[] = [
 ];
 
 const DEFAULT_CODE_MODELS: IModelEntry[] = [
-  { id: "meta-llama/llama-3.3-70b-instruct:free", name: "Llama 3.3 70B — Best Quality", active: true  },
-  { id: "deepseek/deepseek-v4-flash:free",         name: "DeepSeek V4 Flash — Fast Coder", active: false },
-  { id: "google/gemma-4-31b-it:free",              name: "Gemma 4 31B — Google",          active: false },
+  { id: "deepseek/deepseek-chat-v3-0324:free",     name: "DeepSeek V3 — Best Coder",      active: true  },
+  { id: "meta-llama/llama-3.3-70b-instruct:free",  name: "Llama 3.3 70B — Balanced",      active: false },
+  { id: "google/gemma-3-27b-it:free",              name: "Gemma 3 27B — Google",          active: false },
+  { id: "microsoft/phi-4:free",                    name: "Phi-4 — Microsoft",             active: false },
 ];
 
 const DEFAULT_IMAGE_MODELS: IModelEntry[] = [

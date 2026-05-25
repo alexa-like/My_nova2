@@ -130,7 +130,6 @@ export async function startBot(): Promise<void> {
       { command: "ask", description: "Quick AI answer (no memory)" },
       { command: "translate", description: "Translate text" },
       { command: "build", description: "Build a website or app with AI" },
-      { command: "deploy", description: "Build and deploy to Vercel" },
       { command: "remind", description: "Set a reminder" },
       { command: "reminders", description: "View your reminders" },
       { command: "poll", description: "Create a poll" },

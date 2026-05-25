@@ -55,16 +55,8 @@ import { contextSuggestionsKeyboard } from "../utils/suggestions.js";
 import { trackFeature } from "../services/analytics.js";
 import { webSearch, formatSearchResults } from "../services/webSearch.js";
 import { generateProject, typeLabel } from "../services/projectGenerator.js";
-import {
-  createGitHubRepo,
-  pushAllFiles,
-  repoExists,
-  sanitizeRepoName,
-  uniqueRepoName,
-} from "../services/github.js";
 import { cacheUserBuild, getCachedBuild } from "../utils/buildCache.js";
 import { addCredits, deductCredits, getCreditCost } from "../services/credits.js";
-import { deployToVercel, deployToRender, autoFixProjectFiles } from "../services/deploy.js";
 import { downloadTelegramDocument, extractTextFromDocument } from "../services/document.js";
 import { createReminder, listUserReminders, cancelReminder } from "../services/reminder.js";
 import { parseDurationToMs } from "../models/Reminder.js";
@@ -121,29 +113,6 @@ async function resolveGitHubCreds(
   return null;
 }
 
-async function resolveVercelToken(user: IUser): Promise<string | null> {
-  try {
-    const fresh = await User.findOne({ userId: user.userId }).select("+vercelTokenEncrypted");
-    const enc = (fresh as any)?.vercelTokenEncrypted as string | undefined;
-    if (enc) {
-      const dec = decrypt(enc);
-      if (dec) return dec;
-    }
-  } catch {}
-  return process.env.VERCEL_TOKEN ?? null;
-}
-
-async function resolveRenderToken(user: IUser): Promise<string | null> {
-  try {
-    const fresh = await User.findOne({ userId: user.userId }).select("+renderTokenEncrypted");
-    const enc = (fresh as any)?.renderTokenEncrypted as string | undefined;
-    if (enc) {
-      const dec = decrypt(enc);
-      if (dec) return dec;
-    }
-  } catch {}
-  return process.env.RENDER_API_KEY ?? null;
-}
 
 async function sendAIReply(
   bot: TelegramBot,
@@ -404,8 +373,7 @@ export async function handlePrivateMessage(
       `🎨 /image <prompt> — Generate an image\n` +
       `🖼️ /sticker <prompt> — Generate a sticker\n` +
       `🔍 /describe — Analyze or describe a photo\n` +
-      `🔨 /build <idea> — Build a website or app with AI\n` +
-      `🚀 /deploy <idea> — Build + deploy to Vercel\n\n` +
+      `🔨 /build <idea> — Build a website or app with AI\n\n` +
       `── Explore ──\n` +
       `🔍 /search <query> — Search the web\n` +
       `❓ /ask <question> — Quick answer (no memory)\n` +
@@ -1070,44 +1038,10 @@ export async function handlePrivateMessage(
     return;
   }
 
-  // /deploy [description] — generate + deploy to Vercel, or deploy last build
-  if (text.startsWith("/deploy")) {
-    const prompt = text.replace(/^\/deploy\s*/i, "").trim();
-    const vercelToken = await resolveVercelToken(user);
-    if (!vercelToken) {
-      await bot.sendMessage(chatId,
-        `🚀 No Vercel token found.\n\n` +
-        `Add your token in ⚙️ Settings → 🚀 Deployments, or set VERCEL_TOKEN in Replit Secrets.\n` +
-        `Get a token at: vercel.com → Settings → Tokens`,
-        { reply_markup: { inline_keyboard: [[{ text: "⚙️ Set Vercel Token", callback_data: "settings_deployments" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-      );
-      return;
-    }
-    if (!prompt) {
-      const cached = await getCachedBuild(user.userId);
-      if (cached) {
-        await handleDeployToVercel(bot, chatId, user, cached.project, vercelToken, e);
-      } else {
-        await bot.sendMessage(chatId,
-          `🚀 Deploy to Vercel\n\n` +
-          `Usage: /deploy <describe what you want>\n\n` +
-          `This generates a complete project AND deploys it live in one step!\n\n` +
-          `Examples:\n• /deploy portfolio website for a photographer\n• /deploy React calculator app\n• /deploy todo app with dark mode\n\n` +
-          `💡 You can also run /build first, then /deploy to deploy that last build.`,
-          { reply_markup: backToMainKeyboard() }
-        );
-      }
-      return;
-    }
-    await handleDeployRequest(bot, chatId, user, prompt, vercelToken, e);
-    return;
-  }
-
-  // /build <description> — AI project generator + GitHub deployment
+  // /build <description> — AI project generator
   if (text.startsWith("/build")) {
     const prompt = text.replace(/^\/build\s*/i, "").trim();
     if (!prompt) {
-      const ghCreds = await resolveGitHubCreds(user);
       await bot.sendMessage(chatId,
         `🌐 AI Website & App Builder\n\n` +
         `Usage: /build <describe what you want>\n\n` +
@@ -1117,8 +1051,7 @@ export async function handlePrivateMessage(
         `• /build todo app with dark mode\n` +
         `• /build React dashboard with live charts\n` +
         `• /build real-time chat app with Node.js\n\n` +
-        `Nova will generate a complete, working project and ${ghCreds ? "push it to your GitHub automatically 🚀" : "send you all the files directly 📁"}\n\n` +
-        (ghCreds ? "" : `💡 Go to ⚙️ Settings → 🔑 GitHub to connect your account for automatic deployment.`),
+        `Nova will generate your project, then let you push to GitHub, send files, or deploy to Vercel/Render!`,
         { reply_markup: backToMainKeyboard() }
       );
       return;
@@ -2021,11 +1954,6 @@ async function handleBuildRequest(
 
   setBuildCooldown(user.userId);
 
-  const ghCreds = await resolveGitHubCreds(user);
-  const githubToken = ghCreds?.token;
-  const githubUsername = ghCreds?.username;
-  const hasGitHub = !!(githubToken && githubUsername);
-
   const buildStatus = await startLiveStatus(bot, chatId, "🔨 Building your project");
 
   // ── Step 1: Generate project files ─────────────────────────────────────────
@@ -2054,273 +1982,29 @@ async function handleBuildRequest(
   const fileCount = project.files.length;
   await cacheUserBuild(user.userId, project, prompt);
 
-  // ── Step 2a: GitHub push ────────────────────────────────────────────────────
-  if (hasGitHub) {
-    buildStatus.update(`✅ Code ready! (${fileCount} files — ${label})\n📤 Pushing to GitHub`);
-
-    const rawName = sanitizeRepoName(project.name);
-    let repoName = rawName;
-
-    try {
-      const exists = await repoExists(githubToken!, githubUsername!, rawName);
-      if (exists) repoName = uniqueRepoName(rawName);
-    } catch {}
-
-    let repoInfo: Awaited<ReturnType<typeof createGitHubRepo>>;
-    try {
-      repoInfo = await createGitHubRepo(githubToken!, repoName, project.description);
-    } catch (err: any) {
-      buildStatus.stop();
-      await buildStatus.delete();
-      logger.error({ err }, "GitHub repo creation failed");
-      const reason =
-        err?.response?.status === 401
-          ? "GitHub authentication failed. Check your GITHUB_TOKEN secret."
-          : err?.response?.status === 422
-          ? `A repo named "${repoName}" already exists.`
-          : `GitHub error: ${err?.response?.data?.message || err.message}`;
-      await bot.sendMessage(chatId, `⚠️ ${reason}\n\nSending files directly instead...`);
-      // Still count the build and save the project even when GitHub fails
-      try {
-        await User.findOneAndUpdate({ userId: user.userId }, {
-          $inc: { "usage.builds": 1 },
-          $push: { projects: { name: project.name, repoUrl: undefined, deployUrl: undefined, createdAt: new Date() } },
-        });
-      } catch {}
-      await sendProjectFiles(bot, chatId, project, e);
-      return;
-    }
-
-    buildStatus.update(`✅ Repository created! Uploading ${fileCount} files`);
-
-    let lastDone = 0;
-    try {
-      await pushAllFiles(
-        githubToken!,
-        githubUsername!,
-        repoInfo.name,
-        project.files,
-        async (done, total) => {
-          lastDone = done;
-          buildStatus.update(`📤 Uploading files (${done}/${total})`);
-        }
-      );
-    } catch (err) {
-      // Retry remaining files once
-      logger.warn({ err, lastDone }, "Partial upload failure — retrying remaining files");
-      try {
-        await pushAllFiles(githubToken!, githubUsername!, repoInfo.name, project.files.slice(lastDone));
-      } catch {
-        buildStatus.stop();
-        await buildStatus.delete();
-        await bot.sendMessage(chatId,
-          `⚠️ Uploaded ${lastDone}/${fileCount} files. Repo: ${repoInfo.htmlUrl}\n\nSending remaining files directly...`,
-          { reply_markup: buildResultKeyboard(repoInfo.htmlUrl) }
-        );
-        await sendProjectFiles(bot, chatId, project, e, lastDone);
-        return;
-      }
-    }
-
-    buildStatus.stop();
-    await buildStatus.delete();
-
-    user.usage.builds = (user.usage.builds ?? 0) + 1;
-    user.projects = user.projects ?? [];
-    user.projects.push({ name: project.name, repoUrl: repoInfo.htmlUrl, deployUrl: undefined, createdAt: new Date() } as any);
-    await user.save();
-
-    await cacheUserBuild(user.userId, project, prompt, repoInfo.htmlUrl);
-
-    await bot.sendMessage(chatId,
-      `🚀 Your project is ready!\n\n` +
-      `📦 ${project.name}\n` +
-      `${project.description}\n\n` +
-      `🔗 ${repoInfo.htmlUrl}\n\n` +
-      `${fileCount} files · ${label}\n\n` +
-      `💡 ${project.deploymentTip}`,
-      { reply_markup: buildResultKeyboard(repoInfo.htmlUrl) }
-    );
-    return;
-  }
-
-  // ── Step 2b: No GitHub — ask what user wants to do ──────────────────────────
   buildStatus.stop();
   await buildStatus.delete();
 
-  const choiceKeyboard: TelegramBot.InlineKeyboardMarkup = {
-    inline_keyboard: [
-      [
-        { text: "📤 Push to GitHub", callback_data: "build_choice_github" },
-        { text: "📱 Send to Telegram", callback_data: "build_choice_telegram" },
-      ],
-      [
-        { text: "⚡ Deploy to Vercel", callback_data: "deploy_live" },
-        { text: "🟣 Deploy to Render", callback_data: "deploy_render" },
-      ],
-      [{ text: "⬅️ Menu", callback_data: "main_menu" }],
-    ],
-  };
-
   await bot.sendMessage(chatId,
-    `✅ Project generated!\n\n` +
+    `✅ Project ready!\n\n` +
     `📦 ${project.name}\n` +
     `${project.description}\n\n` +
     `${fileCount} files · ${label}\n\n` +
-    `💡 ${project.deploymentTip}\n\n` +
-    `What would you like to do with your project?`,
-    { reply_markup: choiceKeyboard }
-  );
-}
-
-// ── Deploy request: generate + deploy in one shot ────────────────────────────
-
-async function handleDeployRequest(
-  bot: TelegramBot,
-  chatId: number,
-  user: IUser,
-  prompt: string,
-  vercelToken: string,
-  e: boolean
-): Promise<void> {
-  const cooldownMs = checkBuildCooldown(user.userId);
-  if (cooldownMs > 0) {
-    const secs = Math.ceil(cooldownMs / 1000);
-    await bot.sendMessage(chatId, `⏳ Please wait ${secs}s before deploying again.`);
-    return;
-  }
-
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    await bot.sendMessage(chatId, "AI service not configured. OPENROUTER_API_KEY is missing.");
-    return;
-  }
-
-  setBuildCooldown(user.userId);
-
-  const statusMsg = await bot.sendMessage(chatId,
-    `🔨 Generating your project...\n\n"${prompt.substring(0, 100)}"\n\nThis takes 1-3 minutes — generation + deployment.`
-  );
-  const stopTyping = startTypingLoop(bot, chatId);
-
-  let project;
-  try {
-    project = await generateProject(prompt, apiKey);
-  } catch (err: any) {
-    stopTyping();
-    logger.error({ err }, "Deploy-generate failed");
-    try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
-    const errDetail = err?.message ? `\n\n${err.message}` : "";
-    await bot.sendMessage(chatId, `❌ Project generation failed. The AI had trouble with this prompt — please try again with a more specific description.${errDetail}`);
-    return;
-  }
-
-  await cacheUserBuild(user.userId, project, prompt);
-
-  stopTyping();
-  await handleDeployToVercel(bot, chatId, user, project, vercelToken, e, statusMsg.message_id);
-}
-
-// ── Deploy existing project to Vercel ────────────────────────────────────────
-
-async function handleDeployToVercel(
-  bot: TelegramBot,
-  chatId: number,
-  _user: IUser,
-  project: Awaited<ReturnType<typeof generateProject>>,
-  vercelToken: string,
-  e: boolean,
-  existingMsgId?: number
-): Promise<void> {
-  let statusMsgId = existingMsgId;
-
-  const updateStatus = async (text: string) => {
-    try {
-      if (statusMsgId) {
-        await bot.editMessageText(text, { chat_id: chatId, message_id: statusMsgId });
-      } else {
-        const m = await bot.sendMessage(chatId, text);
-        statusMsgId = m.message_id;
-      }
-    } catch {}
-  };
-
-  await updateStatus(
-    `✅ Code ready (${project.files.length} files)\n🚀 Deploying to Vercel...`
-  );
-
-  try {
-    const result = await deployToVercel(
-      vercelToken,
-      project.name,
-      project.files,
-      async (msg) => updateStatus(msg)
-    );
-
-    try {
-      if (statusMsgId) await bot.deleteMessage(chatId, statusMsgId);
-    } catch {}
-
-    await bot.sendMessage(chatId,
-      `🚀 Live!\n\n` +
-      `📦 ${project.name}\n` +
-      `${project.description}\n\n` +
-      `🌐 ${result.url}\n\n` +
-      `${project.files.length} files deployed · ${typeLabel(project.type)}`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "🌐 Open Live Site", url: result.url }],
-            [{ text: "🔍 Vercel Dashboard", url: result.inspectorUrl }],
-            [
-              { text: "🌐 Build Another", callback_data: "build_menu" },
-              { text: "⬅️ Menu", callback_data: "main_menu" },
-            ],
+    `What do you want to do with your project?`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "📤 Push to GitHub", callback_data: "build_choice_github" },
+            { text: "📱 Send to Telegram", callback_data: "build_choice_telegram" },
           ],
-        },
-      }
-    );
-  } catch (firstErr: any) {
-    logger.warn({ err: firstErr }, "Vercel deployment failed — attempting auto-fix");
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (apiKey) {
-      try {
-        await updateStatus(`⚠️ Deploy failed — running AI auto-fix...\n\n${firstErr.message.substring(0, 80)}`);
-        const fixed = await autoFixProjectFiles(project.files, firstErr.message, project.description, apiKey);
-        if (fixed) {
-          project.files = fixed;
-          await updateStatus(`🔧 Auto-fix applied — retrying deployment...`);
-          const retryResult = await deployToVercel(vercelToken, project.name, fixed, async (msg) => updateStatus(msg));
-          try { if (statusMsgId) await bot.deleteMessage(chatId, statusMsgId); } catch {}
-          await bot.sendMessage(chatId,
-            `🚀 Live (after auto-fix)!\n\n📦 ${project.name}\n🌐 ${retryResult.url}`,
-            {
-              reply_markup: {
-                inline_keyboard: [
-                  [{ text: "🌐 Open Live Site", url: retryResult.url }],
-                  [{ text: "🔍 Vercel Dashboard", url: retryResult.inspectorUrl }],
-                  [{ text: "🌐 Build Another", callback_data: "build_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
-                ],
-              },
-            }
-          );
-          return;
-        }
-      } catch (fixErr) {
-        logger.warn({ err: fixErr }, "Auto-fix retry also failed");
-      }
+          [{ text: "❌ Cancel", callback_data: "main_menu" }],
+        ],
+      },
     }
-    logger.error({ err: firstErr }, "Vercel deployment failed");
-    try {
-      if (statusMsgId) await bot.deleteMessage(chatId, statusMsgId);
-    } catch {}
-    await bot.sendMessage(chatId,
-      `❌ Deployment failed: ${firstErr.message}\n\n` +
-      `Files are still cached — run /deploy to retry.`,
-      { reply_markup: backToMainKeyboard() }
-    );
-  }
+  );
 }
+
 
 async function sendProjectFiles(
   bot: TelegramBot,

@@ -11,8 +11,8 @@ import { getOrCreateBotConfig, invalidateBotConfigCache } from "../models/BotCon
 import { sendOwnerPanel } from "./ownerHandler.js";
 import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
 import { analyzeImage } from "../services/imageAnalysis.js";
-import { getCachedBuild } from "../utils/buildCache.js";
-import { deployToVercel, deployToRender } from "../services/deploy.js";
+import { getCachedBuild, updateBuildDeployUrls, cacheUserBuild } from "../utils/buildCache.js";
+import { deployToVercel, deployToRender, autoFixProjectFiles } from "../services/deploy.js";
 import { decrypt } from "../utils/crypto.js";
 import { typeLabel } from "../services/projectGenerator.js";
 import {
@@ -863,7 +863,6 @@ export async function handleCallbackQuery(
     }
 
     if (data === "deploy_live") {
-      // Resolve Vercel token: user's saved token > env var
       let vercelToken = process.env.VERCEL_TOKEN;
       try {
         const fresh = await User.findOne({ userId }).select("+vercelTokenEncrypted");
@@ -884,43 +883,74 @@ export async function handleCallbackQuery(
       const cached = await getCachedBuild(userId);
       if (!cached) {
         await editMsg(bot, query,
-          "⏳ Build session expired (45 min limit).\n\nRun /deploy <description> to generate and deploy a fresh project.",
+          "⏳ Build session expired (45 min limit).\n\nRun /build to generate a fresh project.",
           backToMainKeyboard()
         );
         return;
       }
-      await bot.answerCallbackQuery(query.id, { text: "Starting deployment..." });
+      await bot.answerCallbackQuery(query.id, { text: "Deploying to Vercel..." });
       const statusMsg = await bot.sendMessage(chatId,
-        `✅ Project loaded (${cached.project.files.length} files)\n🚀 Deploying to Vercel...`
+        `⚡ Deploying to Vercel...\n\n📦 ${cached.project.name}`
       );
       let statusMsgId = statusMsg.message_id;
       const updateStatus = async (text: string) => {
         try { await bot.editMessageText(text, { chat_id: chatId, message_id: statusMsgId }); } catch {}
       };
       try {
-        const result = await deployToVercel(
-          vercelToken,
-          cached.project.name,
-          cached.project.files,
-          async (msg) => updateStatus(msg)
-        );
+        let result: Awaited<ReturnType<typeof deployToVercel>>;
+        try {
+          result = await deployToVercel(vercelToken, cached.project.name, cached.project.files, async (msg) => updateStatus(msg));
+        } catch (firstErr: any) {
+          const apiKey = process.env.OPENROUTER_API_KEY;
+          if (!apiKey) throw firstErr;
+          await updateStatus(`⚠️ Deploy failed — running AI auto-fix...\n${firstErr.message.substring(0, 60)}`);
+          const fixed = await autoFixProjectFiles(cached.project.files, firstErr.message, cached.project.description, apiKey);
+          if (!fixed) throw firstErr;
+          cached.project.files = fixed;
+          await updateStatus(`🔧 Auto-fix applied — retrying...`);
+          result = await deployToVercel(vercelToken!, cached.project.name, fixed, async (msg) => updateStatus(msg));
+        }
         try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
-        await bot.sendMessage(chatId,
-          `🚀 Live!\n\n📦 ${cached.project.name}\n${cached.project.description}\n\n🌐 ${result.url}\n\n${cached.project.files.length} files · ${typeLabel(cached.project.type)}`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: "🌐 Open Live Site", url: result.url }],
-                [{ text: "🔍 Vercel Dashboard", url: result.inspectorUrl }],
-                [{ text: "🌐 Build Another", callback_data: "build_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
-              ],
-            },
-          }
-        );
+        await updateBuildDeployUrls(userId, { vercelUrl: result.url });
+        try {
+          await User.findOneAndUpdate({ userId }, {
+            $inc: { "usage.builds": 1 },
+            $push: { projects: { name: cached.project.name, repoUrl: cached.repoUrl, deployUrl: result.url, createdAt: new Date() } },
+          });
+        } catch {}
+        const latest = await getCachedBuild(userId);
+        const isBackend = cached.project.type === "nodejs" || cached.project.type === "fullstack";
+        const hasRepo = !!cached.repoUrl;
+        if (latest?.renderUrl) {
+          await bot.sendMessage(chatId,
+            `🚀 Fully deployed!\n\n📦 ${cached.project.name}\n\n⚡ Frontend (Vercel): ${result.url}\n🟣 Backend (Render): ${latest.renderUrl}`,
+            { reply_markup: { inline_keyboard: [
+              [{ text: "⚡ Open Frontend", url: result.url }, { text: "🟣 Open Backend", url: latest.renderUrl }],
+              [{ text: "🌐 Build Another", callback_data: "build_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+            ]}}
+          );
+        } else if (isBackend && hasRepo) {
+          await bot.sendMessage(chatId,
+            `⚡ Deployed to Vercel!\n\n📦 ${cached.project.name}\n🌐 ${result.url}\n\nYour project has a Node.js backend — deploy it to Render too?`,
+            { reply_markup: { inline_keyboard: [
+              [{ text: "🟣 Deploy Backend to Render", callback_data: "deploy_render" }],
+              [{ text: "✅ Done", callback_data: "build_deploy_done" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+            ]}}
+          );
+        } else {
+          await bot.sendMessage(chatId,
+            `⚡ Live on Vercel!\n\n📦 ${cached.project.name}\n🌐 ${result.url}`,
+            { reply_markup: { inline_keyboard: [
+              [{ text: "🌐 Open Live Site", url: result.url }],
+              [{ text: "🔍 Vercel Dashboard", url: result.inspectorUrl }],
+              [{ text: "🌐 Build Another", callback_data: "build_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+            ]}}
+          );
+        }
       } catch (err: any) {
         try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
         await bot.sendMessage(chatId,
-          `❌ Deployment failed. Check your Vercel token is valid and try /deploy again.`,
+          `❌ Deployment failed: ${err.message?.substring(0, 100) ?? "Unknown error"}\n\nCheck your Vercel token and try again.`,
           { reply_markup: backToMainKeyboard() }
         );
       }
@@ -928,7 +958,6 @@ export async function handleCallbackQuery(
     }
 
     if (data === "deploy_render") {
-      // Resolve Render token: user's saved token > env var
       let renderToken = process.env.RENDER_API_KEY;
       try {
         const fresh = await User.findOne({ userId }).select("+renderTokenEncrypted");
@@ -948,22 +977,22 @@ export async function handleCallbackQuery(
       }
       const cached = await getCachedBuild(userId);
       if (!cached) {
-        await editMsg(bot, query,
-          "⏳ Build session expired. Run /build first to generate a project.",
-          backToMainKeyboard()
-        );
+        await editMsg(bot, query, "⏳ Build session expired. Run /build first.", backToMainKeyboard());
         return;
       }
-      // Render requires a GitHub repo URL
-      const repoUrl = (cached as any).repoUrl as string | undefined;
+      const repoUrl = cached.repoUrl;
       if (!repoUrl) {
-        await editMsg(bot, query,
-          "🟣 Render deployment requires your project to be on GitHub.\n\nRun /build with GitHub connected (⚙️ Settings → 🔑 GitHub), then deploy to Render.",
-          backToMainKeyboard()
+        await bot.answerCallbackQuery(query.id);
+        await bot.sendMessage(chatId,
+          `🟣 Render deployment requires your project to be on GitHub first.\n\nUse 📤 Push to GitHub, then come back to deploy the backend to Render.`,
+          { reply_markup: { inline_keyboard: [
+            [{ text: "📤 Push to GitHub", callback_data: "build_choice_github" }],
+            [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+          ]}}
         );
         return;
       }
-      await bot.answerCallbackQuery(query.id, { text: "Starting Render deployment..." });
+      await bot.answerCallbackQuery(query.id, { text: "Deploying to Render..." });
       const statusMsg = await bot.sendMessage(chatId, `🟣 Deploying to Render...\n\n📦 ${cached.project.name}`);
       let statusMsgId = statusMsg.message_id;
       const updateStatus = async (text: string) => {
@@ -972,40 +1001,55 @@ export async function handleCallbackQuery(
       try {
         const result = await deployToRender(renderToken, cached.project.name, repoUrl, updateStatus);
         try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
-        await bot.sendMessage(chatId,
-          `🟣 Deployed to Render!\n\n📦 ${cached.project.name}\n\n🌐 ${result.url}`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: "🌐 Open Live Site", url: result.url }],
-                [{ text: "📊 Render Dashboard", url: result.inspectorUrl }],
-                [{ text: "🌐 Build Another", callback_data: "build_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
-              ],
-            },
-          }
-        );
+        await updateBuildDeployUrls(userId, { renderUrl: result.url });
+        const latest = await getCachedBuild(userId);
+        if (latest?.vercelUrl) {
+          await bot.sendMessage(chatId,
+            `🚀 Fully deployed!\n\n📦 ${cached.project.name}\n\n⚡ Frontend (Vercel): ${latest.vercelUrl}\n🟣 Backend (Render): ${result.url}`,
+            { reply_markup: { inline_keyboard: [
+              [{ text: "⚡ Open Frontend", url: latest.vercelUrl }, { text: "🟣 Open Backend", url: result.url }],
+              [{ text: "🌐 Build Another", callback_data: "build_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+            ]}}
+          );
+        } else {
+          await bot.sendMessage(chatId,
+            `🟣 Deployed to Render!\n\n📦 ${cached.project.name}\n🌐 ${result.url}\n\nDeploy the frontend to Vercel too?`,
+            { reply_markup: { inline_keyboard: [
+              [{ text: "🌐 Open Backend", url: result.url }],
+              [{ text: "⚡ Deploy Frontend to Vercel", callback_data: "deploy_live" }],
+              [{ text: "✅ Done", callback_data: "build_deploy_done" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+            ]}}
+          );
+        }
       } catch (err: any) {
         try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
         await bot.sendMessage(chatId,
-          `❌ Render deployment failed. Check your Render token and try again.`,
+          `❌ Render deployment failed: ${err.message?.substring(0, 100) ?? "Unknown error"}\n\nCheck your Render token and try again.`,
           { reply_markup: backToMainKeyboard() }
         );
       }
       return;
     }
 
-    if (data === "build_menu") {
-      // Check user's personal GitHub token OR env-level token
-      let hasGitHub = false;
-      try {
-        const fresh = await User.findOne({ userId }).select("+github.tokenEncrypted");
-        const enc = (fresh as any)?.github?.tokenEncrypted as string | undefined;
-        const username = (fresh as any)?.github?.username || process.env.GITHUB_USERNAME;
-        let token = process.env.GITHUB_TOKEN;
-        if (enc) { const dec = decrypt(enc); if (dec) token = dec; }
-        hasGitHub = !!(token && username);
-      } catch {}
+    if (data === "build_deploy_done") {
+      await bot.answerCallbackQuery(query.id);
+      const cached = await getCachedBuild(userId);
+      const parts: string[] = ["✅ Project complete!"];
+      if (cached) {
+        parts.push(`\n📦 ${cached.project.name}`);
+        if (cached.vercelUrl) parts.push(`⚡ Vercel: ${cached.vercelUrl}`);
+        if (cached.renderUrl) parts.push(`🟣 Render: ${cached.renderUrl}`);
+        if (cached.repoUrl)   parts.push(`📁 GitHub: ${cached.repoUrl}`);
+      }
+      await bot.sendMessage(chatId, parts.join("\n"),
+        { reply_markup: { inline_keyboard: [
+          [{ text: "🌐 Build Another", callback_data: "build_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+        ]}}
+      );
+      return;
+    }
 
+    if (data === "build_menu") {
       setPending(userId, "build_input");
       await bot.answerCallbackQuery(query.id);
       await bot.sendMessage(chatId,
@@ -1019,9 +1063,7 @@ export async function handleCallbackQuery(
         `• real-time chat app with Node.js\n` +
         `• expense tracker with charts\n` +
         `• quiz app with multiple choice questions\n\n` +
-        (hasGitHub
-          ? `✅ GitHub connected — project will be pushed to a repo automatically!\n\nWhat do you want to build? Type your idea below:`
-          : `💡 After generation you can push to GitHub or receive files on Telegram.\n\nWhat do you want to build? Type your idea below:`),
+        `After generation, choose to push to GitHub, send files to Telegram, or deploy to Vercel/Render!\n\nWhat do you want to build? Type your idea below:`,
         { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
       );
       return;
@@ -1031,17 +1073,21 @@ export async function handleCallbackQuery(
       await bot.answerCallbackQuery(query.id, { text: "Sending your files..." });
       const cached = await getCachedBuild(userId);
       if (!cached) {
-        await bot.sendMessage(chatId, "⚠️ Project session expired. Please build again.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Build Again", callback_data: "build_menu" }]] } });
+        await bot.sendMessage(chatId, "⚠️ Project session expired. Please build again.",
+          { reply_markup: { inline_keyboard: [[{ text: "🌐 Build Again", callback_data: "build_menu" }]] } }
+        );
         return;
       }
-      // Record the build and save the project before sending files
       try {
         await User.findOneAndUpdate({ userId }, {
           $inc: { "usage.builds": 1 },
           $push: { projects: { name: cached.project.name, repoUrl: undefined, deployUrl: undefined, createdAt: new Date() } },
         });
       } catch {}
-      await bot.sendMessage(chatId, `📦 Sending ${cached.project.files.length} files for *${cached.project.name}*...`, { parse_mode: "Markdown" });
+      await bot.sendMessage(chatId,
+        `📦 Sending ${cached.project.files.length} files for *${cached.project.name}*...`,
+        { parse_mode: "Markdown" }
+      );
       for (const file of cached.project.files) {
         try {
           const buf = Buffer.from(file.content, "utf-8");
@@ -1050,11 +1096,14 @@ export async function handleCallbackQuery(
           await new Promise((r) => setTimeout(r, 350));
         } catch {}
       }
+      const isBackend = cached.project.type === "nodejs" || cached.project.type === "fullstack";
       await bot.sendMessage(chatId,
-        `✅ All files sent!\n\n💡 ${cached.project.deploymentTip}\n\n💡 Connect GitHub in ⚙️ Settings → 🔑 GitHub for auto-push next time.`,
+        `✅ All ${cached.project.files.length} files sent!\n\nDeploy your project online for free:`,
         { reply_markup: { inline_keyboard: [
-          [{ text: "🔑 Connect GitHub", callback_data: "settings_github" }, { text: "🌐 Build Another", callback_data: "build_menu" }],
-          [{ text: "⬅️ Menu", callback_data: "main_menu" }],
+          [{ text: "⚡ Deploy to Vercel", callback_data: "deploy_live" }],
+          ...(isBackend ? [[{ text: "🟣 Deploy Backend to Render", callback_data: "deploy_render" }]] : []),
+          [{ text: "📤 Push to GitHub First", callback_data: "build_choice_github" }],
+          [{ text: "✅ Done (No Deployment)", callback_data: "build_deploy_done" }],
         ]}}
       );
       return;
@@ -1064,11 +1113,12 @@ export async function handleCallbackQuery(
       await bot.answerCallbackQuery(query.id);
       const cached = await getCachedBuild(userId);
       if (!cached) {
-        await bot.sendMessage(chatId, "⚠️ Project session expired. Please build again.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Build Again", callback_data: "build_menu" }]] } });
+        await bot.sendMessage(chatId, "⚠️ Project session expired. Please build again.",
+          { reply_markup: { inline_keyboard: [[{ text: "🌐 Build Again", callback_data: "build_menu" }]] } }
+        );
         return;
       }
 
-      // Resolve GitHub credentials
       let ghToken: string | undefined = process.env.GITHUB_TOKEN;
       let ghUsername: string | undefined = process.env.GITHUB_USERNAME;
       try {
@@ -1081,7 +1131,7 @@ export async function handleCallbackQuery(
 
       if (!ghToken || !ghUsername) {
         await bot.sendMessage(chatId,
-          `🔑 No GitHub account connected yet.\n\nConnect your GitHub token in Settings to push projects directly to your repos!`,
+          `🔑 No GitHub account connected yet.\n\nConnect your GitHub in Settings to push projects to your repos!`,
           { reply_markup: { inline_keyboard: [
             [{ text: "🔑 Connect GitHub", callback_data: "settings_github" }],
             [{ text: "📱 Send to Telegram Instead", callback_data: "build_choice_telegram" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
@@ -1122,7 +1172,10 @@ export async function handleCallbackQuery(
       }
 
       try {
-        await bot.editMessageText(`✅ Repository created! Uploading ${cached.project.files.length} files...`, { chat_id: chatId, message_id: statusMsg.message_id });
+        await bot.editMessageText(
+          `✅ Repository created! Uploading ${cached.project.files.length} files...`,
+          { chat_id: chatId, message_id: statusMsg.message_id }
+        );
       } catch {}
 
       try {
@@ -1144,18 +1197,21 @@ export async function handleCallbackQuery(
       stopTyping();
       try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
 
-      try {
-        await User.findOneAndUpdate({ userId }, {
-          $push: { projects: { name: cached.project.name, repoUrl: repoInfo.htmlUrl, deployUrl: undefined, createdAt: new Date() } },
-          $inc: { "usage.builds": 1 },
-        });
-      } catch {}
+      // Update cache with repoUrl so Render deploy can use it
+      await cacheUserBuild(userId, cached.project, cached.prompt, repoInfo.htmlUrl);
 
+      // Show deploy options (GitHub repo is now available for Render)
+      const isBackend = cached.project.type === "nodejs" || cached.project.type === "fullstack";
       await bot.sendMessage(chatId,
-        `🚀 Pushed to GitHub!\n\n📦 ${cached.project.name}\n${cached.project.description}\n\n🔗 ${repoInfo.htmlUrl}\n\n${cached.project.files.length} files · ${typeLabel(cached.project.type)}\n\n💡 ${cached.project.deploymentTip}`,
+        `🚀 Pushed to GitHub!\n\n` +
+        `📦 ${cached.project.name}\n` +
+        `🔗 ${repoInfo.htmlUrl}\n\n` +
+        `${cached.project.files.length} files · ${typeLabel(cached.project.type)}\n\n` +
+        `Now deploy your project online for free:`,
         { reply_markup: { inline_keyboard: [
-          [{ text: "🔗 Open on GitHub", url: repoInfo.htmlUrl }],
-          [{ text: "🌐 Build Another", callback_data: "build_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+          [{ text: "⚡ Deploy to Vercel", callback_data: "deploy_live" }],
+          ...(isBackend ? [[{ text: "🟣 Deploy Backend to Render", callback_data: "deploy_render" }]] : []),
+          [{ text: "✅ Done (No Deployment)", callback_data: "build_deploy_done" }],
         ]}}
       );
       return;

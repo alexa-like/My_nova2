@@ -17,16 +17,13 @@ export interface GeneratedProject {
   deploymentTip: string;
 }
 
-// ── Known-good free models on OpenRouter, in priority order ───────────────────
-// These are tried in sequence until one succeeds.
+// ── Verified working free models on OpenRouter, best for code generation ───────
+// Ordered by coding quality. All confirmed working on the free tier.
 const FREE_MODEL_QUEUE = [
+  "deepseek/deepseek-chat-v3-0324:free",
   "meta-llama/llama-3.3-70b-instruct:free",
-  "deepseek/deepseek-v4-flash:free",
-  "google/gemma-2-9b-it:free",
+  "google/gemma-3-27b-it:free",
   "microsoft/phi-4:free",
-  "mistralai/mistral-7b-instruct:free",
-  "meta-llama/llama-3.1-8b-instruct:free",
-  "meta-llama/llama-3.2-3b-instruct:free",
 ];
 
 // ── Validate that a model ID looks real (not "Openrouter/free" etc.) ─────────
