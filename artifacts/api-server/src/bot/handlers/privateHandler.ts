@@ -6,7 +6,6 @@ import { generateImage, getImageLimit, editImage, downloadTelegramPhoto } from "
 import { analyzeImage } from "../services/imageAnalysis.js";
 import { isRateLimited } from "../utils/rateLimiter.js";
 import { formatDate, addDays, getUserName, safeSend, startTypingLoop, startLiveStatus } from "../utils/helpers.js";
-import { parseDuration } from "../models/RedeemCode.js";
 import { Memory } from "../models/Memory.js";
 import { getPending, clearPending, setPending, PHOTO_ACTIONS, OWNER_PENDING_ACTIONS } from "../utils/pendingActions.js";
 import { handleOwnerPendingText } from "./ownerHandler.js";

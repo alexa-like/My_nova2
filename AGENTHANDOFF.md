@@ -182,10 +182,58 @@ Nova is a production Telegram AI assistant with personality modes, group moderat
 
 ---
 
+---
+
+## Session 5 — Full Project Audit, Debug, Repair, Security Hardening (completed)
+
+**Goal:** Second deep-pass audit covering: dead imports, handler consistency, group settings, admin route security, ObjectId injection, callback field injection, TypeScript clean build.
+
+**Fixes applied:**
+
+- **DEAD-01** — `parseDuration` imported from `RedeemCode.ts` in `privateHandler.ts` but never called (only `parseDurationToMs` from Reminder is used). Removed import.
+- **DEAD-02** — `trackFeature` imported in `callbackHandler.ts` but never called anywhere in that file. Removed from import statement (kept `track`).
+- **DEAD-03** — `getNewCount as _getNewCount` imported in `callbackHandler.ts` but never used (underscore prefix was a suppression hint). Removed from import statement (kept `formatAnnouncements`).
+
+- **SEC-01** — `grp_tog_` callback handler in `callbackHandler.ts` accepted any field name from callback data and applied it directly via `(gs as any)[field] = !value` with no whitelist. A group admin (or anyone who crafted a callback) could corrupt arbitrary GroupSettings fields. Added `ALLOWED_TOGGLE_FIELDS` Set (`aiEnabled`, `emoji`, `length`, `antilink`, `antiflood`, `captchaEnabled`, `autoDeleteServiceMessages`, `locked`) — unknown fields now rejected with "Unknown setting." before any DB access.
+
+- **SEC-02** — `DELETE /api/admin/codes/:id` passed `req.params.id` directly to `RedeemCode.deleteOne({ _id: ... })` without validating it was a valid MongoDB ObjectId. An invalid string would cause Mongoose to throw a CastError (caught, but leaks internal error info). Added `isValidObjectId()` guard; returns 400 before the DB call.
+
+- **SEC-03** — `PATCH /api/admin/feedback/:id/read` same pattern — `req.params.id` passed to `findByIdAndUpdate` without ObjectId validation. Same guard added.
+
+**Full audit findings (no code change needed — confirmed correct):**
+
+- All 153+ callback handlers verified wired and reachable — no orphaned buttons
+- `own_panel` and `owner_panel` callbacks both call `sendOwnerPanel()` — intentional, different nav paths
+- `groupSettingsKeyboard` fields (`antilink`, `antiflood`, `captchaEnabled`, etc.) all match GroupSettings schema exactly
+- Group handler `IUser` type import used as type annotation at line 195 — not dead
+- `broadcastNewPromo`, `invalidateBotConfigCache`, `getDailySummary`, `getTopCommands`, `getActiveUsers` all confirmed called at their respective call sites
+- `Memory` model in `ownerHandler.ts` used for 5 `.deleteMany()` and 1 `.countDocuments()` — not dead
+- AI `MAX_HISTORY = 20` — enforced both on save (`> 20 → slice`) and on read (`.slice(-20)`) — no memory growth risk
+- RateLimit is MongoDB-backed with TTL index — survives restarts
+- CORS: allows Replit preview domains + env-configured origins — correct for dev + prod
+- Admin API key: accepts both `x-admin-key` header and `Authorization: Bearer …` — consistent with dashboard client
+- Broadcast message length validated at 4000 chars before dispatch — correct
+- Admin routes have brute-force lockout (5 failures → 15 min) + constant-time `safeEqual()` compare — secure
+- BuildCache abstracted correctly through `utils/buildCache.ts` → `models/BuildCache.ts` — no dual-path conflict
+- No circular imports; no eval/exec; no console.log (pino throughout)
+
+**Final build state:**
+- TypeScript: **0 errors** across all 4 packages
+- esbuild: `dist/index.mjs` 7.9 MB — builds clean in ~4 s
+- Server starts and responds on port 5000 with correct env-validation warnings when secrets are absent
+
+**Files changed this session:**
+- `artifacts/api-server/src/bot/handlers/privateHandler.ts` — remove `parseDuration` import
+- `artifacts/api-server/src/bot/handlers/callbackHandler.ts` — remove `trackFeature` + `_getNewCount` imports; add `ALLOWED_TOGGLE_FIELDS` whitelist to `grp_tog_` handler
+- `artifacts/api-server/src/routes/admin.ts` — add `mongoose` import + `isValidObjectId()` helper; add ObjectId guard to DELETE /codes/:id and PATCH /feedback/:id/read
+
+---
+
 ## Next Tasks (suggested, not yet started)
 
 - [ ] Captcha store is in-memory — if server restarts mid-captcha, users get stuck muted; consider persisting captcha state to MongoDB
 - [ ] Admin dashboard chunk size is 647 KB (warn threshold 500 KB) — consider lazy-loading heavy routes to improve load time
+- [ ] Admin read-only DB queries (`.find()`, `.findOne()`) in `admin.ts` do not use `.lean()` — adds Mongoose document overhead for responses that are serialized straight to JSON (9 call sites)
 - [ ] Deploy to Render — set env secrets: `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`, `WEBHOOK_URL`
 
 ---

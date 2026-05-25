@@ -94,8 +94,8 @@ import {
   FEATURE_LABELS,
   ACHIEVEMENTS,
 } from "../services/engagement.js";
-import { trackFeature, track } from "../services/analytics.js";
-import { formatAnnouncements, getNewCount as _getNewCount } from "../services/announcements.js";
+import { track } from "../services/analytics.js";
+import { formatAnnouncements } from "../services/announcements.js";
 import { getPromoGroups, getActivePromoGroups, removePromoGroup, togglePromoGroup, claimPromoReward } from "../services/groupGate.js";
 
 // ── Trivia questions ──────────────────────────────────────────────────────────
@@ -2469,6 +2469,11 @@ export async function handleCallbackQuery(
       if (!match) { await answer(bot, query.id); return; }
       const field = match[1];
       const groupChatId = parseInt(match[2]);
+      const ALLOWED_TOGGLE_FIELDS = new Set([
+        "aiEnabled", "emoji", "length", "antilink", "antiflood",
+        "captchaEnabled", "autoDeleteServiceMessages", "locked",
+      ]);
+      if (!ALLOWED_TOGGLE_FIELDS.has(field)) { await answer(bot, query.id, "Unknown setting."); return; }
       const isAdm = await (async () => { try { const m = await bot.getChatMember(groupChatId, userId); return ["creator","administrator"].includes(m.status); } catch { return false; } })();
       if (!isAdm) { await answer(bot, query.id, "Only group admins can change settings."); return; }
       const gs = await GroupSettings.findOne({ chatId: groupChatId });

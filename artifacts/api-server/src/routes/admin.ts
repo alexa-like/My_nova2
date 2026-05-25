@@ -1,4 +1,5 @@
 import { Router } from "express";
+import mongoose from "mongoose";
 import { User } from "../bot/models/User.js";
 import { RedeemCode } from "../bot/models/RedeemCode.js";
 import { Memory } from "../bot/models/Memory.js";
@@ -10,6 +11,10 @@ import { getBot } from "../bot/index.js";
 import { setMaintenance } from "../bot/utils/maintenanceState.js";
 import { setPremiumEmojiEnabled } from "../bot/utils/premiumEmoji.js";
 import { logger } from "../lib/logger.js";
+
+function isValidObjectId(id: string): boolean {
+  return mongoose.Types.ObjectId.isValid(id);
+}
 
 const router = Router();
 
@@ -376,6 +381,7 @@ router.post("/admin/codes/generate", async (req, res) => {
 
 // ── DELETE /api/admin/codes/:id ─────────────────────────────────────────────
 router.delete("/admin/codes/:id", async (req, res) => {
+  if (!isValidObjectId(req.params.id)) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
     await RedeemCode.deleteOne({ _id: req.params.id });
     res.json({ success: true });
@@ -518,6 +524,7 @@ router.get("/admin/feedback", async (req, res) => {
 
 // ── PATCH /api/admin/feedback/:id/read ───────────────────────────────────────
 router.patch("/admin/feedback/:id/read", async (req, res) => {
+  if (!isValidObjectId(req.params.id)) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
     const { Feedback } = await import("../bot/models/Feedback.js");
     await Feedback.findByIdAndUpdate(req.params.id, { read: true });

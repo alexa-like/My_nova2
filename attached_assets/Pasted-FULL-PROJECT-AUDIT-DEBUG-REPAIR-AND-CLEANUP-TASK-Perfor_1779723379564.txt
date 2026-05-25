@@ -1,0 +1,165 @@
+FULL PROJECT AUDIT, DEBUG, REPAIR, AND CLEANUP TASK
+
+Perform a complete deep scan and audit of the entire project.
+
+Your job is to act as a senior software engineer, QA tester, security auditor, code reviewer, and deployment inspector.
+
+SCAN EVERYTHING:
+
+1. CODE & FILES
+- Scan all files and folders.
+- Detect syntax errors.
+- Detect runtime errors.
+- Detect logic errors.
+- Detect broken imports.
+- Detect missing dependencies.
+- Detect unused dependencies.
+- Detect duplicate code.
+- Detect dead code.
+- Detect unused functions.
+- Detect unused variables.
+- Detect unreachable code.
+- Detect circular imports.
+- Detect memory leaks.
+- Detect performance issues.
+- Detect security risks.
+- Detect broken references.
+
+2. COMMAND SYSTEM
+- Scan every command.
+- Verify all commands work correctly.
+- Check for command conflicts.
+- Check if one command affects another command.
+- Check permissions.
+- Check owner-only commands.
+- Check admin commands.
+- Check group commands.
+- Check private chat commands.
+- Check premium commands.
+- Check free user commands.
+- Fix any command that is broken or incomplete.
+
+3. INLINE KEYBOARDS
+- Scan every inline keyboard.
+- Verify all buttons work.
+- Verify callback handlers exist.
+- Verify callback data matches handlers.
+- Detect orphaned buttons.
+- Detect duplicate callbacks.
+- Detect broken navigation.
+- Detect incorrect button routing.
+- Verify back buttons work.
+- Verify menu transitions work.
+- Fix all issues found.
+
+4. MESSAGE HANDLERS
+- Scan all handlers.
+- Detect conflicts.
+- Detect duplicate handlers.
+- Detect unreachable handlers.
+- Verify routing logic.
+- Verify handler priority.
+- Fix all issues.
+
+5. DATABASE
+- Scan database structure.
+- Detect broken queries.
+- Detect missing tables.
+- Detect unused tables.
+- Detect broken migrations.
+- Detect data consistency issues.
+- Fix all issues safely.
+
+6. FILE CLEANUP
+- Detect useless files.
+- Detect abandoned files.
+- Detect temporary files.
+- Detect old backup files.
+- Detect partially deleted features.
+- Detect leftover code from removed systems.
+- Detect references to deleted features.
+- Remove only files confirmed to be unused and safe to remove.
+
+7. FEATURE VALIDATION
+- Verify every feature works correctly.
+- Verify all menus work.
+- Verify all navigation works.
+- Verify all user flows work.
+- Verify premium systems.
+- Verify referral systems.
+- Verify coin systems.
+- Verify rewards.
+- Verify website builder.
+- Verify AI systems.
+- Verify payment systems.
+- Verify admin systems.
+- Verify owner systems.
+- Verify group systems.
+- Verify private chat systems.
+
+8. ERROR LOGGING
+- Scan logs.
+- Identify recurring errors.
+- Identify hidden errors.
+- Fix root causes instead of applying temporary patches.
+
+9. DEPLOYMENT AUDIT
+IMPORTANT:
+DO NOT redesign, replace, or modify the deployment architecture.
+
+ONLY:
+- Scan deployment configuration.
+- Scan startup process.
+- Scan environment variables.
+- Scan deployment scripts.
+- Scan build process.
+- Scan runtime process.
+- Scan production configuration.
+- Fix deployment-related bugs ONLY if they are causing errors.
+
+Leave the deployment structure exactly as it currently exists.
+
+10. SECURITY AUDIT
+- Detect exposed secrets.
+- Detect unsafe code.
+- Detect vulnerable dependencies.
+- Detect insecure endpoints.
+- Detect permission bypasses.
+- Fix all security issues safely.
+
+11. FINAL PROJECT HEALTH CHECK
+After all fixes:
+- Run a full project validation.
+- Run all startup checks.
+- Run all command checks.
+- Run all callback checks.
+- Run all menu checks.
+- Run all database checks.
+- Run all deployment checks.
+
+OUTPUT REQUIRED:
+
+Provide a detailed report including:
+
+A. Bugs found
+B. Errors found
+C. Broken commands found
+D. Broken inline keyboards found
+E. Broken files found
+F. Unused files found
+G. Security issues found
+H. Deployment issues found
+I. Fixes applied
+J. Files modified
+K. Files removed
+L. Remaining warnings (if any)
+
+RULES:
+- Do not guess.
+- Verify before modifying.
+- Preserve existing functionality.
+- Do not remove active features.
+- Do not change working systems.
+- Fix root causes, not symptoms.
+- Keep code clean, stable, production-ready, and maintainable.
+- Ensure the entire project works correctly after all fixes.
