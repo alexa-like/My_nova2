@@ -13,21 +13,18 @@
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
     "axios": "^1.16.0",
-    "cookie-parser": "^1.4.7",
     "cors": "^2",
     "express": "^5",
     "form-data": "^4.0.5",
     "jsonrepair": "^3.14.0",
     "mammoth": "^1.12.0",
     "mongoose": "^9.6.1",
-    "msedge-tts": "^2.0.5",
     "node-telegram-bot-api": "^0.67.0",
     "pdf-parse": "^2.4.5",
     "pino": "^9",
     "pino-http": "^10"
   },
   "devDependencies": {
-    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "catalog:",

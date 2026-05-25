@@ -310,7 +310,6 @@ export async function handleGroupMessage(
       "@Nova /ask <question> — Ask anything\n" +
       "@Nova /translate <text> — Translate to English\n" +
       "@Nova /search <query> — Web search\n" +
-      "@Nova /voice <text> — Convert text to speech\n" +
       "@Nova /describe — Send a photo for AI description\n" +
       "@Nova /sticker <desc> — Generate sticker\n\n" +
       "⚙️ Admins: use /settings to manage all group settings."
@@ -1369,9 +1368,9 @@ export async function handleGroupMessage(
   }
 
   // /build is private-only — redirect group users to DM
-  if (cleanText.toLowerCase().startsWith("/build") || cleanText.toLowerCase().startsWith("/deploy")) {
+  if (cleanText.toLowerCase().startsWith("/build")) {
     await bot.sendMessage(chatId,
-      "The /build and /deploy commands are only available in private chat. DM me to use them.",
+      "The /build command is only available in private chat. DM me to use it!",
       { reply_to_message_id: msg.message_id }
     );
     return;

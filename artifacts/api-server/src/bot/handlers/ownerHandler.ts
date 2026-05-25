@@ -555,7 +555,7 @@ export async function handleOwnerMessage(
       `${ok(hasMongo)} MongoDB (database)\n\n` +
       `Build & Deploy:\n` +
       `${ok(hasGH)} GitHub (repo push — /build)\n` +
-      `${ok(hasVercel)} Vercel (auto-deploy — /deploy)\n\n` +
+      `${ok(hasVercel)} Vercel (deploy via /build → Deploy button)\n\n` +
       `Active Models:\n` +
       `🧠 ${config.activeChatModel}\n` +
       `🖼 ${config.activeImageModel}\n\n` +

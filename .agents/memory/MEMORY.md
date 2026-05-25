@@ -3,3 +3,4 @@
 - [Webhook Mode](webhook-mode.md) — detects RENDER_EXTERNAL_URL or WEBHOOK_URL; sets webhook to ${url}/api/bot/webhook; falls back to polling in dev; route in routes/bot.ts.
 - [BuildCache MongoDB](buildcache-mongo.md) — models/BuildCache.ts 45-min TTL index; buildCache.ts functions are async; all callers must await them.
 - [Group Gate Soft](group-gate-soft.md) — gate no longer blocks; shows friendly invite without return; controlled in privateHandler.ts gate block.
+- [Pending Actions Pattern](pending-actions-pattern.md) — every setPending() call must have a matching case in handlePendingText(); use build_input (not build_pending) for quick-build type selection; answer() helper accepts optional 4th arg showAlert.

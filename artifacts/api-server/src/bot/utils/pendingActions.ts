@@ -29,7 +29,6 @@ export type PendingTextAction =
   | "build_input"
   | "vercel_set_token"
   | "render_set_token"
-  | "build_pending"
   | "feedback_pending"
   | "deletedata_confirm"
   | "grp_set_welcome"

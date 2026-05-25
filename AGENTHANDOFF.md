@@ -134,17 +134,59 @@ Nova is a production Telegram AI assistant with personality modes, group moderat
 
 ---
 
+---
+
+## Session 4 — Full Project Audit, Debug, Repair & Cleanup (completed)
+
+**Goal:** Complete deep audit of all commands, callbacks, handlers, services, security, packages, and deployment — fix all bugs found.
+
+**Bugs fixed:**
+
+- **BUG-01 CRITICAL** — `build_pending` pending action had NO handler in privateHandler.ts; users who clicked a build type button then typed their description got "Something went wrong." Fixed: changed `setPending(userId, "build_pending")` → `setPending(userId, "build_input")` in callbackHandler.ts; removed dead `build_pending` type from pendingActions.ts.
+
+- **BUG-02 CRITICAL** — `privacy_delete_data` callback had two handlers; the second (line 3111) was dead code and referenced a non-existent `/deleteaccount` command. The first (line 353) had wrong instructions ("send `/deletedata confirm`" but command expects text "DELETE MY DATA"). Fixed: first handler now directly calls `setPending(userId, "deletedata_confirm")` with correct confirmation instructions; second dead handler removed.
+
+- **BUG-03** — `answer()` helper function in callbackHandler.ts only accepted 3 args but was called with 4 (`true` for `show_alert`) in promo_claim flow (lines 3002, 3004, 3008), causing TypeScript errors TS2554. Fixed: added optional `showAlert?: boolean` parameter.
+
+- **BUG-04** — Duplicate `/daily` handler in privateHandler.ts (lines 500–524): old 20-hour cooldown version that directly added credits and bypassed the daily_claim callback flow. Removed; kept the correct version at line 1064 (24h, streak-aware, uses dailyRewardKeyboard).
+
+- **BUG-05** — Duplicate `/achievements` handler (lines 527–535): used broken `Object.keys(ACHIEVEMENTS)` (array → returns indices) and stale `formatAchievementsText`. Removed; kept the correct version at line 334.
+
+- **BUG-06** — Duplicate `/privacy` handler (lines 538–555): stale Markdown version that mentioned "voice messages (discarded after transcription)" — a removed feature. Removed; kept the correct version at line 315 with proper privacyMenuKeyboard().
+
+- **BUG-07** — Second `/refer` handler (line 1092) was dead code for `/refer` (596 fires first) but handled `/referral` and `/invite` aliases. Fixed: changed condition to `/referral || /invite` only so both handlers are reachable.
+
+- **BUG-08** — `first_voice` achievement in engagement.ts could never be earned (TTS removed) and `case "voice": award("first_voice")` would award a non-existent achievement. Removed both the achievement definition and the award call.
+
+- **CLEANUP-01** — Stale `/deploy` command references cleaned across 4 files: groupHandler redirect message, ownerHandler status panel, callbackHandler onboarding step 3 text, announcements.ts build_deploy entry — all updated to reference `/build` + Deploy button flow.
+
+- **CLEANUP-02** — `@Nova /voice <text>` removed from group `/help` command output (TTS removed).
+
+- **CLEANUP-03** — `• 🔊 Long Text TTS` removed from `/updates` command text.
+
+- **CLEANUP-04** — Unused imports removed from privateHandler.ts: `privacyKeyboard` (from keyboards.ts) and `formatAchievementsText` (from engagement.ts) — both only used in removed duplicate handlers.
+
+- **CLEANUP-05** — Unused packages removed from package.json: `msedge-tts` (TTS removed) and `cookie-parser` + `@types/cookie-parser` (never imported anywhere in the codebase).
+
+**Final state:** TypeScript checks clean for all bot code. Zero orphaned keyboard buttons. Zero stale /deploy command references. All pending action types have matching handlers.
+
+**Files changed this session:**
+- `artifacts/api-server/src/bot/handlers/callbackHandler.ts` — answer() signature, build_pending→build_input, privacy_delete_data fix, remove dead duplicate, /deploy onboarding text
+- `artifacts/api-server/src/bot/handlers/privateHandler.ts` — remove 3 duplicate handlers (/daily, /achievements, /privacy), fix /refer aliases, remove TTS from /updates, clean imports
+- `artifacts/api-server/src/bot/handlers/groupHandler.ts` — remove /voice from help, fix /deploy redirect
+- `artifacts/api-server/src/bot/handlers/ownerHandler.ts` — fix Vercel /deploy reference
+- `artifacts/api-server/src/bot/utils/pendingActions.ts` — remove dead build_pending type
+- `artifacts/api-server/src/bot/services/engagement.ts` — remove first_voice achievement + award case
+- `artifacts/api-server/src/bot/services/announcements.ts` — update build_deploy entry
+- `artifacts/api-server/package.json` — remove msedge-tts, cookie-parser, @types/cookie-parser
+
+---
+
 ## Next Tasks (suggested, not yet started)
 
-- [ ] `/stats` command — show user their personal breakdown (messages, images, builds, streak, achievements) from MongoDB
-- [ ] Achievements display in callback handler — the `achievements_menu` callback needs a proper handler using the new `getUserAchievements` from engagement.ts
-- [ ] `whats_new_menu` callback — `whatsNewKeyboard` is in place; verify the handler uses `formatAnnouncements()` correctly
-- [ ] MongoDB rate limiter cleanup job — the RateLimit model has a TTL index but confirm it fires correctly for your MongoDB version
-- [ ] Telegram Stars payment — `sendStarsInvoice` is wired up but the actual invoice items/prices need to be defined in `payment.ts`
-- [ ] Deploy to Render — set env secrets: `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`, `WEBHOOK_URL`
-- [ ] `modeManager.ts` is now dead code (nothing imports it) — delete it
 - [ ] Captcha store is in-memory — if server restarts mid-captcha, users get stuck muted; consider persisting captcha state to MongoDB
 - [ ] Admin dashboard chunk size is 647 KB (warn threshold 500 KB) — consider lazy-loading heavy routes to improve load time
+- [ ] Deploy to Render — set env secrets: `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`, `WEBHOOK_URL`
 
 ---
 

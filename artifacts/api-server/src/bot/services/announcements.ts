@@ -39,8 +39,8 @@ export const ANNOUNCEMENTS: Announcement[] = [
     id: "build_deploy",
     date: "2026-04-15",
     emoji: "🚀",
-    title: "Build & Deploy in One Step",
-    body: "Use /deploy <idea> to build a complete website AND deploy it live to Vercel in a single command.",
+    title: "Build & Deploy",
+    body: "Use /build <idea> to generate a full website or app. After building, tap ⚡ Deploy to go live on Vercel in seconds.",
   },
   {
     id: "modes",

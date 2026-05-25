@@ -16,7 +16,6 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "first_image",      icon: "🎨", title: "Artist",             description: "Generated your first image" },
   { id: "first_build",      icon: "🔨", title: "Builder",            description: "Built your first website or app" },
   { id: "first_search",     icon: "🔍", title: "Explorer",           description: "Ran your first web search" },
-  { id: "first_voice",      icon: "🔊", title: "Voice Activated",    description: "Used text-to-speech for the first time" },
   { id: "first_sticker",    icon: "🖼️", title: "Sticker Master",     description: "Created your first sticker" },
   { id: "streak_3",         icon: "🔥", title: "On Fire",            description: "Maintained a 3-day streak" },
   { id: "streak_7",         icon: "⚡", title: "Week Warrior",       description: "Maintained a 7-day streak" },
@@ -105,7 +104,6 @@ export async function checkAndAwardAchievements(
         break;
       }
       case "search":   award("first_search");  break;
-      case "voice":    award("first_voice");   break;
       case "sticker":  award("first_sticker"); break;
       case "streak": {
         const s = trigger.count ?? (user as any).loginStreak ?? (user as any).streak ?? 0;

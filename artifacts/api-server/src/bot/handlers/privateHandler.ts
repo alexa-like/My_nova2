@@ -29,7 +29,6 @@ import {
   onboardingDoneKeyboard,
   welcomeBackKeyboard,
   achievementsKeyboard,
-  privacyKeyboard,
   privacyMenuKeyboard,
   updatesKeyboard,
   buildMenuKeyboard,
@@ -42,7 +41,6 @@ import {
   checkAndGrantAchievements,
   checkAndAwardAchievements,
   updateLoginStreak,
-  formatAchievementsText,
   formatAchievementToast,
   formatAchievementNotification,
   recordLastFeature,
@@ -496,64 +494,6 @@ export async function handlePrivateMessage(
     return;
   }
 
-  // /daily — claim daily credit reward
-  if (text === "/daily") {
-    const dailyCfg = await getOrCreateBotConfig();
-    const dailyAmount = dailyCfg.creditRewards?.daily ?? 25;
-    const now = new Date();
-    const lastClaim = (user as any).lastDailyReward as Date | undefined;
-    if (lastClaim) {
-      const hoursSince = (now.getTime() - lastClaim.getTime()) / (1000 * 60 * 60);
-      if (hoursSince < 20) {
-        const hoursLeft = Math.ceil(20 - hoursSince);
-        await bot.sendMessage(chatId,
-          `🎁 Daily Reward\n\n⏳ You already claimed today's reward!\n\nNext reward in: ${hoursLeft}h\n\nCome back later for ${dailyAmount} more credits!`,
-          { reply_markup: { inline_keyboard: [[{ text: "📊 My Account", callback_data: "account_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-        );
-        return;
-      }
-    }
-    (user as any).lastDailyReward = now;
-    await user.save();
-    const newBal = await addCredits(user.userId, dailyAmount);
-    await bot.sendMessage(chatId,
-      `🎁 Daily Reward Claimed!\n\n+${dailyAmount} credits added!\n💰 New balance: ${newBal} credits\n\nCome back in 20 hours for your next reward!`,
-      { reply_markup: { inline_keyboard: [[{ text: "💰 Credits", callback_data: "credits_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
-    );
-    return;
-  }
-
-  // /achievements — show earned badges
-  if (text === "/achievements") {
-    const badges = user.achievements ?? [];
-    const total = Object.keys((await import("../services/engagement.js")).ACHIEVEMENTS).length;
-    await bot.sendMessage(chatId,
-      formatAchievementsText(badges),
-      { parse_mode: "Markdown", reply_markup: achievementsKeyboard() }
-    );
-    return;
-  }
-
-  // /privacy — explain what data is stored and how to delete it
-  if (text === "/privacy") {
-    await bot.sendMessage(chatId,
-      `🔒 *Privacy & Your Data*\n\n` +
-      `Nova stores the following to work properly:\n\n` +
-      `• *Profile* — Name, Telegram ID, username\n` +
-      `• *Settings* — Your style, language, and preferences\n` +
-      `• *Chat Memory* — Recent conversation context (for better AI replies)\n` +
-      `• *Usage Stats* — Message counts and feature usage\n` +
-      `• *Projects* — Website/app builds you created\n` +
-      `• *Credits & Premium* — Your balance and subscription status\n\n` +
-      `🚫 *What we do NOT store:*\n` +
-      `• Your voice messages (discarded after transcription)\n` +
-      `• Payment details (processed externally)\n\n` +
-      `You can clear your chat memory with /forget, or request full data deletion below.`,
-      { parse_mode: "Markdown", reply_markup: privacyKeyboard() }
-    );
-    return;
-  }
-
   // /deletedata — request full data deletion (two-step: confirmation required)
   if (text === "/deletedata") {
     setPending(user.userId, "deletedata_confirm");
@@ -580,7 +520,6 @@ export async function handlePrivateMessage(
       `• 🏆 *Achievements* — Earn badges as you use Nova (/achievements)\n` +
       `• 🔥 *Login Streaks* — Track your daily activity streak\n` +
       `• 🌐 *Website Builder* — Improved AI models with 4 fallbacks\n` +
-      `• 🔊 *Long Text TTS* — Voice now works for paragraphs, not just short phrases\n` +
       `• 👋 *Personalized Welcome* — Quick-access shortcuts to your recent tools\n` +
       `• 🔒 *Privacy Controls* — See and manage your stored data (/privacy)\n` +
       `• 🎨 *Image Editing* — Edit, enhance, stylize & restore photos with AI\n` +
@@ -1088,8 +1027,8 @@ export async function handlePrivateMessage(
     return;
   }
 
-  // /refer — referral link
-  if (text === "/refer" || text === "/referral" || text === "/invite") {
+  // /referral / /invite — aliases that redirect to the same referral info
+  if (text === "/referral" || text === "/invite") {
     const { getBotUsername } = await import("../index.js");
     const referralLink = `https://t.me/${getBotUsername()}?start=ref_${user.userId}`;
     const refs = (user.referrals || []).length;

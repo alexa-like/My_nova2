@@ -176,8 +176,8 @@ async function editMsg(
   }
 }
 
-async function answer(bot: TelegramBot, queryId: string, text?: string): Promise<void> {
-  try { await bot.answerCallbackQuery(queryId, text ? { text, show_alert: false } : {}); } catch {}
+async function answer(bot: TelegramBot, queryId: string, text?: string, showAlert?: boolean): Promise<void> {
+  try { await bot.answerCallbackQuery(queryId, text ? { text, show_alert: showAlert ?? false } : {}); } catch {}
 }
 
 function getUserId(query: TelegramBot.CallbackQuery): number {
@@ -351,13 +351,18 @@ export async function handleCallbackQuery(
     }
 
     if (data === "privacy_delete_data") {
-      await bot.answerCallbackQuery(query.id, { text: "To request data deletion, send /deletedata" });
+      await answer(bot, query.id, "⚠️ Type DELETE MY DATA to confirm deletion.");
+      setPending(userId, "deletedata_confirm");
       await bot.sendMessage(chatId,
-        `🗑 *Data Deletion Request*\n\n` +
-        `To delete all your Nova data, send:\n\n` +
-        `/deletedata confirm\n\n` +
-        `⚠️ This will erase your profile, memory, credits, premium, and all projects. *This cannot be undone.*`,
-        { parse_mode: "Markdown" }
+        `🗑️ *Delete All My Data*\n\n` +
+        `⚠️ This will permanently delete:\n` +
+        `• Your chat memory and conversation history\n` +
+        `• Your profile, settings, and preferences\n` +
+        `• Your usage stats and achievements\n` +
+        `• Your credits, premium status, and all projects\n\n` +
+        `This *cannot be undone*.\n\n` +
+        `Type \`DELETE MY DATA\` to confirm, or /cancel to abort.`,
+        { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
       );
       return;
     }
@@ -453,7 +458,7 @@ export async function handleCallbackQuery(
       };
       const typeName = typeMap[data] ?? "project";
       await bot.answerCallbackQuery(query.id);
-      setPending(userId, "build_pending");
+      setPending(userId, "build_input");
       await editMsg(bot, query,
         `🌐 *Build a ${typeName.charAt(0).toUpperCase() + typeName.slice(1)}*\n\n` +
         `Describe what you want. Be specific — the more detail, the better the result.\n\n` +
@@ -3047,7 +3052,7 @@ export async function handleCallbackQuery(
         `🔨 Step 3 of 4: Build & Deploy\n\n` +
         `Generate full apps and websites — and go live in seconds.\n\n` +
         `• /build <idea> → generates your project files\n` +
-        `• /deploy <idea> → generates AND deploys live to Vercel\n` +
+        `• After building, tap ⚡ Deploy to push live to Vercel\n` +
         `• Push to GitHub with one tap\n` +
         `• Supports React, Next.js, Node.js, Python, and more\n\n` +
         `💡 Try: /build a todo app in React`,
@@ -3108,25 +3113,6 @@ export async function handleCallbackQuery(
       return;
     }
 
-    if (data === "privacy_delete_data") {
-      await answer(bot, query.id, "⚠️ This will permanently delete your account data.");
-      await editMsg(bot, query,
-        `🗑️ Delete All My Data\n\n` +
-        `⚠️ This will permanently delete:\n` +
-        `• Your chat memory and conversation history\n` +
-        `• Your profile, settings, and preferences\n` +
-        `• Your usage stats and achievements\n` +
-        `• All stored tokens and credentials\n\n` +
-        `This cannot be undone.\n\n` +
-        `To confirm, type: /deleteaccount`,
-        {
-          inline_keyboard: [
-            [{ text: "⬅️ Cancel", callback_data: "privacy_menu" }],
-          ],
-        }
-      );
-      return;
-    }
 
     // ── What's New ───────────────────────────────────────────────────────────
 
