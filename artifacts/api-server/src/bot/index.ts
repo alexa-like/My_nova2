@@ -405,12 +405,19 @@ export async function startBot(): Promise<void> {
             const pending = captchaStore.get(captchaKey);
             if (pending) {
               captchaStore.delete(captchaKey);
+              // Clean up the group captcha message (non-critical)
+              if (pending.messageId) await bot!.deleteMessage(chatId, pending.messageId).catch(() => {});
+              // Ban+unban = kick (allows rejoin). Must be done independently so errors surface.
               try {
-                if (pending.messageId) await bot!.deleteMessage(chatId, pending.messageId).catch(() => {});
                 await bot!.banChatMember(chatId, member.id);
                 await bot!.unbanChatMember(chatId, member.id);
                 await bot!.sendMessage(chatId, `⏰ ${name} was removed for not completing verification in time.`);
-              } catch {}
+              } catch (banErr: any) {
+                logger.error({ err: banErr?.message, chatId, userId: member.id }, "Captcha: failed to kick member after timeout");
+                await bot!.sendMessage(chatId,
+                  `⚠️ A user didn't complete captcha verification but could not be removed. Please make sure I am an admin with "Ban Members" permission.`
+                ).catch(() => {});
+              }
               // DM the removed user
               try {
                 const dmKeyboard = pending.groupLink
@@ -573,20 +580,27 @@ export async function startBot(): Promise<void> {
                 text: "❌ Too many wrong answers. You have been removed from the group.",
                 show_alert: true,
               });
+              // Clean up the group captcha message (non-critical)
+              if (challenge.messageId) await bot!.deleteMessage(chatId, challenge.messageId).catch(() => {});
+              // Ban+unban = kick (allows rejoin). Must be done independently so errors surface.
               try {
-                if (challenge.messageId) await bot!.deleteMessage(chatId, challenge.messageId).catch(() => {});
                 await bot!.banChatMember(chatId, userId);
                 await bot!.unbanChatMember(chatId, userId);
                 const name = query.from.first_name || query.from.username || "User";
-                await bot!.sendMessage(chatId, `${name} failed verification (3 wrong answers) and was removed.`);
-                // Update DM to explain removal
-                if (challenge.dmChatId && challenge.dmMessageId) {
-                  await bot!.editMessageText(
-                    "❌ You used all 3 attempts and have been removed from the group.\n\nYou may rejoin and try again.",
-                    { chat_id: challenge.dmChatId, message_id: challenge.dmMessageId }
-                  ).catch(() => {});
-                }
-              } catch {}
+                await bot!.sendMessage(chatId, `❌ ${name} failed verification (3 wrong answers) and was removed.`);
+              } catch (banErr: any) {
+                logger.error({ err: banErr?.message, chatId, userId }, "Captcha: failed to kick member after 3 wrong answers");
+                await bot!.sendMessage(chatId,
+                  `⚠️ A user failed captcha verification but could not be removed. Please make sure I am an admin with "Ban Members" permission.`
+                ).catch(() => {});
+              }
+              // Update DM to explain removal
+              if (challenge.dmChatId && challenge.dmMessageId) {
+                await bot!.editMessageText(
+                  "❌ You used all 3 attempts and have been removed from the group.\n\nYou may rejoin and try again.",
+                  { chat_id: challenge.dmChatId, message_id: challenge.dmMessageId }
+                ).catch(() => {});
+              }
             } else {
               // Still has attempts left — show popup and update DM message
               await bot!.answerCallbackQuery(query.id, {
