@@ -1054,26 +1054,6 @@ export async function handleCallbackQuery(
       return;
     }
 
-    if (data === "build_menu") {
-      setPending(userId, "build_input");
-      await bot.answerCallbackQuery(query.id);
-      await bot.sendMessage(chatId,
-        `🌐 AI Website & App Builder\n\n` +
-        `Describe what you want to build and I'll generate a complete, working project!\n\n` +
-        `Examples:\n` +
-        `• portfolio website for a photographer\n` +
-        `• Netflix clone with movie cards\n` +
-        `• todo app with dark mode\n` +
-        `• React dashboard with live charts\n` +
-        `• real-time chat app with Node.js\n` +
-        `• expense tracker with charts\n` +
-        `• quiz app with multiple choice questions\n\n` +
-        `After generation, choose to push to GitHub, send files to Telegram, or deploy to Vercel/Render!\n\nWhat do you want to build? Type your idea below:`,
-        { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
-      );
-      return;
-    }
-
     if (data === "build_choice_telegram") {
       await bot.answerCallbackQuery(query.id, { text: "Sending your files..." });
       const cached = await getCachedBuild(userId);
@@ -1609,7 +1589,7 @@ export async function handleCallbackQuery(
           `📁 My Projects\n\nYou have no saved projects yet.\n\nUse /build to generate your first project!`,
           { inline_keyboard: [
             [{ text: "🌐 Build a Project", callback_data: "build_menu" }],
-            [{ text: "⬅️ Back to Build", callback_data: "build_menu" }],
+            [{ text: "⬅️ Main Menu", callback_data: "main_menu" }],
           ]}
         );
         return;
@@ -1673,7 +1653,7 @@ export async function handleCallbackQuery(
         `🗑 Deleted: ${projName}\n\n${updatedProjects.length} project${updatedProjects.length !== 1 ? "s" : ""} remaining.`,
         updatedProjects.length > 0
           ? projectsListKeyboard(updatedProjects)
-          : { inline_keyboard: [[{ text: "🌐 Build a Project", callback_data: "build_menu" }], [{ text: "⬅️ Back to Build", callback_data: "build_menu" }]] }
+          : { inline_keyboard: [[{ text: "🌐 Build a Project", callback_data: "build_menu" }], [{ text: "⬅️ Main Menu", callback_data: "main_menu" }]] }
       );
       return;
     }

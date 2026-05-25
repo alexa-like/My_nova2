@@ -14,7 +14,9 @@ import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
 import { getOrCreateBotConfig } from "../models/BotConfig.js";
 import {
   mainMenuKeyboard,
+  mainMenuReplyKeyboard,
   funMenuKeyboard,
+  gamesMenuKeyboard,
   aiMenuKeyboard,
   imageMenuKeyboard,
   settingsMenuKeyboard,
@@ -34,6 +36,7 @@ import {
   buildMenuKeyboard,
   whatsNewKeyboard,
   mainMenuWithNewsKeyboard,
+  referralKeyboard,
 } from "../utils/keyboards.js";
 import { encrypt, decrypt } from "../utils/crypto.js";
 import {
@@ -131,6 +134,13 @@ async function sendAIReply(
 }
 
 
+// ── Reply Keyboard button texts (private chats only) ─────────────────────────
+const REPLY_KEYBOARD_TEXTS = new Set([
+  "💬 Chat", "🎨 Create", "🌐 Build", "🔍 Search", "😄 Fun", "🎮 Games",
+  "📊 Profile", "💰 Balance", "🪙 Earn", "👥 Refer", "🎁 Daily",
+  "⏰ Reminders", "⭐ Premium", "⚙️ Settings", "❓ Help",
+]);
+
 export async function handlePrivateMessage(
   bot: TelegramBot,
   msg: TelegramBot.Message,
@@ -187,6 +197,124 @@ export async function handlePrivateMessage(
 
   const e = user.settings.emoji;
   const name = getUserName(msg);
+
+  // ── Reply Keyboard navigation (always works, escapes any pending action) ──────
+  if (REPLY_KEYBOARD_TEXTS.has(text)) {
+    clearPending(user.userId);
+    if (text === "💬 Chat") { await bot.sendMessage(chatId, "AI Tools — what do you need?", { reply_markup: aiMenuKeyboard() }); return; }
+    if (text === "🎨 Create") { await bot.sendMessage(chatId, "Image Tools — generate or transform images.", { reply_markup: imageMenuKeyboard() }); return; }
+    if (text === "🌐 Build") { await bot.sendMessage(chatId, "🌐 Website & App Builder — describe what you want to build:", { reply_markup: buildMenuKeyboard() }); return; }
+    if (text === "🔍 Search") { setPending(user.userId, "search_input"); await bot.sendMessage(chatId, "🔍 What do you want to search for?", { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }); return; }
+    if (text === "😄 Fun") { await bot.sendMessage(chatId, "Fun Zone 🎉", { reply_markup: funMenuKeyboard() }); return; }
+    if (text === "🎮 Games") { await bot.sendMessage(chatId, "Game Room 🎮", { reply_markup: gamesMenuKeyboard() }); return; }
+    if (text === "⚙️ Settings") {
+      await bot.sendMessage(chatId,
+        `⚙️ Settings\n\nStyle: ${user.settings.style}\nLanguage: ${user.settings.language || "en"}\nEmojis: ${user.settings.emoji ? "On" : "Off"}\nReply length: ${user.settings.length}\nMood: ${user.mood || "Not set"}\n\nUse the buttons below to change anything:`,
+        { reply_markup: settingsMenuKeyboard(user) }
+      );
+      return;
+    }
+    if (text === "❓ Help") {
+      await bot.sendMessage(chatId,
+        `Hey ${name}! Here's what I can do:\n\n` +
+        `💬 *Chat* — Just type anything\n🎨 *Create* — Images, stickers, voice\n🌐 *Build* — Full websites & apps\n🔍 *Search* — Web search with AI summaries\n😄 *Fun* — Quotes, facts, jokes\n🎮 *Games* — Trivia, riddles, word games\n\n` +
+        `📄 Send any PDF/DOCX/TXT — I'll read it!\n🖼️ Send a photo — I'll describe or edit it!\n\n` +
+        `Use the menu buttons below 👇`,
+        { parse_mode: "Markdown", reply_markup: mainMenuKeyboard() }
+      );
+      return;
+    }
+    if (text === "📊 Profile") {
+      const premiumLine = user.premium.active
+        ? `✨ Premium — expires ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}`
+        : "Free";
+      await bot.sendMessage(chatId,
+        `👤 ${name}\n\nID: ${user.userId}\nPlan: ${premiumLine}\nJoined: ${formatDate(user.firstSeen)}\n\nMessages: ${user.usage.messages}\nImages: ${user.usage.images}\nBuilds: ${user.usage.builds}`,
+        { reply_markup: { inline_keyboard: [
+          [{ text: "⚙️ Settings", callback_data: "settings_menu" }, { text: "💰 Credits", callback_data: "credits_menu" }],
+          [{ text: "🏅 Achievements", callback_data: "achievements_menu" }],
+        ]}}
+      );
+      return;
+    }
+    if (text === "💰 Balance") {
+      const freshCreds = await User.findOne({ userId: user.userId });
+      const credits = (freshCreds as any)?.credits ?? 0;
+      const creditsCfg2 = await getOrCreateBotConfig();
+      const chatCost2 = creditsCfg2.creditCosts?.chat ?? 1;
+      const imageCost2 = creditsCfg2.creditCosts?.image ?? 5;
+      const buildCost2 = creditsCfg2.creditCosts?.build ?? 20;
+      await bot.sendMessage(chatId,
+        `💰 Credits\n\nBalance: ${credits} credits\n\nCredit costs:\n• 💬 Chat: ${chatCost2} credit\n• 🎨 Image: ${imageCost2} credits\n• 🌐 Build: ${buildCost2} credits\n\n${user.premium.active ? "⭐ VIP — No credit deductions!" : "Upgrade to VIP to skip all credit costs!"}`,
+        { reply_markup: creditsMenuKeyboard() }
+      );
+      return;
+    }
+    if (text === "🪙 Earn") {
+      const { getActivePromoGroups } = await import("../services/groupGate.js");
+      const { earnCoinsPromoKeyboard } = await import("../utils/keyboards.js");
+      const promoGroups = await getActivePromoGroups();
+      await bot.sendMessage(chatId, "🪙 Earn Coins\n\nJoin these groups to earn bonus credits:", { reply_markup: earnCoinsPromoKeyboard(promoGroups) });
+      return;
+    }
+    if (text === "👥 Refer") {
+      if (!user.referralCode) {
+        user.referralCode = `NOVA${user.userId.toString(36).toUpperCase()}`;
+        await user.save();
+      }
+      const referCfg = await getOrCreateBotConfig();
+      const referrerBonus = referCfg.creditRewards?.referrer ?? 50;
+      const newUserBonus = referCfg.creditRewards?.newUser ?? 20;
+      let botUsernameRef = "nova_ai_bot";
+      try { const me = await bot.getMe(); botUsernameRef = me.username ?? botUsernameRef; } catch {}
+      const referLink = `https://t.me/${botUsernameRef}?start=ref_${user.referralCode}`;
+      await bot.sendMessage(chatId,
+        `👥 Your Referral Link\n\nShare this link with friends!\n\n🔗 ${referLink}\n\nYour code: \`${user.referralCode}\`\nFriends referred: ${user.referrals?.length ?? 0}\n\nWhen a friend joins:\n• You get: +${referrerBonus} credits + 7 days VIP\n• They get: +${newUserBonus} credits + 3 days VIP`,
+        { parse_mode: "Markdown", reply_markup: referralKeyboard(botUsernameRef, user.referralCode) }
+      );
+      return;
+    }
+    if (text === "🎁 Daily") {
+      const now2 = new Date();
+      const lastReward = user.lastDailyReward;
+      const msIn24h = 24 * 60 * 60 * 1000;
+      if (lastReward && now2.getTime() - lastReward.getTime() < msIn24h) {
+        const hoursLeft = Math.ceil((new Date(lastReward.getTime() + msIn24h).getTime() - now2.getTime()) / (60 * 60 * 1000));
+        await bot.sendMessage(chatId, `⏳ Daily reward already claimed. Come back in ${hoursLeft}h`, { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+        return;
+      }
+      await bot.sendMessage(chatId, "🎁 Claim your daily reward below:", { reply_markup: { inline_keyboard: [[{ text: "🎁 Claim Daily Reward", callback_data: "daily_claim" }], [{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+      return;
+    }
+    if (text === "⏰ Reminders") {
+      const remList = await listUserReminders(user.userId);
+      if (remList.length === 0) {
+        await bot.sendMessage(chatId, "⏰ You have no active reminders.\n\nSet one with: /remind 10m Call John", { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+      } else {
+        const remLines = remList.map((r, i) => `${i + 1}. ${r.message} (${formatDate(r.scheduledAt)})`).join("\n");
+        await bot.sendMessage(chatId, `⏰ Your Reminders\n\n${remLines}`, { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+      }
+      return;
+    }
+    if (text === "⭐ Premium") {
+      const premLimCfg2 = await getOrCreateBotConfig();
+      const premImgLim2 = premLimCfg2.usageLimits.premiumImages < 0 ? "Unlimited" : String(premLimCfg2.usageLimits.premiumImages);
+      const freeImgLim2 = String(premLimCfg2.usageLimits.freeImages);
+      if (user.premium.active) {
+        await bot.sendMessage(chatId,
+          `✨ You are a Premium member!\n\nExpires: ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}\n\nPerks:\n• ${premImgLim2} images per day\n• Longer AI context\n• Richer responses`,
+          { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+        );
+      } else {
+        await bot.sendMessage(chatId,
+          `You are on the Free plan.\n\nFree limits:\n• ${freeImgLim2} images per day\n• 5 photo edits per day\n• Standard AI responses\n\nUpgrade to VIP:\n• 💳 Buy with Telegram Stars — tap 💰 Credits\n• 🎟️ Redeem a code — /redeem CODE`,
+          { reply_markup: { inline_keyboard: [[{ text: "⭐ Buy VIP with Stars", callback_data: "credits_menu" }], [{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+        );
+      }
+      return;
+    }
+    return;
+  }
 
   // ── Check pending action (owner or user flows) ────────────────────────────
   const pendingAction = getPending(user.userId);
@@ -296,14 +424,15 @@ export async function handlePrivateMessage(
               [{ text: "🏠 Open Menu", callback_data: "main_menu" }, { text: hasNews ? "🆕 What's New!" : "🔔 What's New", callback_data: "whats_new_menu" }],
             ],
           };
-          await bot.sendMessage(chatId, greeting, { parse_mode: "Markdown", reply_markup: recentKeyboard });
+          await bot.sendMessage(chatId, greeting, { parse_mode: "Markdown", reply_markup: mainMenuReplyKeyboard() });
+          await bot.sendMessage(chatId, `⚡ *Quick access to your recent tools:*`, { parse_mode: "Markdown", reply_markup: recentKeyboard });
           return;
         }
       }
       greeting += `\n\nWhat would you like to do today?`;
       await bot.sendMessage(chatId, greeting, {
         parse_mode: "Markdown",
-        reply_markup: mainMenuWithNewsKeyboard(hasNews),
+        reply_markup: mainMenuReplyKeyboard(),
       });
     }
     return;
@@ -566,7 +695,7 @@ export async function handlePrivateMessage(
 
   // /menu — show main menu
   if (text === "/menu") {
-    await bot.sendMessage(chatId, e ? `Hey ${name}! What would you like to do?` : "Main menu:", { reply_markup: mainMenuKeyboard() });
+    await bot.sendMessage(chatId, e ? `Hey ${name}! What would you like to do?` : "Main menu:", { reply_markup: mainMenuReplyKeyboard() });
     return;
   }
 

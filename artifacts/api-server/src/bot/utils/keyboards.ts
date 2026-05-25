@@ -2,7 +2,23 @@ import TelegramBot from "node-telegram-bot-api";
 import { IUser } from "../models/User.js";
 import { IModelEntry } from "../models/BotConfig.js";
 
-// ── Main dashboard ────────────────────────────────────────────────────────────
+// ── Persistent Reply Keyboard (main navigation — private chats only) ──────────
+
+export function mainMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "💬 Chat" }, { text: "🎨 Create" }, { text: "🌐 Build" }],
+      [{ text: "🔍 Search" }, { text: "😄 Fun" }, { text: "🎮 Games" }],
+      [{ text: "📊 Profile" }, { text: "💰 Balance" }, { text: "🪙 Earn" }],
+      [{ text: "👥 Refer" }, { text: "🎁 Daily" }, { text: "⏰ Reminders" }],
+      [{ text: "⭐ Premium" }, { text: "⚙️ Settings" }, { text: "❓ Help" }],
+    ],
+    resize_keyboard: true,
+    persistent: true,
+  };
+}
+
+// ── Main dashboard (inline — used inside callback edits) ──────────────────────
 
 export function mainMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
   return {
@@ -392,7 +408,7 @@ export function projectsListKeyboard(
   if (nav.length > 0) rows.push(nav);
   rows.push([
     { text: "🌐 Build Another", callback_data: "build_menu" },
-    { text: "⬅️ Back to Build", callback_data: "build_menu" },
+    { text: "⬅️ Menu", callback_data: "main_menu" },
   ]);
   return { inline_keyboard: rows };
 }
@@ -928,7 +944,7 @@ export function ownerUserListKeyboard(
 export function ttsKeyboard(): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      [{ text: "⬅️ Back", callback_data: "img_menu" }],
+      [{ text: "⬅️ Back", callback_data: "ai_menu" }],
     ],
   };
 }
