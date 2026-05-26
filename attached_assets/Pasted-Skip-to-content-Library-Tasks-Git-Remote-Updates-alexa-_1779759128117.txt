@@ -1,0 +1,297 @@
+Skip to content
+Library
+Tasks
+Git
+Remote Updates
+alexa-like/My_nova2
+origin/main•upstream
+last fetched just now
+Commit
+There are no changes to commit.
+Agent
+10 hours ago
+Hello agent replit
+
+25 minutes ago
+I have a question and the question is I gave you same prompt twice to do full audit and you do first one you found errors and bug second as well you still found errors and bugs that definitely mean you don't scan all the files in the first time cause how can you miss those bugs the first time that make you not to do them once so I expect you to tell the the second audit that no bugs or error found why don't you scan full the first time or can you tell me what happened 😩😂😂
+
+23 minutes ago
+First let me tell you this
+When owner add promotional link when user want to do the link the inline keyboard to verify it is not working and also make mission to be complete once for each user
+And the website builder is currently facing a lot of things that make it not working
+The website builder is not generating websites.
+
+Do not immediately change the AI model.
+
+Perform a complete end-to-end diagnostic of the website builder flow and identify the exact failure point.
+
+Trace the full process:
+
+User Request
+→ Website Builder Menu
+→ Prompt Creation
+→ API Request
+→ OpenRouter Response
+→ Response Parsing
+→ HTML/CSS/JS Extraction
+→ File Generation
+→ Final User Output
+
+Check and verify:
+
+OpenRouter API key loading
+Environment variables
+API request construction
+Model name and model routing
+Request headers
+Request payload format
+Token limits
+Rate limits
+Response handling
+JSON parsing
+HTML extraction
+Website file generation
+Error handling
+Logging system
+Add detailed logs for every stage:
+
+Prompt being sent
+Model being used
+API response status
+Raw AI response
+Parsing results
+Generation results
+Any exceptions or errors
+Do not hide errors inside try/catch blocks.
+Log the real error message and location.
+
+Test the website builder with:
+
+Landing page
+Portfolio website
+Business website
+Blog website
+If the current model is actually causing the failure, provide evidence from logs before replacing it.
+
+After diagnosis, provide:
+
+Root cause of the failure
+Files involved
+Fixes applied
+Remaining issues (if any)
+Confirmation that website generation successfully works end-to-end
+Focus on finding the exact bug rather than changing random parts of the project.
+
+19 minutes ago
+Yes
+
+12 minutes ago
+Yes
+
+9 minutes ago
+I think it already exists in the owner code model make it inline keyboard and test so everything work perfectly
+
+4 minutes ago
+Make the test for chat and image as well and if chatting with nova reach some point nova day brain glitch check my and fix
+
+2 minutes ago
+Two things to fix — let me find the "brain glitch" text and check the image model keyboard simultaneously:
+
+Found both. Let me read the AI error handler and image model callback area at the same time:
+
+Clear picture. Now doing all three fixes at once:
+
+Add 🧪 Test All Models to image models keyboard + own_test_img callback handler
+Fix the "brain glitch" error — make it retry 429s with a small delay and use a better fallback message
+Now making all three changes in parallel:
+
+Now adding the own_test_img handler in callbackHandler.ts. Let me find where the own_test_code block ends:
+
+
+Make, test, iterate…
+Publishing
+Publish your app
+Domain
+Available
+mynova-2--hayatulahiyeke1
+.replit.app
+What you're publishing
+Nova Admin Dashboard
+URL
+https://mynova-2--hayatulahiyeke1.replit.app/admin-dashboard/
+Who can access your app
+Database settings
+Engagement tools
+Enable feedback widget
+Add a feedback widget to the corner of your published app. Review submissions in your inbox and send to Agent for fixes.
+Remove "Made with Replit" badge
+Your Starter apps include a "Made with Replit" referral badge. When someone signs up using your referral link, you earn credits that you can use once you've upgraded to Core.
+Agent
+Agent can make changes, review its work, and debug itself automatically.
+Loading... - Replit
+Pasted-FULL-PROJECT-AUDIT-DEBUG-REPAIR-AND-CLEANUP-TASK-Perfor_1779723379564.txt
+FULL PROJECT AUDIT, DEBUG, REPAIR, AND CLEANUP TASK
+
+Perform a complete deep scan and audit of the entire project.
+
+Your job is to act as a senior software engineer, QA tester, security auditor, code reviewer, and deployment inspector.
+
+SCAN EVERYTHING:
+
+1. CODE & FILES
+- Scan all files and folders.
+- Detect syntax errors.
+- Detect runtime errors.
+- Detect logic errors.
+- Detect broken imports.
+- Detect missing dependencies.
+- Detect unused dependencies.
+- Detect duplicate code.
+- Detect dead code.
+- Detect unused functions.
+- Detect unused variables.
+- Detect unreachable code.
+- Detect circular imports.
+- Detect memory leaks.
+- Detect performance issues.
+- Detect security risks.
+- Detect broken references.
+
+2. COMMAND SYSTEM
+- Scan every command.
+- Verify all commands work correctly.
+- Check for command conflicts.
+- Check if one command affects another command.
+- Check permissions.
+- Check owner-only commands.
+- Check admin commands.
+- Check group commands.
+- Check private chat commands.
+- Check premium commands.
+- Check free user commands.
+- Fix any command that is broken or incomplete.
+
+3. INLINE KEYBOARDS
+- Scan every inline keyboard.
+- Verify all buttons work.
+- Verify callback handlers exist.
+- Verify callback data matches handlers.
+- Detect orphaned buttons.
+- Detect duplicate callbacks.
+- Detect broken navigation.
+- Detect incorrect button routing.
+- Verify back buttons work.
+- Verify menu transitions work.
+- Fix all issues found.
+
+4. MESSAGE HANDLERS
+- Scan all handlers.
+- Detect conflicts.
+- Detect duplicate handlers.
+- Detect unreachable handlers.
+- Verify routing logic.
+- Verify handler priority.
+- Fix all issues.
+
+5. DATABASE
+- Scan database structure.
+- Detect broken queries.
+- Detect missing tables.
+- Detect unused tables.
+- Detect broken migrations.
+- Detect data consistency issues.
+- Fix all issues safely.
+
+6. FILE CLEANUP
+- Detect useless files.
+- Detect abandoned files.
+- Detect temporary files.
+- Detect old backup files.
+- Detect partially deleted features.
+- Detect leftover code from removed systems.
+- Detect references to deleted features.
+- Remove only files confirmed to be unused and safe to remove.
+
+7. FEATURE VALIDATION
+- Verify every feature works correctly.
+- Verify all menus work.
+- Verify all navigation works.
+- Verify all user flows work.
+- Verify premium systems.
+- Verify referral systems.
+- Verify coin systems.
+- Verify rewards.
+- Verify website builder.
+- Verify AI systems.
+- Verify payment systems.
+- Verify admin systems.
+- Verify owner systems.
+- Verify group systems.
+- Verify private chat systems.
+
+8. ERROR LOGGING
+- Scan logs.
+- Identify recurring errors.
+- Identify hidden errors.
+- Fix root causes instead of applying temporary patches.
+
+9. DEPLOYMENT AUDIT
+IMPORTANT:
+DO NOT redesign, replace, or modify the deployment architecture.
+
+ONLY:
+- Scan deployment configuration.
+- Scan startup process.
+- Scan environment variables.
+- Scan deployment scripts.
+- Scan build process.
+- Scan runtime process.
+- Scan production configuration.
+- Fix deployment-related bugs ONLY if they are causing errors.
+
+Leave the deployment structure exactly as it currently exists.
+
+10. SECURITY AUDIT
+- Detect exposed secrets.
+- Detect unsafe code.
+- Detect vulnerable dependencies.
+- Detect insecure endpoints.
+- Detect permission bypasses.
+- Fix all security issues safely.
+
+11. FINAL PROJECT HEALTH CHECK
+After all fixes:
+- Run a full project validation.
+- Run all startup checks.
+- Run all command checks.
+- Run all callback checks.
+- Run all menu checks.
+- Run all database checks.
+- Run all deployment checks.
+
+OUTPUT REQUIRED:
+
+Provide a detailed report including:
+
+A. Bugs found
+B. Errors found
+C. Broken commands found
+D. Broken inline keyboards found
+E. Broken files found
+F. Unused files found
+G. Security issues found
+H. Deployment issues found
+I. Fixes applied
+J. Files modified
+K. Files removed
+L. Remaining warnings (if any)
+
+RULES:
+- Do not guess.
+- Verify before modifying.
+- Preserve existing functionality.
+- Do not remove active features.
+- Do not change working systems.
+- Fix root causes, not symptoms.
+- Keep code clean, stable, production-ready, and maintainable.
+- Ensure the entire project works correctly after all fixes.
