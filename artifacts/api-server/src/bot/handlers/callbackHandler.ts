@@ -2154,6 +2154,9 @@ export async function handleCallbackQuery(
       return;
     }
 
+    // ── HTML escape helper ────────────────────────────────────────────────────
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
     // ── Shared model ping helper ──────────────────────────────────────────────
     async function pingModels(
       modelsToTest: Array<{ name: string; id: string }>,
@@ -2167,7 +2170,7 @@ export async function handleCallbackQuery(
       const lines: string[] = [];
       for (const m of modelsToTest) {
         const isActive = m.id === activeId;
-        const label = `${m.name}${isActive ? " ⭐" : ""}`;
+        const label = esc(`${m.name}${isActive ? " ⭐" : ""}`);
         const t0 = Date.now();
         try {
           const res = await axios.post(
@@ -2184,14 +2187,14 @@ export async function handleCallbackQuery(
             }
           );
           const ms = Date.now() - t0;
-          const reply = (res.data?.choices?.[0]?.message?.content || "").trim().slice(0, 30);
-          lines.push(`✅ *${label}* — ${ms}ms\n   \`${reply || "(empty)"}\``);
+          const reply = esc((res.data?.choices?.[0]?.message?.content || "").trim().slice(0, 30));
+          lines.push(`✅ <b>${label}</b> — ${ms}ms\n   <code>${reply || "(empty)"}</code>`);
         } catch (err: any) {
           const ms = Date.now() - t0;
           const status = err?.response?.status;
           const msg = err?.response?.data?.error?.message || err?.message || "unknown";
           const code = status ? `HTTP ${status}` : err?.code || "ERR";
-          lines.push(`❌ *${label}* — ${ms}ms\n   ${code}: ${String(msg).slice(0, 55)}`);
+          lines.push(`❌ <b>${label}</b> — ${ms}ms\n   ${esc(code)}: ${esc(String(msg).slice(0, 55))}`);
         }
       }
       return lines;
@@ -2221,7 +2224,7 @@ export async function handleCallbackQuery(
       const activeId = config.activeChatModel;
 
       await editMsg(bot, query,
-        `🧪 *Testing ${allModels.length} chat model${allModels.length === 1 ? "" : "s"}...*\n\nPinging each with a quick message. Please wait.`,
+        `🧪 Testing ${allModels.length} chat model${allModels.length === 1 ? "" : "s"}...\n\nPinging each with a quick message. Please wait.`,
         { inline_keyboard: [] }
       );
 
@@ -2230,11 +2233,11 @@ export async function handleCallbackQuery(
       const active = config.chatModels.find(m => m.id === activeId);
 
       await editMsg(bot, query,
-        `🧪 *Chat Model Test Results*\n━━━━━━━━━━━━━━━━\n` +
-        `✅ ${passing}/${allModels.length} passing   Active: *${active?.name || activeId}*\n\n` +
+        `🧪 <b>Chat Model Test Results</b>\n━━━━━━━━━━━━━━━━\n` +
+        `✅ ${passing}/${allModels.length} passing   Active: <b>${esc(active?.name || activeId)}</b>\n\n` +
         lines.join("\n\n"),
         ownerChatModelsKeyboard(config.chatModels, activeId),
-        "Markdown"
+        "HTML"
       );
       return;
     }
@@ -2260,7 +2263,7 @@ export async function handleCallbackQuery(
       const activeId = config.activeCodeModel;
 
       await editMsg(bot, query,
-        `🧪 *Testing ${allModels.length} code model${allModels.length === 1 ? "" : "s"}...*\n\nPinging each with a quick message. Please wait.`,
+        `🧪 Testing ${allModels.length} code model${allModels.length === 1 ? "" : "s"}...\n\nPinging each with a quick message. Please wait.`,
         { inline_keyboard: [] }
       );
 
@@ -2269,11 +2272,11 @@ export async function handleCallbackQuery(
       const active = config.codeModels.find(m => m.id === activeId);
 
       await editMsg(bot, query,
-        `🧪 *Code Model Test Results*\n━━━━━━━━━━━━━━━━\n` +
-        `✅ ${passing}/${allModels.length} passing   Active: *${active?.name || activeId}*\n\n` +
+        `🧪 <b>Code Model Test Results</b>\n━━━━━━━━━━━━━━━━\n` +
+        `✅ ${passing}/${allModels.length} passing   Active: <b>${esc(active?.name || activeId)}</b>\n\n` +
         lines.join("\n\n"),
         ownerCodeModelsKeyboard(config.codeModels, activeId),
-        "Markdown"
+        "HTML"
       );
       return;
     }
@@ -2296,14 +2299,14 @@ export async function handleCallbackQuery(
       const activeId = config.activeImageModel;
 
       await editMsg(bot, query,
-        `🧪 *Testing ${allModels.length} image model${allModels.length === 1 ? "" : "s"}...*\n\nChecking each model's availability. Please wait.`,
+        `🧪 Testing ${allModels.length} image model${allModels.length === 1 ? "" : "s"}...\n\nChecking each model's availability. Please wait.`,
         { inline_keyboard: [] }
       );
 
       const imgLines: string[] = [];
       for (const m of allModels) {
         const isActive = m.id === activeId;
-        const label = `${m.name}${isActive ? " ⭐" : ""}`;
+        const label = esc(`${m.name}${isActive ? " ⭐" : ""}`);
         const t0 = Date.now();
         try {
           const res = await axios.post(
@@ -2321,9 +2324,9 @@ export async function handleCallbackQuery(
           const ms = Date.now() - t0;
           const ct = (res.headers?.["content-type"] as string) || "";
           if (ct.startsWith("image/")) {
-            imgLines.push(`✅ *${label}* — ${ms}ms\n   Ready & generating`);
+            imgLines.push(`✅ <b>${label}</b> — ${ms}ms\n   Ready &amp; generating`);
           } else {
-            imgLines.push(`⚠️ *${label}* — ${ms}ms\n   Unexpected response type`);
+            imgLines.push(`⚠️ <b>${label}</b> — ${ms}ms\n   Unexpected response type`);
           }
         } catch (err: any) {
           const ms = Date.now() - t0;
@@ -2334,28 +2337,28 @@ export async function handleCallbackQuery(
               const body = JSON.parse(Buffer.from(err.response.data).toString());
               if (body?.estimated_time) eta = ` (~${Math.round(body.estimated_time)}s to load)`;
             } catch { /* ignore */ }
-            imgLines.push(`⏳ *${label}* — Loading${eta}\n   Model warming up on HuggingFace`);
+            imgLines.push(`⏳ <b>${label}</b> — Loading${esc(eta)}\n   Model warming up on HuggingFace`);
           } else if (status === 401 || status === 403) {
-            imgLines.push(`🔑 *${label}* — Auth error\n   Check HUGGING_FACE_API_KEY`);
+            imgLines.push(`🔑 <b>${label}</b> — Auth error\n   Check HUGGING_FACE_API_KEY`);
           } else if (err.code === "ECONNABORTED") {
-            imgLines.push(`✅ *${label}* — Alive (timeout after 8s)\n   Model is loaded & responding`);
+            imgLines.push(`✅ <b>${label}</b> — Alive (timeout after 8s)\n   Model is loaded &amp; responding`);
           } else {
-            const msg = String(err?.message || "unknown").slice(0, 55);
-            imgLines.push(`❌ *${label}* — ${status ? `HTTP ${status}` : err?.code || "ERR"}\n   ${msg}`);
+            const errMsg = esc(String(err?.message || "unknown").slice(0, 55));
+            imgLines.push(`❌ <b>${label}</b> — ${status ? `HTTP ${status}` : esc(err?.code || "ERR")}\n   ${errMsg}`);
           }
         }
       }
 
       const passing = imgLines.filter(l => l.startsWith("✅") || l.startsWith("⏳")).length;
       const active = config.imageModels.find(m => m.id === activeId);
-      const noKey = !hfKey ? "\n⚠️ _HUGGING\\_FACE\\_API\\_KEY not set — using anonymous tier_" : "";
+      const noKey = !hfKey ? "\n⚠️ <i>HUGGING_FACE_API_KEY not set — using anonymous tier</i>" : "";
 
       await editMsg(bot, query,
-        `🧪 *Image Model Test Results*\n━━━━━━━━━━━━━━━━\n` +
-        `✅ ${passing}/${allModels.length} reachable   Active: *${active?.name || activeId}*${noKey}\n\n` +
+        `🧪 <b>Image Model Test Results</b>\n━━━━━━━━━━━━━━━━\n` +
+        `✅ ${passing}/${allModels.length} reachable   Active: <b>${esc(active?.name || activeId)}</b>${noKey}\n\n` +
         imgLines.join("\n\n"),
         ownerImageModelsKeyboard(config.imageModels, activeId),
-        "Markdown"
+        "HTML"
       );
       return;
     }
