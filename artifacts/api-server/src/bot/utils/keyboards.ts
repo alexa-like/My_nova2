@@ -733,6 +733,7 @@ export function ownerCodeModelsKeyboard(
     inline_keyboard: [
       ...modelButtons,
       [{ text: "➕ Add New Model", callback_data: "own_add_code" }],
+      [{ text: "🧪 Test All Models", callback_data: "own_test_code" }],
       [{ text: "⬅️ Back", callback_data: "own_panel" }],
     ],
   };
@@ -757,6 +758,7 @@ export function ownerChatModelsKeyboard(
     inline_keyboard: [
       ...modelButtons,
       [{ text: "➕ Add New Model", callback_data: "own_add_chat" }],
+      [{ text: "🧪 Test All Models", callback_data: "own_test_chat" }],
       [{ text: "⬅️ Back", callback_data: "own_panel" }],
     ],
   };

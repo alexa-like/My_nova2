@@ -1,4 +1,5 @@
 import TelegramBot from "node-telegram-bot-api";
+import axios from "axios";
 import { User } from "../models/User.js";
 import { Memory } from "../models/Memory.js";
 import { GroupSettings } from "../models/GroupSettings.js";
@@ -2149,6 +2150,130 @@ export async function handleCallbackQuery(
       await editMsg(bot, query,
         `💻 Add Code Model — Step 1 of 2\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nWhat do you want to call this model?\n\nExamples: DeepSeek Coder, Qwen3 Coder\n\nJust type the display name:`,
         backToOwnerKeyboard()
+      );
+      return;
+    }
+
+    // ── Shared model ping helper ──────────────────────────────────────────────
+    async function pingModels(
+      modelsToTest: Array<{ name: string; id: string }>,
+      activeId: string,
+      apiKey: string
+    ): Promise<string[]> {
+      const testMessages = [
+        { role: "system", content: "You are a helpful assistant. Be concise." },
+        { role: "user",   content: "Reply with exactly one word: OK" },
+      ];
+      const lines: string[] = [];
+      for (const m of modelsToTest) {
+        const isActive = m.id === activeId;
+        const label = `${m.name}${isActive ? " ⭐" : ""}`;
+        const t0 = Date.now();
+        try {
+          const res = await axios.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            { model: m.id, messages: testMessages, max_tokens: 10, temperature: 0 },
+            {
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer": process.env.APP_URL || "https://nova-bot.replit.app",
+                "X-Title": "Nova AI Bot",
+              },
+              timeout: 20000,
+            }
+          );
+          const ms = Date.now() - t0;
+          const reply = (res.data?.choices?.[0]?.message?.content || "").trim().slice(0, 30);
+          lines.push(`✅ *${label}* — ${ms}ms\n   \`${reply || "(empty)"}\``);
+        } catch (err: any) {
+          const ms = Date.now() - t0;
+          const status = err?.response?.status;
+          const msg = err?.response?.data?.error?.message || err?.message || "unknown";
+          const code = status ? `HTTP ${status}` : err?.code || "ERR";
+          lines.push(`❌ *${label}* — ${ms}ms\n   ${code}: ${String(msg).slice(0, 55)}`);
+        }
+      }
+      return lines;
+    }
+
+    if (data === "own_test_chat") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const apiKey = process.env.OPENROUTER_API_KEY;
+      if (!apiKey) { await answer(bot, query.id, "OPENROUTER_API_KEY not set.", true); return; }
+      await answer(bot, query.id);
+
+      const config = await getOrCreateBotConfig();
+      const AI_FALLBACK_MODELS = [
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "google/gemma-4-31b-it:free",
+        "deepseek/deepseek-v4-flash:free",
+        "microsoft/phi-4:free",
+        "mistralai/mistral-7b-instruct:free",
+        "meta-llama/llama-3.1-8b-instruct:free",
+        "meta-llama/llama-3.2-3b-instruct:free",
+      ];
+      const configuredIds = new Set(config.chatModels.map(m => m.id));
+      const fallbackExtras = AI_FALLBACK_MODELS
+        .filter(id => !configuredIds.has(id))
+        .map(id => ({ name: id.split("/")[1]?.split(":")[0] || id, id }));
+      const allModels = [...config.chatModels, ...fallbackExtras];
+      const activeId = config.activeChatModel;
+
+      await editMsg(bot, query,
+        `🧪 *Testing ${allModels.length} chat model${allModels.length === 1 ? "" : "s"}...*\n\nPinging each with a quick message. Please wait.`,
+        { inline_keyboard: [] }
+      );
+
+      const lines = await pingModels(allModels, activeId, apiKey);
+      const passing = lines.filter(l => l.startsWith("✅")).length;
+      const active = config.chatModels.find(m => m.id === activeId);
+
+      await editMsg(bot, query,
+        `🧪 *Chat Model Test Results*\n━━━━━━━━━━━━━━━━\n` +
+        `✅ ${passing}/${allModels.length} passing   Active: *${active?.name || activeId}*\n\n` +
+        lines.join("\n\n"),
+        ownerChatModelsKeyboard(config.chatModels, activeId),
+        "Markdown"
+      );
+      return;
+    }
+
+    if (data === "own_test_code") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const apiKey = process.env.OPENROUTER_API_KEY;
+      if (!apiKey) { await answer(bot, query.id, "OPENROUTER_API_KEY not set.", true); return; }
+      await answer(bot, query.id);
+
+      const config = await getOrCreateBotConfig();
+      const CODE_FALLBACK_MODELS = [
+        "deepseek/deepseek-chat-v3-0324:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "google/gemma-3-27b-it:free",
+        "microsoft/phi-4:free",
+      ];
+      const configuredIds = new Set(config.codeModels.map(m => m.id));
+      const fallbackExtras = CODE_FALLBACK_MODELS
+        .filter(id => !configuredIds.has(id))
+        .map(id => ({ name: id.split("/")[1]?.split(":")[0] || id, id }));
+      const allModels = [...config.codeModels, ...fallbackExtras];
+      const activeId = config.activeCodeModel;
+
+      await editMsg(bot, query,
+        `🧪 *Testing ${allModels.length} code model${allModels.length === 1 ? "" : "s"}...*\n\nPinging each with a quick message. Please wait.`,
+        { inline_keyboard: [] }
+      );
+
+      const lines = await pingModels(allModels, activeId, apiKey);
+      const passing = lines.filter(l => l.startsWith("✅")).length;
+      const active = config.codeModels.find(m => m.id === activeId);
+
+      await editMsg(bot, query,
+        `🧪 *Code Model Test Results*\n━━━━━━━━━━━━━━━━\n` +
+        `✅ ${passing}/${allModels.length} passing   Active: *${active?.name || activeId}*\n\n` +
+        lines.join("\n\n"),
+        ownerCodeModelsKeyboard(config.codeModels, activeId),
+        "Markdown"
       );
       return;
     }
