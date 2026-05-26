@@ -1,4 +1,5 @@
 import TelegramBot from "node-telegram-bot-api";
+import axios from "axios";
 import { IUser, User } from "../models/User.js";
 import { RedeemCode } from "../models/RedeemCode.js";
 import { Memory } from "../models/Memory.js";
@@ -621,6 +622,110 @@ export async function handleOwnerMessage(
     clearTimeout(timer);
     scheduledBroadcasts.delete(schedId);
     await bot.sendMessage(chatId, `✅ Scheduled broadcast cancelled.`, { reply_markup: backToOwnerKeyboard() });
+    return;
+  }
+
+  if (cmd === "/testai") {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      await bot.sendMessage(chatId,
+        `❌ OPENROUTER_API_KEY is not set.\n\nAI chat cannot work without this.`,
+        { reply_markup: backToOwnerKeyboard() }
+      );
+      return;
+    }
+
+    // Build the list: active model first, then all configured models, then hardcoded fallbacks
+    const AI_FALLBACK_MODELS = [
+      "meta-llama/llama-3.3-70b-instruct:free",
+      "google/gemma-4-31b-it:free",
+      "deepseek/deepseek-v4-flash:free",
+      "microsoft/phi-4:free",
+      "mistralai/mistral-7b-instruct:free",
+      "meta-llama/llama-3.1-8b-instruct:free",
+      "meta-llama/llama-3.2-3b-instruct:free",
+    ];
+
+    const cfg = await getOrCreateBotConfig();
+    const activeModel = cfg.activeChatModel || AI_FALLBACK_MODELS[0];
+    const configuredModelIds = cfg.chatModels.map((m) => m.id);
+    const allModels = [
+      activeModel,
+      ...configuredModelIds.filter(m => m !== activeModel),
+      ...AI_FALLBACK_MODELS.filter(m => m !== activeModel && !configuredModelIds.includes(m)),
+    ];
+
+    const maskedKey = `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`;
+    const headerMsg = await bot.sendMessage(chatId,
+      `🧪 *AI Model Diagnostic*\n\n` +
+      `API key: \`${maskedKey}\`\n` +
+      `Active model: \`${activeModel}\`\n` +
+      `Models to test: ${allModels.length}\n\n` +
+      `Pinging each model with a quick test message...`,
+      { parse_mode: "Markdown", reply_markup: backToOwnerKeyboard() }
+    );
+
+    const testMessages = [
+      { role: "system", content: "You are a helpful assistant. Be very brief." },
+      { role: "user",   content: "Reply with exactly: OK" },
+    ];
+
+    const results: string[] = [];
+
+    for (const model of allModels) {
+      const isActive = model === activeModel;
+      const label = isActive ? `${model} ⭐` : model;
+      const startMs = Date.now();
+      try {
+        const response = await axios.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          { model, messages: testMessages, max_tokens: 20, temperature: 0 },
+          {
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": process.env.APP_URL || "https://nova-bot.replit.app",
+              "X-Title": "Nova AI Bot",
+            },
+            timeout: 20000,
+          }
+        );
+        const latency = Date.now() - startMs;
+        const reply = (response.data?.choices?.[0]?.message?.content || "").trim().slice(0, 40);
+        results.push(`✅ \`${label}\` — ${latency}ms\n   Reply: _${reply || "(empty)"}_`);
+      } catch (err: any) {
+        const latency = Date.now() - startMs;
+        const status = err?.response?.status;
+        const errMsg = err?.response?.data?.error?.message || err?.message || String(err);
+        const code = status ? `HTTP ${status}` : err?.code || "ERR";
+        results.push(`❌ \`${label}\` — ${latency}ms\n   Fail: ${code} — ${String(errMsg).slice(0, 60)}`);
+      }
+    }
+
+    const summary = results.join("\n\n");
+    const passing = results.filter(r => r.startsWith("✅")).length;
+    const failing = results.length - passing;
+
+    try {
+      await bot.editMessageText(
+        `🧪 *AI Model Test Results*\n\n` +
+        `✅ Passing: ${passing}/${allModels.length}   ❌ Failing: ${failing}\n` +
+        `Active model: \`${activeModel}\`\n` +
+        `━━━━━━━━━━━━━━━━\n\n` +
+        summary,
+        {
+          chat_id: chatId,
+          message_id: headerMsg.message_id,
+          parse_mode: "Markdown",
+          reply_markup: backToOwnerKeyboard(),
+        }
+      );
+    } catch {
+      await bot.sendMessage(chatId,
+        `🧪 *AI Model Results*\n\n${summary}`,
+        { parse_mode: "Markdown", reply_markup: backToOwnerKeyboard() }
+      );
+    }
     return;
   }
 
