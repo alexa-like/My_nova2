@@ -46,7 +46,6 @@ async function buildModelQueue(): Promise<string[]> {
       return [configModel, ...FREE_MODEL_QUEUE];
     }
     if (isValidModelId(configModel)) {
-      // Move config model to the front of the standard queue
       return [configModel, ...FREE_MODEL_QUEUE.filter(m => m !== configModel)];
     }
   } catch {}
@@ -101,7 +100,7 @@ function extractJson(raw: string): string {
   text = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
   text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
   const start = text.indexOf("{");
-  if (start === -1) throw new Error("No JSON object found");
+  if (start === -1) throw new Error("No JSON object found in response");
   let depth = 0;
   let end = -1;
   for (let i = start; i < text.length; i++) {
@@ -111,7 +110,7 @@ function extractJson(raw: string): string {
       if (depth === 0) { end = i; break; }
     }
   }
-  if (end === -1) throw new Error("JSON not closed");
+  if (end === -1) throw new Error("JSON object not closed — response may be truncated");
   return text.slice(start, end + 1);
 }
 
@@ -139,23 +138,25 @@ export async function generateProject(
   apiKey: string,
   onStatus?: (msg: string) => void
 ): Promise<GeneratedProject> {
-  logger.info({ userRequest }, "Generating project");
+  const maskedKey = apiKey ? `${apiKey.slice(0, 8)}...` : "(not set)";
+  logger.info({ userRequest, apiKeyPrefix: maskedKey }, "▶ generateProject start");
 
   const modelQueue = await buildModelQueue();
   const prompt = buildPrompt(userRequest);
+
+  logger.info({ modelQueue }, "▶ Model queue built");
+
+  const failureLog: string[] = [];
 
   for (let i = 0; i < modelQueue.length; i++) {
     const model = modelQueue[i];
     let raw = "";
 
-    try {
-      if (i === 0) {
-        onStatus?.("🔨 Building your project...");
-      } else {
-        onStatus?.(`⏳ Trying another model...`);
-      }
-      logger.info({ model, attempt: i }, "Attempting project generation");
+    // ── Stage 1: API request ──────────────────────────────────────────────────
+    logger.info({ model, attempt: i + 1, ofTotal: modelQueue.length }, "▶ STAGE 1: sending API request");
+    onStatus?.(i === 0 ? "🔨 Building your project..." : `⏳ Trying another model (${i + 1}/${modelQueue.length})...`);
 
+    try {
       const response = await axios.post(
         "https://openrouter.ai/api/v1/chat/completions",
         {
@@ -180,76 +181,117 @@ export async function generateProject(
           timeout: 120000,
         }
       );
+
+      const httpStatus = response.status;
       raw = response.data?.choices?.[0]?.message?.content || "";
+      logger.info({ model, httpStatus, rawLength: raw.length, rawPreview: raw.slice(0, 200) }, "▶ STAGE 1 OK: API response received");
 
     } catch (err: any) {
       const status = err?.response?.status;
+      const errMsg = err?.response?.data?.error?.message || err?.message || String(err);
+
+      logger.error({ model, httpStatus: status, errCode: err?.code, errMsg }, "▶ STAGE 1 FAIL: API request error");
 
       if (status === 401) {
-        throw new Error("❌ API key rejected. Ask the bot owner to check the OpenRouter key.");
+        throw new Error(`❌ OpenRouter API key rejected (401). Check OPENROUTER_API_KEY is valid.\nKey used: ${maskedKey}`);
       }
-
       if (status === 429) {
-        // Rate limited — wait briefly then try next model
-        logger.warn({ model, status: 429 }, "Rate limited — skipping to next model");
+        const reason = `[${model}] HTTP 429 rate-limited`;
+        failureLog.push(reason);
+        logger.warn({ model }, "▶ Rate limited — waiting 1.5s then trying next model");
+        onStatus?.(`⏳ Rate limited on model ${i + 1}, trying next...`);
         await new Promise(r => setTimeout(r, 1500));
         continue;
       }
-
       if (status === 402) {
-        // Payment required — model not available on free tier, skip
-        logger.warn({ model, status: 402 }, "Model not on free tier — skipping");
+        const reason = `[${model}] HTTP 402 payment/quota required`;
+        failureLog.push(reason);
+        logger.warn({ model }, "▶ Model not on free tier (402) — skipping");
         continue;
       }
-
+      if (status === 503 || status === 502) {
+        const reason = `[${model}] HTTP ${status} model offline`;
+        failureLog.push(reason);
+        logger.warn({ model, status }, "▶ Model offline — skipping");
+        continue;
+      }
       if (err.code === "ECONNABORTED" || err.code === "ETIMEDOUT") {
-        // Timeout — try next model
-        logger.warn({ model }, "Model timed out — trying next");
+        const reason = `[${model}] timed out after 120s`;
+        failureLog.push(reason);
+        logger.warn({ model }, "▶ Model timed out — trying next");
+        onStatus?.(`⏳ Model timed out, trying next...`);
         continue;
       }
 
-      // Any other error — try next model
-      logger.warn({ model, status, err: err?.message }, "Model error — trying next");
+      const reason = `[${model}] HTTP ${status ?? "?"} — ${errMsg}`;
+      failureLog.push(reason);
+      logger.warn({ model, status, errMsg }, "▶ Unknown API error — trying next model");
       continue;
     }
+
+    // ── Stage 2: Validate raw response ───────────────────────────────────────
+    logger.info({ model, rawLength: raw.length }, "▶ STAGE 2: validating raw response");
 
     if (!raw || raw.trim().length < 50) {
-      logger.warn({ model }, "Empty/too-short response — trying next");
+      const reason = `[${model}] empty or too-short response (${raw.length} chars)`;
+      failureLog.push(reason);
+      logger.warn({ model, rawLength: raw.length, raw }, "▶ STAGE 2 FAIL: empty/short response");
       continue;
     }
 
+    // ── Stage 3: JSON extraction ──────────────────────────────────────────────
+    logger.info({ model }, "▶ STAGE 3: extracting JSON from response");
     let jsonStr: string;
     try {
       jsonStr = extractJson(raw);
-    } catch {
-      logger.warn({ model }, "Could not extract JSON — trying next");
+      logger.info({ model, jsonLength: jsonStr.length, jsonPreview: jsonStr.slice(0, 150) }, "▶ STAGE 3 OK: JSON extracted");
+    } catch (extractErr: any) {
+      const reason = `[${model}] JSON extraction failed — ${extractErr?.message}`;
+      failureLog.push(reason);
+      logger.warn({ model, extractErr: extractErr?.message, rawPreview: raw.slice(0, 300) }, "▶ STAGE 3 FAIL: could not extract JSON");
       continue;
     }
 
+    // ── Stage 4: JSON parse ───────────────────────────────────────────────────
+    logger.info({ model }, "▶ STAGE 4: parsing JSON");
     let parsed: GeneratedProject;
     try {
       parsed = JSON.parse(jsonStr);
+      logger.info({ model, projectName: parsed?.name, fileCount: parsed?.files?.length }, "▶ STAGE 4 OK: JSON parsed");
     } catch {
+      logger.warn({ model }, "▶ STAGE 4: standard parse failed — attempting jsonrepair");
       try {
         parsed = JSON.parse(jsonrepair(jsonStr));
-        logger.info({ model }, "JSON auto-repaired");
-      } catch {
-        logger.warn({ model }, "JSON parse + repair failed — trying next");
+        logger.info({ model, projectName: parsed?.name, fileCount: parsed?.files?.length }, "▶ STAGE 4 OK: JSON auto-repaired and parsed");
+      } catch (repairErr: any) {
+        const reason = `[${model}] JSON parse + repair both failed — ${repairErr?.message}`;
+        failureLog.push(reason);
+        logger.warn({ model, repairErr: repairErr?.message, jsonPreview: jsonStr.slice(0, 300) }, "▶ STAGE 4 FAIL: JSON parse and repair both failed");
         continue;
       }
     }
 
+    // ── Stage 5: Validate project structure ───────────────────────────────────
+    logger.info({ model, hasFiles: Array.isArray(parsed?.files), fileCount: parsed?.files?.length }, "▶ STAGE 5: validating project structure");
+
     if (!parsed || !Array.isArray(parsed.files) || parsed.files.length === 0) {
-      logger.warn({ model }, "Invalid project structure — trying next");
+      const reason = `[${model}] invalid project structure — missing or empty files array`;
+      failureLog.push(reason);
+      logger.warn({ model, parsedKeys: Object.keys(parsed ?? {}) }, "▶ STAGE 5 FAIL: invalid structure");
       continue;
     }
 
+    // ── Stage 6: Sanitise files ───────────────────────────────────────────────
+    logger.info({ model, rawFileCount: parsed.files.length }, "▶ STAGE 6: sanitising files");
     const files = sanitiseFiles(parsed.files);
     if (files.length === 0) {
-      logger.warn({ model }, "All files invalid after sanitisation — trying next");
+      const reason = `[${model}] all ${parsed.files.length} file(s) failed sanitisation`;
+      failureLog.push(reason);
+      logger.warn({ model, rawFiles: parsed.files.map((f: any) => f?.path) }, "▶ STAGE 6 FAIL: all files invalid after sanitisation");
       continue;
     }
 
+    // ── Stage 7: Finalise and return ──────────────────────────────────────────
     parsed.files = files;
     parsed.name = parsed.name || "nova-project";
     parsed.description = parsed.description || `A web project generated by Nova AI`;
@@ -257,14 +299,23 @@ export async function generateProject(
       ? parsed.type : "static";
     parsed.deploymentTip = parsed.deploymentTip || "Deploy on Netlify: app.netlify.com/drop";
 
-    logger.info({ model, name: parsed.name, type: parsed.type, files: files.length }, "Project generation complete");
+    logger.info(
+      { model, name: parsed.name, type: parsed.type, fileCount: files.length, attempt: i + 1 },
+      "▶ STAGE 7 SUCCESS: project generation complete"
+    );
     return parsed;
   }
 
-  // All models exhausted
-  logger.error({ modelsTriedCount: modelQueue.length }, "All models failed for project generation");
+  // ── All models exhausted ──────────────────────────────────────────────────
+  logger.error(
+    { modelsTriedCount: modelQueue.length, failureLog },
+    "▶ ALL MODELS FAILED for project generation"
+  );
+  const summary = failureLog.length > 0
+    ? `\n\nFailure summary:\n${failureLog.map((r, i) => `${i + 1}. ${r}`).join("\n")}`
+    : "";
   throw new Error(
-    "⚠️ All AI models are currently busy or rate-limited. Please wait a minute and try again."
+    `⚠️ All ${modelQueue.length} AI models failed. Please wait a minute and try again.${summary}`
   );
 }
 

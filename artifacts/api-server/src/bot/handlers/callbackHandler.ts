@@ -2979,20 +2979,21 @@ export async function handleCallbackQuery(
     }
 
     if (data.startsWith("promo_claim_")) {
-      await answer(bot, query.id);
       const promoId = data.replace("promo_claim_", "");
       const result = await claimPromoReward(bot, userId, promoId);
       if (result.status === "awarded") {
+        await answer(bot, query.id);
         await editMsg(bot, query,
           `🎉 *+${result.reward} coins added!*\n\nThanks for joining the group. The coins are now in your account 🪙`,
           { inline_keyboard: [[{ text: "🪙 Earn More", callback_data: "earn_coins" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] },
           "Markdown"
         );
       } else if (result.status === "already_claimed") {
-        await answer(bot, query.id, "Already claimed!", true);
+        await answer(bot, query.id, "✅ You already claimed this reward!", true);
       } else if (result.status === "not_member") {
-        await answer(bot, query.id, "You haven't joined the group yet. Join first, then claim.", true);
+        await answer(bot, query.id, "⚠️ You haven't joined the group yet. Join first, then tap Claim.", true);
       } else if (result.status === "inactive") {
+        await answer(bot, query.id);
         await editMsg(bot, query, `❌ This promotion is no longer active.`, { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "earn_coins" }]] });
       } else {
         await answer(bot, query.id, "Something went wrong. Try again.", true);
