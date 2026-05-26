@@ -623,6 +623,96 @@ export async function handleOwnerMessage(
     await bot.sendMessage(chatId, `✅ Scheduled broadcast cancelled.`, { reply_markup: backToOwnerKeyboard() });
     return;
   }
+
+  if (cmd === "/testbuild") {
+    const testPrompts: Array<{ label: string; prompt: string }> = [
+      { label: "Landing Page",   prompt: "a modern SaaS landing page with hero section, features grid, pricing table, and FAQ" },
+      { label: "Portfolio",      prompt: "a personal portfolio website for a software developer with projects, skills, and contact form" },
+      { label: "Business Site",  prompt: "a professional business website for a digital marketing agency with services, team, and contact" },
+      { label: "Blog",           prompt: "a clean minimal blog website with article list, single post view, and category filter" },
+    ];
+
+    const customPrompt = args.join(" ").trim();
+    const targets = customPrompt
+      ? [{ label: "Custom", prompt: customPrompt }]
+      : testPrompts;
+
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      await bot.sendMessage(chatId,
+        `❌ OPENROUTER_API_KEY is not set.\n\nWebsite builder cannot run without this.`,
+        { reply_markup: backToOwnerKeyboard() }
+      );
+      return;
+    }
+
+    const maskedKey = `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`;
+    await bot.sendMessage(chatId,
+      `🔬 *Website Builder Diagnostic*\n\n` +
+      `API key: \`${maskedKey}\`\n` +
+      `Tests queued: ${targets.length}\n\n` +
+      `Running ${targets.map(t => t.label).join(", ")}...`,
+      { parse_mode: "Markdown", reply_markup: backToOwnerKeyboard() }
+    );
+
+    const { generateProject } = await import("../services/projectGenerator.js");
+
+    for (const target of targets) {
+      const statusMsg = await bot.sendMessage(chatId,
+        `⏳ Testing: *${target.label}*\nPrompt: _${target.prompt}_`,
+        { parse_mode: "Markdown" }
+      );
+
+      const startMs = Date.now();
+
+      let onStatusMsg = "";
+      const onStatus = (s: string) => { onStatusMsg = s; };
+
+      try {
+        const project = await generateProject(target.prompt, apiKey, onStatus);
+        const elapsed = ((Date.now() - startMs) / 1000).toFixed(1);
+
+        const fileList = project.files.map(f => `  • ${f.path} (${f.content.length} chars)`).join("\n");
+        const result =
+          `✅ *${target.label}* — SUCCESS (${elapsed}s)\n\n` +
+          `📦 Name: ${project.name}\n` +
+          `🏷 Type: ${project.type}\n` +
+          `📄 Files (${project.files.length}):\n${fileList}\n\n` +
+          `📝 ${project.description}\n\n` +
+          `🚀 ${project.deploymentTip}`;
+
+        await bot.editMessageText(result, {
+          chat_id: chatId,
+          message_id: statusMsg.message_id,
+          parse_mode: "Markdown",
+        });
+
+      } catch (err: any) {
+        const elapsed = ((Date.now() - startMs) / 1000).toFixed(1);
+        const errText = err?.message || String(err);
+
+        const result =
+          `❌ *${target.label}* — FAILED (${elapsed}s)\n\n` +
+          `Last status: ${onStatusMsg || "(none)"}\n\n` +
+          `Error:\n\`\`\`\n${errText.slice(0, 800)}\n\`\`\``;
+
+        await bot.editMessageText(result, {
+          chat_id: chatId,
+          message_id: statusMsg.message_id,
+          parse_mode: "Markdown",
+        });
+      }
+
+      // Small gap between tests to avoid hitting rate limits
+      if (targets.length > 1) await new Promise(r => setTimeout(r, 2000));
+    }
+
+    await bot.sendMessage(chatId,
+      `🔬 Diagnostic complete.\n\nCheck server logs for full stage-by-stage details (▶ STAGE 1 through ▶ STAGE 7).`,
+      { reply_markup: backToOwnerKeyboard() }
+    );
+    return;
+  }
 }
 
 // ── Handle owner pending text inputs (from inline button flows) ───────────────
