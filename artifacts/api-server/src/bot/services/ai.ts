@@ -321,13 +321,18 @@ export async function chat(
         logger.error({ model }, "OpenRouter auth failed (401) — stopping retries");
         break;
       }
-      logger.warn({ model, status, attempt: i + 1 }, "Model failed — trying next fallback");
+      if (status === 429) {
+        logger.warn({ model, attempt: i + 1 }, "Rate limited (429) — waiting 2s before next model");
+        await new Promise(r => setTimeout(r, 2000));
+      } else {
+        logger.warn({ model, status, attempt: i + 1 }, "Model failed — trying next fallback");
+      }
     }
   }
 
   return settings.emoji
-    ? "Oops, my brain glitched! 😅 Try again in a moment."
-    : "Oops, something went wrong. Try again in a moment.";
+    ? "I'm having a bit of trouble right now — please try again in a moment! 🙏"
+    : "I'm having trouble responding right now. Please try again in a moment.";
 }
 
 export async function clearMemory(

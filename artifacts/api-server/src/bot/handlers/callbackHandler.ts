@@ -2278,6 +2278,88 @@ export async function handleCallbackQuery(
       return;
     }
 
+    if (data === "own_test_img") {
+      if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
+      const hfKey = process.env.HUGGING_FACE_API_KEY;
+      await answer(bot, query.id);
+
+      const config = await getOrCreateBotConfig();
+      const IMAGE_FALLBACK_MODELS = [
+        "stabilityai/stable-diffusion-xl-base-1.0",
+        "runwayml/stable-diffusion-v1-5",
+      ];
+      const configuredIds = new Set(config.imageModels.map(m => m.id));
+      const fallbackExtras = IMAGE_FALLBACK_MODELS
+        .filter(id => !configuredIds.has(id))
+        .map(id => ({ name: id.split("/")[1] || id, id }));
+      const allModels = [...config.imageModels, ...fallbackExtras];
+      const activeId = config.activeImageModel;
+
+      await editMsg(bot, query,
+        `🧪 *Testing ${allModels.length} image model${allModels.length === 1 ? "" : "s"}...*\n\nChecking each model's availability. Please wait.`,
+        { inline_keyboard: [] }
+      );
+
+      const imgLines: string[] = [];
+      for (const m of allModels) {
+        const isActive = m.id === activeId;
+        const label = `${m.name}${isActive ? " ⭐" : ""}`;
+        const t0 = Date.now();
+        try {
+          const res = await axios.post(
+            `https://api-inference.huggingface.co/models/${m.id}`,
+            { inputs: "a red apple", parameters: { num_inference_steps: 1 } },
+            {
+              headers: {
+                ...(hfKey ? { Authorization: `Bearer ${hfKey}` } : {}),
+                "Content-Type": "application/json",
+              },
+              responseType: "arraybuffer",
+              timeout: 8000,
+            }
+          );
+          const ms = Date.now() - t0;
+          const ct = (res.headers?.["content-type"] as string) || "";
+          if (ct.startsWith("image/")) {
+            imgLines.push(`✅ *${label}* — ${ms}ms\n   Ready & generating`);
+          } else {
+            imgLines.push(`⚠️ *${label}* — ${ms}ms\n   Unexpected response type`);
+          }
+        } catch (err: any) {
+          const ms = Date.now() - t0;
+          const status = err?.response?.status;
+          if (status === 503) {
+            let eta = "";
+            try {
+              const body = JSON.parse(Buffer.from(err.response.data).toString());
+              if (body?.estimated_time) eta = ` (~${Math.round(body.estimated_time)}s to load)`;
+            } catch { /* ignore */ }
+            imgLines.push(`⏳ *${label}* — Loading${eta}\n   Model warming up on HuggingFace`);
+          } else if (status === 401 || status === 403) {
+            imgLines.push(`🔑 *${label}* — Auth error\n   Check HUGGING_FACE_API_KEY`);
+          } else if (err.code === "ECONNABORTED") {
+            imgLines.push(`✅ *${label}* — Alive (timeout after 8s)\n   Model is loaded & responding`);
+          } else {
+            const msg = String(err?.message || "unknown").slice(0, 55);
+            imgLines.push(`❌ *${label}* — ${status ? `HTTP ${status}` : err?.code || "ERR"}\n   ${msg}`);
+          }
+        }
+      }
+
+      const passing = imgLines.filter(l => l.startsWith("✅") || l.startsWith("⏳")).length;
+      const active = config.imageModels.find(m => m.id === activeId);
+      const noKey = !hfKey ? "\n⚠️ _HUGGING\\_FACE\\_API\\_KEY not set — using anonymous tier_" : "";
+
+      await editMsg(bot, query,
+        `🧪 *Image Model Test Results*\n━━━━━━━━━━━━━━━━\n` +
+        `✅ ${passing}/${allModels.length} reachable   Active: *${active?.name || activeId}*${noKey}\n\n` +
+        imgLines.join("\n\n"),
+        ownerImageModelsKeyboard(config.imageModels, activeId),
+        "Markdown"
+      );
+      return;
+    }
+
     if (data === "own_do_lookup") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
       setPending(userId, "owner_lookup");

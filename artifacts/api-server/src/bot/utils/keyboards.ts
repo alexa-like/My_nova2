@@ -783,6 +783,7 @@ export function ownerImageModelsKeyboard(
     inline_keyboard: [
       ...modelButtons,
       [{ text: "➕ Add New Model", callback_data: "own_add_img" }],
+      [{ text: "🧪 Test All Models", callback_data: "own_test_img" }],
       [{ text: "⬅️ Back", callback_data: "own_panel" }],
     ],
   };
