@@ -14,6 +14,7 @@ import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
 import { analyzeImage } from "../services/imageAnalysis.js";
 import { getCachedBuild, updateBuildDeployUrls, cacheUserBuild } from "../utils/buildCache.js";
 import { deployToVercel, getRenderBlueprintUrl } from "../services/deploy.js";
+import { canClaimDailyWAT, isStreakContinuedWAT, timeUntilMidnightWATStr } from "../utils/watTime.js";
 import { decrypt } from "../utils/crypto.js";
 import { typeLabel } from "../services/projectGenerator.js";
 import {
@@ -2467,33 +2468,29 @@ export async function handleCallbackQuery(
       const userRecord = await User.findOne({ userId });
       if (!userRecord) { await answer(bot, query.id); return; }
       const now = new Date();
-      const lastClaim = (userRecord as any).lastDailyReward as Date | undefined;
       const config = await getOrCreateBotConfig();
       const dailyAmount = config.creditRewards?.daily ?? 25;
-      const cooldownHours = 20;
-      if (lastClaim) {
-        const hoursSince = (now.getTime() - lastClaim.getTime()) / (1000 * 60 * 60);
-        if (hoursSince < cooldownHours) {
-          const hoursLeft = Math.ceil(cooldownHours - hoursSince);
-          const minsLeft = Math.ceil((cooldownHours - hoursSince) * 60) % 60;
-          await answer(bot, query.id, `⏳ Already claimed today!`);
-          await editMsg(bot, query,
-            `🎁 Daily Reward\n\n⏳ You already claimed your reward today!\n\nNext reward in: ${hoursLeft}h ${minsLeft}m\n\nCome back tomorrow for ${dailyAmount} more credits!`,
-            { inline_keyboard: [[{ text: "📊 My Account", callback_data: "account_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] }
-          );
-          return;
-        }
+      if (!canClaimDailyWAT((userRecord as any).lastDailyReward)) {
+        const timeLeft = timeUntilMidnightWATStr();
+        await answer(bot, query.id, `⏳ Already claimed today!`);
+        await editMsg(bot, query,
+          `🎁 Daily Reward\n\n⏳ You already claimed today!\n\nNext reward resets at midnight Nigeria time 🇳🇬\n⏰ Time left: ${timeLeft}`,
+          { inline_keyboard: [[{ text: "📊 My Account", callback_data: "account_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] }
+        );
+        return;
       }
       (userRecord as any).lastDailyReward = now;
       await userRecord.save();
       const newBal = await addCredits(userId, dailyAmount);
-      await answer(bot, query.id, `🎁 +${dailyAmount} credits claimed!`);
-      await editMsg(bot, query,
-        `🎁 Daily Reward Claimed!\n\n+${dailyAmount} credits added to your account.\n💰 New balance: ${newBal} credits\n\nCome back in 20 hours for your next reward!`,
-        { inline_keyboard: [
+      await bot.answerCallbackQuery(query.id, { text: "🎰 Spinning..." });
+      await bot.sendDice(chatId, { emoji: "🎰" } as any);
+      await new Promise(r => setTimeout(r, 3500));
+      await bot.sendMessage(chatId,
+        `🎁 Daily Reward Claimed!\n\n+${dailyAmount} credits added.\n💰 New balance: ${newBal} credits\n\nCome back at midnight Nigeria time 🇳🇬 for your next reward!`,
+        { reply_markup: { inline_keyboard: [
           [{ text: "💰 Credits", callback_data: "credits_menu" }, { text: "📊 My Account", callback_data: "account_menu" }],
           [{ text: "⬅️ Menu", callback_data: "main_menu" }],
-        ]}
+        ]}}
       );
       return;
     }
@@ -2511,7 +2508,7 @@ export async function handleCallbackQuery(
         flashText = `\n\n⚡ Flash Offer: ${flashOffer.title}\n${flashOffer.description} (+${flashOffer.creditsAmount} credits)`;
       }
       await editMsg(bot, query,
-        `💰 Credits\n\nBalance: ${credits} credits\n\nCredit costs:\n• 💬 Chat: 1 credit\n• 🎨 Image: 5 credits\n• 🌐 Build: 20 credits\n• 🔍 Search: 2 credits${flashText}\n\n⭐ VIP members skip all credit deductions!`,
+        `💰 Credits\n\nBalance: ${credits} credits\n\nCredit costs:\n• 💬 Chat: Free ✅\n• 🎨 Image: 5 credits\n• 🌐 Build: 20 credits\n• 🔍 Search: 2 credits${flashText}\n\n⭐ VIP members skip all credit deductions!`,
         creditsMenuKeyboard()
       );
       return;
@@ -2746,18 +2743,17 @@ export async function handleCallbackQuery(
 
     if (data === "daily_claim") {
       const now = new Date();
-      const lastReward = user.lastDailyReward;
-      const msIn24h = 24 * 60 * 60 * 1000;
-      if (lastReward && now.getTime() - lastReward.getTime() < msIn24h) {
-        const hoursLeft = Math.ceil((new Date(lastReward.getTime() + msIn24h).getTime() - now.getTime()) / (60 * 60 * 1000));
-        await answer(bot, query.id, `⏳ Already claimed! Come back in ${hoursLeft}h`);
+      if (!canClaimDailyWAT(user.lastDailyReward)) {
+        const timeLeft = timeUntilMidnightWATStr();
+        await answer(bot, query.id, `⏳ Come back at midnight Nigeria time!`);
+        await editMsg(bot, query,
+          `🎁 Daily Reward\n\n⏳ Already claimed today!\n\nNext reward resets at midnight Nigeria time 🇳🇬\n⏰ Time left: ${timeLeft}`,
+          { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] }
+        );
         return;
       }
       const prevStreak = user.streak || 0;
-      const wasContinuous = lastReward && (now.getTime() - lastReward.getTime()) < (48 * 60 * 60 * 1000);
-      const newStreak = wasContinuous ? prevStreak + 1 : 1;
-      user.streak = newStreak;
-      user.lastDailyReward = now;
+      const newStreak = isStreakContinuedWAT(user.lastDailyReward) ? prevStreak + 1 : 1;
       const streakBonus = Math.min(20, Math.floor(newStreak / 7) * 3);
       const roll = Math.random() * 100;
       let rewardMsg = "";
@@ -2777,16 +2773,20 @@ export async function handleCallbackQuery(
       } else {
         rewardMsg = `💫 Good job showing up!\n\nNothing special today, but your streak grows. Longer streaks unlock better odds for rare rewards!`;
       }
+      user.streak = newStreak;
+      user.lastDailyReward = now;
       await user.save();
-      await answer(bot, query.id, "🎁 Reward claimed!");
-      await editMsg(bot, query,
+      await bot.answerCallbackQuery(query.id, { text: "🎰 Spinning your reward..." });
+      await bot.sendDice(chatId, { emoji: "🎰" } as any);
+      await new Promise(r => setTimeout(r, 3500));
+      await bot.sendMessage(chatId,
         `🎁 Daily Reward — Day ${newStreak}!\n\n` +
-        `🔥 Streak: ${newStreak} day${newStreak !== 1 ? 's' : ''}${newStreak >= 7 ? ' 🔥' : ''}\n\n` +
+        `🔥 Streak: ${newStreak} day${newStreak !== 1 ? "s" : ""}${newStreak >= 7 ? " 🔥" : ""}\n\n` +
         rewardMsg,
-        { inline_keyboard: [
+        { reply_markup: { inline_keyboard: [
           [{ text: "👥 Refer a Friend", callback_data: "refer_link" }],
           [{ text: "⬅️ Menu", callback_data: "main_menu" }],
-        ]}
+        ]}}
       );
       return;
     }

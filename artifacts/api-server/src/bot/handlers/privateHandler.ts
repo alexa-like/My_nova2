@@ -62,9 +62,14 @@ import { isPremiumEmojiEnabled, applyPremiumEmojiSafe } from "../utils/premiumEm
 import { logger } from "../../lib/logger.js";
 import { formatAnnouncements, getNewCount } from "../services/announcements.js";
 import { detectImageIntent, detectStickerIntent, detectSearchIntent, detectBuildIntent, detectSummarizeIntent, detectTranslateIntent } from "../services/intentEngine.js";
+import { canClaimDailyWAT, isStreakContinuedWAT, timeUntilMidnightWATStr, getWATDateString } from "../utils/watTime.js";
 
-// ── Per-user build/deploy cooldown (3 min) ────────────────────────────────────
-const BUILD_COOLDOWN_MS = 3 * 60 * 1000;
+// ── Daily reminder tracker (in-memory, per WAT day) ───────────────────────────
+// Tracks which users have been reminded about their daily reward today.
+const dailyReminderSentOn = new Map<number, string>(); // userId → WAT date string
+
+// ── Per-user build/deploy cooldown (1 min) ────────────────────────────────────
+const BUILD_COOLDOWN_MS = 60 * 1000;
 const buildCooldownMap = new Map<number, number>();
 
 function checkBuildCooldown(userId: number): number {
@@ -236,11 +241,10 @@ export async function handlePrivateMessage(
       const freshCreds = await User.findOne({ userId: user.userId });
       const credits = (freshCreds as any)?.credits ?? 0;
       const creditsCfg2 = await getOrCreateBotConfig();
-      const chatCost2 = creditsCfg2.creditCosts?.chat ?? 1;
       const imageCost2 = creditsCfg2.creditCosts?.image ?? 5;
       const buildCost2 = creditsCfg2.creditCosts?.build ?? 20;
       await bot.sendMessage(chatId,
-        `💰 Credits\n\nBalance: ${credits} credits\n\nCredit costs:\n• 💬 Chat: ${chatCost2} credit\n• 🎨 Image: ${imageCost2} credits\n• 🌐 Build: ${buildCost2} credits\n\n${user.premium.active ? "⭐ VIP — No credit deductions!" : "Upgrade to VIP to skip all credit costs!"}`,
+        `💰 Credits\n\nBalance: ${credits} credits\n\nCredit costs:\n• 💬 Chat: Free ✅\n• 🎨 Image: ${imageCost2} credits\n• 🌐 Build: ${buildCost2} credits\n\n${user.premium.active ? "⭐ VIP — No credit deductions!" : "Upgrade to VIP to skip all credit costs!"}`,
         { reply_markup: creditsMenuKeyboard() }
       );
       return;
@@ -280,15 +284,12 @@ export async function handlePrivateMessage(
       return;
     }
     if (text === "🎁 Daily") {
-      const now2 = new Date();
-      const lastReward = user.lastDailyReward;
-      const msIn24h = 24 * 60 * 60 * 1000;
-      if (lastReward && now2.getTime() - lastReward.getTime() < msIn24h) {
-        const hoursLeft = Math.ceil((new Date(lastReward.getTime() + msIn24h).getTime() - now2.getTime()) / (60 * 60 * 1000));
-        await bot.sendMessage(chatId, `⏳ Daily reward already claimed. Come back in ${hoursLeft}h`, { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+      if (!canClaimDailyWAT(user.lastDailyReward)) {
+        const timeLeft = timeUntilMidnightWATStr();
+        await bot.sendMessage(chatId, `⏳ Already claimed today! Next reward resets at midnight Nigeria time 🇳🇬\n⏰ Time left: ${timeLeft}`, { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
         return;
       }
-      await bot.sendMessage(chatId, "🎁 Claim your daily reward below:", { reply_markup: { inline_keyboard: [[{ text: "🎁 Claim Daily Reward", callback_data: "daily_claim" }], [{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+      await bot.sendMessage(chatId, "🎁 Your daily reward is ready! Tap below to spin:", { reply_markup: { inline_keyboard: [[{ text: "🎰 Claim Daily Reward", callback_data: "daily_claim" }], [{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
       return;
     }
     if (text === "⏰ Reminders") {
@@ -688,11 +689,10 @@ export async function handlePrivateMessage(
   if (text === "/credits") {
     const creditsCfg = await getOrCreateBotConfig();
     const currentCredits = (user as any).credits ?? 0;
-    const chatCost  = creditsCfg.creditCosts?.chat   ?? 1;
     const imageCost = creditsCfg.creditCosts?.image  ?? 5;
     const buildCost = creditsCfg.creditCosts?.build  ?? 20;
     await bot.sendMessage(chatId,
-      `💰 Credits\n\nBalance: ${currentCredits} credits\n\nCredit costs:\n• 💬 Chat: ${chatCost} credit\n• 🎨 Image: ${imageCost} credits\n• 🌐 Build: ${buildCost} credits\n\n${user.premium.active ? "⭐ VIP — No credit deductions!" : "Upgrade to VIP to skip all credit costs!"}`,
+      `💰 Credits\n\nBalance: ${currentCredits} credits\n\nCredit costs:\n• 💬 Chat: Free ✅\n• 🎨 Image: ${imageCost} credits\n• 🌐 Build: ${buildCost} credits\n\n${user.premium.active ? "⭐ VIP — No credit deductions!" : "Upgrade to VIP to skip all credit costs!"}`,
       { reply_markup: creditsMenuKeyboard() }
     );
     return;
@@ -1135,27 +1135,24 @@ export async function handlePrivateMessage(
 
   // /daily — daily reward with streak system
   if (text === "/daily") {
-    const now = new Date();
-    const lastReward = user.lastDailyReward;
-    const msIn24h = 24 * 60 * 60 * 1000;
-    if (lastReward && now.getTime() - lastReward.getTime() < msIn24h) {
-      const hoursLeft = Math.ceil((new Date(lastReward.getTime() + msIn24h).getTime() - now.getTime()) / (60 * 60 * 1000));
-      const streak = user.streak || 0;
+    const streak = user.streak || 0;
+    if (!canClaimDailyWAT(user.lastDailyReward)) {
+      const timeLeft = timeUntilMidnightWATStr();
       await bot.sendMessage(chatId,
         `⏳ Already claimed today!\n\n` +
-        `🔥 Streak: ${streak} day${streak !== 1 ? 's' : ''}\n` +
-        `⏰ Next reward in ${hoursLeft}h\n\n` +
+        `🔥 Streak: ${streak} day${streak !== 1 ? "s" : ""}\n` +
+        `⏰ Next reward at midnight Nigeria time 🇳🇬\n` +
+        `Time left: ${timeLeft}\n\n` +
         `Keep your streak going — longer streaks unlock better rewards!`,
         { reply_markup: { inline_keyboard: [[{ text: "👥 Refer a Friend", callback_data: "refer_link" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
       );
       return;
     }
-    const streak = user.streak || 0;
     const { dailyRewardKeyboard } = await import("../utils/keyboards.js");
     await bot.sendMessage(chatId,
       `🎁 Daily Reward Ready!\n\n` +
-      `🔥 Current streak: ${streak} day${streak !== 1 ? 's' : ''}\n\n` +
-      `Tap below to claim your reward! Luck decides what you get — longer streaks mean better odds for rare rewards.`,
+      `🔥 Current streak: ${streak} day${streak !== 1 ? "s" : ""}\n\n` +
+      `Tap below to spin and claim your reward! 🎰\nLonger streaks = better odds for rare prizes.`,
       { reply_markup: dailyRewardKeyboard() }
     );
     return;
@@ -1359,18 +1356,16 @@ export async function handlePrivateMessage(
 
   // ── Plain text → AI chat ─────────────────────────────────────────────────
 
-  // Credit check (skip for premium users)
-  if (!user.premium.active) {
-    const chatCost = await getCreditCost("chat");
-    const userCredits = (user as any).credits ?? 0;
-    if (userCredits < chatCost) {
+  // Daily reward reminder — sent once per WAT day when reward is available
+  if (canClaimDailyWAT(user.lastDailyReward)) {
+    const todayWAT = getWATDateString(new Date());
+    if (dailyReminderSentOn.get(user.userId) !== todayWAT) {
+      dailyReminderSentOn.set(user.userId, todayWAT);
       await bot.sendMessage(chatId,
-        `💰 You're out of credits!\n\nYou need ${chatCost} credit to chat.\nBalance: ${userCredits} credits\n\nEarn free credits:\n• 🎁 Claim your daily reward\n• 👥 Refer friends for bonus credits`,
-        { reply_markup: insufficientCreditsKeyboard() }
+        `🎁 Your daily reward is ready to claim!\n\nSpin the slot machine and see what you win 🎰`,
+        { reply_markup: { inline_keyboard: [[{ text: "🎰 Claim Daily Reward", callback_data: "daily_claim" }]] } }
       );
-      return;
     }
-    await deductCredits(user.userId, chatCost);
   }
 
   // Per-day message limit check
