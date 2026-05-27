@@ -1,5 +1,4 @@
 import axios from "axios";
-import { jsonrepair } from "jsonrepair";
 import { logger } from "../../lib/logger.js";
 
 const VERCEL_API = "https://api.vercel.com";
@@ -237,70 +236,3 @@ export async function deployToRender(
   return { id: serviceId, url: dashUrl, inspectorUrl: dashUrl, provider: "render" };
 }
 
-// ── AI-powered auto-fix for failed deployments ────────────────────────────────
-
-export async function autoFixProjectFiles(
-  files: Array<{ path: string; content: string }>,
-  errorMessage: string,
-  projectDescription: string,
-  apiKey: string
-): Promise<Array<{ path: string; content: string }> | null> {
-  try {
-    const fileList = files
-      .map((f) => `=== ${f.path} ===\n${f.content}`)
-      .join("\n\n");
-
-    const resp = await axios.post(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        model: "meta-llama/llama-3.3-70b-instruct",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a senior web developer fixing deployment errors. Return ONLY a raw JSON object. No markdown fences, no explanation.",
-          },
-          {
-            role: "user",
-            content:
-              `Project: ${projectDescription}\n\n` +
-              `Deployment error: ${errorMessage}\n\n` +
-              `Current files:\n${fileList}\n\n` +
-              `Fix ALL issues that would cause this error. Return:\n` +
-              `{"files": [{"path": "filename", "content": "full fixed content"}, ...]}\n\n` +
-              `Include ALL files, not just the changed ones.`,
-          },
-        ],
-        max_tokens: 8000,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        timeout: 90000,
-      }
-    );
-
-    const raw: string = resp.data.choices?.[0]?.message?.content || "";
-    const cleaned = raw
-      .replace(/^```(?:json)?\n?/, "")
-      .replace(/\n?```$/, "")
-      .trim();
-    let parsed: any;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      parsed = JSON.parse(jsonrepair(cleaned));
-    }
-
-    if (Array.isArray(parsed.files) && parsed.files.length > 0) {
-      logger.info({ fixedFiles: parsed.files.length }, "Auto-fix files generated");
-      return parsed.files as Array<{ path: string; content: string }>;
-    }
-    return null;
-  } catch (err: any) {
-    logger.warn({ err: err?.message }, "Auto-fix generation failed");
-    return null;
-  }
-}

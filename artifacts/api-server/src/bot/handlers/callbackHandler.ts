@@ -13,7 +13,7 @@ import { sendOwnerPanel } from "./ownerHandler.js";
 import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
 import { analyzeImage } from "../services/imageAnalysis.js";
 import { getCachedBuild, updateBuildDeployUrls, cacheUserBuild } from "../utils/buildCache.js";
-import { deployToVercel, deployToRender, autoFixProjectFiles } from "../services/deploy.js";
+import { deployToVercel, deployToRender } from "../services/deploy.js";
 import { decrypt } from "../utils/crypto.js";
 import { typeLabel } from "../services/projectGenerator.js";
 import {
@@ -903,19 +903,7 @@ export async function handleCallbackQuery(
         try { await bot.editMessageText(text, { chat_id: chatId, message_id: statusMsgId }); } catch {}
       };
       try {
-        let result: Awaited<ReturnType<typeof deployToVercel>>;
-        try {
-          result = await deployToVercel(vercelToken, cached.project.name, cached.project.files, async (msg) => updateStatus(msg));
-        } catch (firstErr: any) {
-          const apiKey = process.env.OPENROUTER_API_KEY;
-          if (!apiKey) throw firstErr;
-          await updateStatus(`⚠️ Deploy failed — running AI auto-fix...\n${firstErr.message.substring(0, 60)}`);
-          const fixed = await autoFixProjectFiles(cached.project.files, firstErr.message, cached.project.description, apiKey);
-          if (!fixed) throw firstErr;
-          cached.project.files = fixed;
-          await updateStatus(`🔧 Auto-fix applied — retrying...`);
-          result = await deployToVercel(vercelToken!, cached.project.name, fixed, async (msg) => updateStatus(msg));
-        }
+        const result = await deployToVercel(vercelToken, cached.project.name, cached.project.files, async (msg) => updateStatus(msg));
         try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
         await updateBuildDeployUrls(userId, { vercelUrl: result.url });
         try {
