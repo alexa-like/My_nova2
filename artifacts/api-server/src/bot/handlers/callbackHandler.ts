@@ -1584,7 +1584,7 @@ export async function handleCallbackQuery(
         return;
       }
       await editMsg(bot, query,
-        `📁 My Projects\n\nYou have ${projects.length} project${projects.length !== 1 ? "s" : ""}.\nFree users: 2 max · Premium: unlimited\n\nTap a project to open or delete it:`,
+        `📁 My Projects\n\nYou have ${projects.length} project${projects.length !== 1 ? "s" : ""}.\n\nTap a project to open or delete it:`,
         projectsListKeyboard(projects)
       );
       return;

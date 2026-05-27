@@ -1984,16 +1984,6 @@ async function handleBuildRequest(
     return;
   }
 
-  // Project limit for free users
-  const FREE_PROJECT_LIMIT = 2;
-  if (!user.premium.active && (user.projects?.length ?? 0) >= FREE_PROJECT_LIMIT) {
-    await bot.sendMessage(chatId,
-      `📁 You've reached the free project limit (${FREE_PROJECT_LIMIT} projects).\n\nDelete a project to make room, or upgrade to Premium for unlimited projects.`,
-      { reply_markup: { inline_keyboard: [[{ text: "📁 My Projects", callback_data: "my_projects" }, { text: "💎 Go Premium", callback_data: "settings_premium" }]] } }
-    );
-    return;
-  }
-
   // Daily build limit check
   const buildLimCfg = await getOrCreateBotConfig();
   const buildLimit = user.premium.active ? buildLimCfg.usageLimits.premiumBuilds : buildLimCfg.usageLimits.freeBuilds;
