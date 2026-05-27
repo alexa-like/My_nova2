@@ -13,7 +13,7 @@ import { sendOwnerPanel } from "./ownerHandler.js";
 import { getMaintenance, setMaintenance } from "../utils/maintenanceState.js";
 import { analyzeImage } from "../services/imageAnalysis.js";
 import { getCachedBuild, updateBuildDeployUrls, cacheUserBuild } from "../utils/buildCache.js";
-import { deployToVercel, deployToRender } from "../services/deploy.js";
+import { deployToVercel, getRenderBlueprintUrl } from "../services/deploy.js";
 import { decrypt } from "../utils/crypto.js";
 import { typeLabel } from "../services/projectGenerator.js";
 import {
@@ -952,23 +952,6 @@ export async function handleCallbackQuery(
     }
 
     if (data === "deploy_render") {
-      let renderToken = process.env.RENDER_API_KEY;
-      try {
-        const fresh = await User.findOne({ userId }).select("+renderTokenEncrypted");
-        const enc = (fresh as any)?.renderTokenEncrypted as string | undefined;
-        if (enc) { const dec = decrypt(enc); if (dec) renderToken = dec; }
-      } catch {}
-      if (!renderToken) {
-        setPending(userId, "render_set_token");
-        await editMsg(bot, query,
-          "🟣 Deploy to Render\n\n" +
-          "No Render API key saved yet. Send your key now and I'll deploy immediately.\n\n" +
-          "Get one at: dashboard.render.com → Account Settings → API Keys\n\n" +
-          "⚠️ Your message will be deleted after saving.",
-          { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] }
-        );
-        return;
-      }
       const cached = await getCachedBuild(userId);
       if (!cached) {
         await editMsg(bot, query, "⏳ Build session expired. Run /build first.", backToMainKeyboard());
@@ -978,7 +961,7 @@ export async function handleCallbackQuery(
       if (!repoUrl) {
         await bot.answerCallbackQuery(query.id);
         await bot.sendMessage(chatId,
-          `🟣 Render deployment requires your project to be on GitHub first.\n\nUse 📤 Push to GitHub, then come back to deploy the backend to Render.`,
+          `🟣 Render Blueprint Deploy\n\nYour project needs to be on GitHub first.\n\nPush to GitHub, then come back to deploy to Render via Blueprint.`,
           { reply_markup: { inline_keyboard: [
             [{ text: "📤 Push to GitHub", callback_data: "build_choice_github" }],
             [{ text: "⬅️ Menu", callback_data: "main_menu" }],
@@ -986,42 +969,15 @@ export async function handleCallbackQuery(
         );
         return;
       }
-      await bot.answerCallbackQuery(query.id, { text: "Deploying to Render..." });
-      const statusMsg = await bot.sendMessage(chatId, `🟣 Deploying to Render...\n\n📦 ${cached.project.name}`);
-      let statusMsgId = statusMsg.message_id;
-      const updateStatus = async (text: string) => {
-        try { await bot.editMessageText(text, { chat_id: chatId, message_id: statusMsgId }); } catch {}
-      };
-      try {
-        const result = await deployToRender(renderToken, cached.project.name, repoUrl, updateStatus);
-        try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
-        await updateBuildDeployUrls(userId, { renderUrl: result.url });
-        const latest = await getCachedBuild(userId);
-        if (latest?.vercelUrl) {
-          await bot.sendMessage(chatId,
-            `🚀 Fully deployed!\n\n📦 ${cached.project.name}\n\n⚡ Frontend (Vercel): ${latest.vercelUrl}\n🟣 Backend (Render): ${result.url}`,
-            { reply_markup: { inline_keyboard: [
-              [{ text: "⚡ Open Frontend", url: latest.vercelUrl }, { text: "🟣 Open Backend", url: result.url }],
-              [{ text: "🌐 Build Another", callback_data: "build_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
-            ]}}
-          );
-        } else {
-          await bot.sendMessage(chatId,
-            `🟣 Deployed to Render!\n\n📦 ${cached.project.name}\n🌐 ${result.url}\n\nDeploy the frontend to Vercel too?`,
-            { reply_markup: { inline_keyboard: [
-              [{ text: "🌐 Open Backend", url: result.url }],
-              [{ text: "⚡ Deploy Frontend to Vercel", callback_data: "deploy_live" }],
-              [{ text: "✅ Done", callback_data: "build_deploy_done" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
-            ]}}
-          );
-        }
-      } catch (err: any) {
-        try { await bot.deleteMessage(chatId, statusMsgId); } catch {}
-        await bot.sendMessage(chatId,
-          `❌ Render deployment failed: ${err.message?.substring(0, 100) ?? "Unknown error"}\n\nCheck your Render token and try again.`,
-          { reply_markup: backToMainKeyboard() }
-        );
-      }
+      await bot.answerCallbackQuery(query.id);
+      const blueprintUrl = getRenderBlueprintUrl(repoUrl);
+      await bot.sendMessage(chatId,
+        `🟣 Deploy to Render via Blueprint\n\n📦 ${cached.project.name}\n\nYour project includes a \`render.yaml\` Blueprint file. Click the button below — Render will read it and set up your service automatically. No API key needed.\n\n${cached.vercelUrl ? `⚡ Frontend (Vercel): ${cached.vercelUrl}\n` : ""}`,
+        { reply_markup: { inline_keyboard: [
+          [{ text: "🚀 Deploy on Render", url: blueprintUrl }],
+          [{ text: "✅ Done", callback_data: "build_deploy_done" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
+        ]}}
+      );
       return;
     }
 
@@ -1515,17 +1471,14 @@ export async function handleCallbackQuery(
     }
 
     if (data === "settings_deployments") {
-      const fresh = await User.findOne({ userId }).select("+vercelTokenEncrypted +renderTokenEncrypted");
+      const fresh = await User.findOne({ userId }).select("+vercelTokenEncrypted");
       const hasVercel = !!(fresh as any)?.vercelTokenEncrypted;
-      const hasRender = !!(fresh as any)?.renderTokenEncrypted;
       await editMsg(bot, query,
-        `🚀 Deployment Tokens\n\n` +
-        `Connect your own Vercel or Render accounts. Your tokens are AES-256 encrypted and never visible.\n\n` +
+        `🚀 Deployment Settings\n\n` +
         `⚡ Vercel: ${hasVercel ? "✅ Connected" : "❌ Not set"}\n` +
-        `🟣 Render: ${hasRender ? "✅ Connected" : "❌ Not set"}\n\n` +
-        `Get your Vercel token at: vercel.com → Settings → Tokens\n` +
-        `Get your Render key at: dashboard.render.com → Account Settings → API Keys`,
-        deploymentsKeyboard(hasVercel, hasRender)
+        `🟣 Render: Uses Blueprint deploy — no token needed\n\n` +
+        `Get your Vercel token at: vercel.com → Settings → Tokens`,
+        deploymentsKeyboard(hasVercel)
       );
       return;
     }
@@ -1545,27 +1498,7 @@ export async function handleCallbackQuery(
       await User.updateOne({ userId }, { $unset: { vercelTokenEncrypted: 1 } });
       await editMsg(bot, query,
         `🗑 Vercel token removed.`,
-        deploymentsKeyboard(false, !!(await User.findOne({ userId }).select("+renderTokenEncrypted") as any)?.renderTokenEncrypted)
-      );
-      return;
-    }
-
-    if (data === "render_set_token") {
-      setPending(userId, "render_set_token");
-      await editMsg(bot, query,
-        `🟣 Set Render API Key\n\nSend your Render API key.\n\n` +
-        `⚠️ Message will be deleted after saving for security.\n\n` +
-        `How to get one:\ndashboard.render.com → Account Settings → API Keys → Create API Key`,
-        { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "settings_deployments" }]] }
-      );
-      return;
-    }
-
-    if (data === "render_remove_token") {
-      await User.updateOne({ userId }, { $unset: { renderTokenEncrypted: 1 } });
-      await editMsg(bot, query,
-        `🗑 Render token removed.`,
-        deploymentsKeyboard(!!(await User.findOne({ userId }).select("+vercelTokenEncrypted") as any)?.vercelTokenEncrypted, false)
+        deploymentsKeyboard(false)
       );
       return;
     }

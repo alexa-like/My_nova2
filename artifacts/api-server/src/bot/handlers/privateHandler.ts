@@ -1757,27 +1757,6 @@ async function handlePendingText(
         );
         break;
       }
-      case "render_set_token": {
-        const tok = input.trim();
-        try { if (messageId) await bot.deleteMessage(chatId, messageId); } catch {}
-        if (!tok || tok.length < 10) {
-          await bot.sendMessage(chatId,
-            "❌ That doesn't look like a valid Render API key. Please try again.",
-            { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }
-          );
-          break;
-        }
-        const encRender = encrypt(tok);
-        await User.updateOne({ userId: user.userId }, { renderTokenEncrypted: encRender });
-        await bot.sendMessage(chatId,
-          `✅ Render API key saved securely!\n\n🔒 Encrypted with AES-256. Ready to deploy!`,
-          { reply_markup: { inline_keyboard: [
-            [{ text: "🟣 Deploy Now", callback_data: "deploy_render" }],
-            [{ text: "⚙️ Deployments", callback_data: "settings_deployments" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
-          ]}}
-        );
-        break;
-      }
       case "build_input": {
         await handleBuildRequest(bot, chatId, user, input, e);
         break;

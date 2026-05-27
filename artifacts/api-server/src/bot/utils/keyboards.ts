@@ -370,8 +370,7 @@ export function settingsMenuKeyboard(user: IUser): TelegramBot.InlineKeyboardMar
 }
 
 export function deploymentsKeyboard(
-  hasVercel: boolean,
-  hasRender: boolean
+  hasVercel: boolean
 ): TelegramBot.InlineKeyboardMarkup {
   const rows: TelegramBot.InlineKeyboardButton[][] = [];
   rows.push([{
@@ -379,11 +378,6 @@ export function deploymentsKeyboard(
     callback_data: "vercel_set_token",
   }]);
   if (hasVercel) rows.push([{ text: "🗑 Remove Vercel Token", callback_data: "vercel_remove_token" }]);
-  rows.push([{
-    text: hasRender ? "🟣 Render: ✅ Connected" : "🟣 Render: Not set",
-    callback_data: "render_set_token",
-  }]);
-  if (hasRender) rows.push([{ text: "🗑 Remove Render Token", callback_data: "render_remove_token" }]);
   rows.push([{ text: "📁 My Projects", callback_data: "my_projects" }]);
   rows.push([{ text: "⬅️ Back to Settings", callback_data: "settings_menu" }]);
   return { inline_keyboard: rows };

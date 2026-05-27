@@ -28,7 +28,6 @@ export type PendingTextAction =
   | "github_set_token"
   | "build_input"
   | "vercel_set_token"
-  | "render_set_token"
   | "feedback_pending"
   | "deletedata_confirm"
   | "grp_set_welcome"

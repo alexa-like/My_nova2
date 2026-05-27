@@ -63,10 +63,30 @@ QUALITY RULES:
 5. Dark mode preferred for dashboards
 6. Maximum 8 files total
 
+RENDER BLUEPRINT RULE:
+- For "nodejs" and "fullstack" projects, you MUST include a "render.yaml" file.
+- The render.yaml must define the service so Render can deploy it via Blueprint.
+- Use the project name (kebab-case) as the service name.
+- Always use: type: web, env: node, plan: free, PORT: 10000.
+- Example render.yaml:
+  services:
+    - type: web
+      name: my-project-name
+      env: node
+      plan: free
+      buildCommand: npm install
+      startCommand: node server.js
+      envVars:
+        - key: NODE_ENV
+          value: production
+        - key: PORT
+          value: 10000
+
 deploymentTip examples:
 - static: "Deploy free on Netlify: drag folder to app.netlify.com/drop"
 - react: "Deploy on Vercel: import from GitHub at vercel.com/new"
-- nodejs: "Deploy on Render: push to GitHub then connect at render.com"`;
+- nodejs: "Push to GitHub then click Deploy on Render — Blueprint auto-configures from render.yaml"
+- fullstack: "Push to GitHub then click Deploy on Render — Blueprint auto-configures from render.yaml"`;
 }
 
 function extractJson(raw: string): string {
