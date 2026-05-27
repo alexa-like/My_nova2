@@ -19,14 +19,12 @@ export interface GeneratedProject {
 const DEFAULT_MODEL = "deepseek/deepseek-chat-v3-0324:free";
 
 async function resolveModel(): Promise<string> {
-  try {
-    const { getOrCreateBotConfig } = await import("../models/BotConfig.js");
-    const cfg = await getOrCreateBotConfig();
-    const m = cfg.activeCodeModel;
-    if (m && typeof m === "string" && m.includes("/") && m.length >= 5) {
-      return m;
-    }
-  } catch {}
+  const { getOrCreateBotConfig } = await import("../models/BotConfig.js");
+  const cfg = await getOrCreateBotConfig();
+  const m = cfg.activeCodeModel;
+  if (m && typeof m === "string" && m.includes("/") && m.length >= 5) {
+    return m;
+  }
   return DEFAULT_MODEL;
 }
 

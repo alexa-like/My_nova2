@@ -162,7 +162,7 @@ const BotConfigSchema = new Schema<IBotConfig>(
   {
     activeChatModel:  { type: String, default: "meta-llama/llama-3.3-70b-instruct:free" },
     activeImageModel: { type: String, default: "stabilityai/stable-diffusion-xl-base-1.0" },
-    activeCodeModel:  { type: String, default: "meta-llama/llama-3.3-70b-instruct:free" },
+    activeCodeModel:  { type: String, default: "deepseek/deepseek-chat-v3-0324:free" },
     chatModels:  { type: [ModelEntrySchema], default: [] },
     imageModels: { type: [ModelEntrySchema], default: [] },
     codeModels:  { type: [ModelEntrySchema], default: [] },
@@ -198,10 +198,7 @@ const DEFAULT_CHAT_MODELS: IModelEntry[] = [
 ];
 
 const DEFAULT_CODE_MODELS: IModelEntry[] = [
-  { id: "deepseek/deepseek-chat-v3-0324:free",     name: "DeepSeek V3 — Best Coder",      active: true  },
-  { id: "meta-llama/llama-3.3-70b-instruct:free",  name: "Llama 3.3 70B — Balanced",      active: false },
-  { id: "google/gemma-3-27b-it:free",              name: "Gemma 3 27B — Google",          active: false },
-  { id: "microsoft/phi-4:free",                    name: "Phi-4 — Microsoft",             active: false },
+  { id: "deepseek/deepseek-chat-v3-0324:free", name: "DeepSeek V3 — Best Free Coder", active: true },
 ];
 
 const DEFAULT_IMAGE_MODELS: IModelEntry[] = [

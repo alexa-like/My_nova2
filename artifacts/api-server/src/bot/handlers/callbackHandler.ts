@@ -2170,31 +2170,23 @@ export async function handleCallbackQuery(
       await answer(bot, query.id);
 
       const config = await getOrCreateBotConfig();
-      const CODE_FALLBACK_MODELS = [
-        "deepseek/deepseek-chat-v3-0324:free",
-        "meta-llama/llama-3.3-70b-instruct:free",
-        "google/gemma-3-27b-it:free",
-        "microsoft/phi-4:free",
-      ];
-      const configuredIds = new Set(config.codeModels.map(m => m.id));
-      const fallbackExtras = CODE_FALLBACK_MODELS
-        .filter(id => !configuredIds.has(id))
-        .map(id => ({ name: id.split("/")[1]?.split(":")[0] || id, id }));
-      const allModels = [...config.codeModels, ...fallbackExtras];
       const activeId = config.activeCodeModel;
+      const modelsToTest = config.codeModels.length > 0
+        ? config.codeModels
+        : [{ id: activeId, name: activeId }];
 
       await editMsg(bot, query,
-        `🧪 Testing ${allModels.length} code model${allModels.length === 1 ? "" : "s"}...\n\nPinging each with a quick message. Please wait.`,
+        `🧪 Testing ${modelsToTest.length} code model${modelsToTest.length === 1 ? "" : "s"}...\n\nPinging each with a quick message. Please wait.`,
         { inline_keyboard: [] }
       );
 
-      const lines = await pingModels(allModels, activeId, apiKey);
+      const lines = await pingModels(modelsToTest, activeId, apiKey);
       const passing = lines.filter(l => l.startsWith("✅")).length;
       const active = config.codeModels.find(m => m.id === activeId);
 
       await editMsg(bot, query,
         `🧪 <b>Code Model Test Results</b>\n━━━━━━━━━━━━━━━━\n` +
-        `✅ ${passing}/${allModels.length} passing   Active: <b>${esc(active?.name || activeId)}</b>\n\n` +
+        `✅ ${passing}/${modelsToTest.length} passing   Active: <b>${esc(active?.name || activeId)}</b>\n\n` +
         lines.join("\n\n"),
         ownerCodeModelsKeyboard(config.codeModels, activeId),
         "HTML"
