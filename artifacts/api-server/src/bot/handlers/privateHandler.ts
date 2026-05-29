@@ -35,7 +35,39 @@ import {
   buildMenuKeyboard,
   whatsNewKeyboard,
   referralKeyboard,
+  chatMenuReplyKeyboard,
+  writeMenuReplyKeyboard,
+  createMenuReplyKeyboard,
+  imgStyleReplyKeyboard,
+  buildSubMenuReplyKeyboard,
+  buildResultMenuReplyKeyboard,
+  funSubMenuReplyKeyboard,
+  gamesSubMenuReplyKeyboard,
+  triviaOptionsReplyKeyboard,
+  wyrOptionsReplyKeyboard,
+  settingsReplyKeyboard,
+  aiStyleReplyKeyboard,
+  replyLengthReplyKeyboard,
+  langMenuReplyKeyboard,
+  moodReplyKeyboard,
+  creditsReplyKeyboard,
+  accountReplyKeyboard,
+  dailyMenuReplyKeyboard,
+  achievementsMenuReplyKeyboard,
+  privacyReplyKeyboard,
+  deploymentsMenuReplyKeyboard,
+  githubMenuReplyKeyboard,
+  remindersMenuReplyKeyboard,
+  ownerMainReplyKeyboard,
+  ownerUsersReplyKeyboard,
+  ownerPremiumReplyKeyboard,
+  ownerCodesReplyKeyboard,
+  ownerBroadcastReplyKeyboard,
+  ownerGroupsReplyKeyboard,
+  ownerFeaturesMenuReplyKeyboard,
 } from "../utils/keyboards.js";
+import { TRIVIA, WYR } from "../data/games.js";
+import { deployToVercel, getRenderBlueprintUrl } from "../services/deploy.js";
 import { encrypt, decrypt } from "../utils/crypto.js";
 import {
   updateRecentFeatures,
@@ -127,7 +159,15 @@ async function sendAIReply(
       await bot.sendMessage(chatId, htmlText, { parse_mode: "HTML", ...extra });
       return;
     } catch {
-      // HTML parse failed — fall through to safeSend
+      // HTML parse failed — fall through to Markdown
+    }
+  }
+  if (!extra.parse_mode) {
+    try {
+      await safeSend(bot, chatId, text, { parse_mode: "Markdown", ...extra });
+      return;
+    } catch {
+      // Markdown parse failed — fall through to plain text
     }
   }
   await safeSend(bot, chatId, text, extra);
@@ -135,11 +175,287 @@ async function sendAIReply(
 
 
 // ── Reply Keyboard button texts (private chats only) ─────────────────────────
+// Strip a leading ✅ from style/lang/mood/length buttons that show current selection
+function normalizeReplyText(t: string): string { return t.startsWith("✅ ") ? t.slice(2) : t; }
+
 const REPLY_KEYBOARD_TEXTS = new Set([
+  // Main menu
   "💬 Chat", "🎨 Create", "🌐 Build", "🔍 Search", "😄 Fun", "🎮 Games",
   "📊 Profile", "💰 Balance", "🪙 Earn", "👥 Refer", "🎁 Daily",
   "⏰ Reminders", "⭐ Premium", "⚙️ Settings", "❓ Help",
+  // Navigation back
+  "⬅️ Main Menu", "⬅️ Chat Menu", "⬅️ Create Menu", "⬅️ Build Menu",
+  "⬅️ Fun Menu", "⬅️ Games Menu", "⬅️ Settings", "⬅️ Owner Panel",
+  // Chat submenu
+  "💬 Ask Nova", "📝 Summarize", "🌍 Translate", "✍️ Write for Me",
+  "🗣️ Debate Me", "🔬 Analyze Text", "📜 Chat History", "🧹 Clear Memory",
+  // Write submenu
+  "🐦 Tweet", "📸 IG Caption", "👤 Bio", "🎵 Song Lyrics", "📧 Email", "🎭 Poem",
+  // Create submenu
+  "✨ Generate Image", "🎨 Style Presets", "🖼️ Create Sticker",
+  "✏️ Edit Image", "🔆 Enhance Photo", "🎭 Stylize Photo", "🔧 Restore Photo",
+  // Image style presets (normalized — also matched without ✅ prefix via normalizeReplyText)
+  "🎌 Anime", "🤖 Cyberpunk", "🌌 Fantasy", "📸 Realistic",
+  "🎨 Oil Painting", "💧 Watercolor", "✏️ Sketch", "👾 Pixel Art",
+  // Build submenu
+  "🌐 Website", "⚛️ React App", "🖥️ Dashboard", "🛒 Landing Page",
+  "💡 Custom Idea", "📁 My Projects", "🌐 Build Another",
+  // Build result deploy buttons
+  "⚡ Deploy to Vercel", "🟣 Deploy to Render",
+  // Fun submenu
+  "😂 Joke", "🎱 Magic 8-Ball", "💘 Ship Us", "🔥 Roast Me",
+  "🧠 IQ Test", "🌟 Compliment", "🔮 Fortune", "😈 Daily Dare",
+  "✨ Vibe Check", "💭 Truth Question",
+  // Games submenu
+  "🎯 Trivia", "🤔 Would You Rather", "📖 Word of the Day", "🎲 Random Fact",
+  "🔀 New Question",
+  // WYR options (only active when wyr_answer pending)
+  "🅰️ Option A", "🅱️ Option B",
+  // Settings submenu
+  "👤 My Profile", "📊 My Stats", "🎭 AI Style", "📏 Reply Length",
+  "🌐 Language", "😶 Set Mood", "😊 Emojis: ON", "😑 Emojis: OFF",
+  "🤖 AI Model", "💎 Premium Plans", "✅ GitHub", "🔑 GitHub",
+  "🚀 Deployments", "🔒 Privacy", "🏅 Achievements",
+  // AI Style
+  "🤝 Friendly", "😄 Funny Style", "💼 Serious", "⚖️ Balanced",
+  // Reply length
+  "📌 Short Replies", "📖 Long Replies",
+  // Language
+  "🇬🇧 English", "🇸🇦 Arabic", "🇫🇷 French", "🇪🇸 Spanish",
+  "🇩🇪 German", "🇨🇳 Chinese", "🇮🇳 Hindi", "🇧🇷 Portuguese",
+  "🇷🇺 Russian", "🇯🇵 Japanese",
+  // Mood
+  "😊 Happy", "😔 Sad", "😤 Stressed", "😴 Bored",
+  "🤩 Excited", "🎯 Focused", "😍 Romantic", "😠 Angry", "🗑️ Clear Mood",
+  // Credits
+  "🌱 50 Credits — 15⭐", "⚡ 150 Credits — 40⭐",
+  "🚀 500 Credits — 115⭐", "💎 1500 Credits — 299⭐",
+  "⭐ VIP Monthly — 149⭐", "👑 VIP Lifetime — 499⭐",
+  "🎁 Claim Daily", "👥 Invite Friends",
+  // Account/daily/achievements
+  "💰 Credits & Packs", "🎁 Daily Reward", "👥 Referral Link", "⭐ Upgrade VIP",
+  "🎰 Claim Reward",
+  // Privacy
+  "🗑️ Delete My Data", "📤 Export Data",
+  // GitHub settings
+  "✏️ Set Username", "🔑 Set Token", "🗑 Remove Username", "🗑 Remove Token",
+  // Deployments
+  "⚡ Vercel: ✅ Connected", "⚡ Vercel: Not set", "🗑 Remove Vercel",
+  // Achievements
+  "👥 Refer Friends",
+  // Reminders
+  "➕ Set Reminder",
+  // Owner panel (only fires for isOwner users)
+  "📊 Stats", "👥 Users", "💎 Premium", "🎟 Codes",
+  "📢 Broadcast", "🏘 Groups", "💰 Promotions", "⚙️ Features",
+  "🧠 Chat Model", "🖼 Image Model", "💻 Code Model",
+  "🔴 Maintenance: ON", "🟢 Maintenance: OFF", "✨ Premium Emoji",
+  "🔍 Search User", "📩 DM User", "📋 Scheduled", "📨 Inbox",
+  "🔍 Lookup User", "📋 User List", "⛔ Ban User", "✅ Unban User",
+  "🗑 Delete User", "🧹 Clear User Memory",
+  "➕ Grant Premium", "➖ Revoke Premium",
+  "➕ Create Code", "📋 List Codes", "🔄 Reset Code",
+  "📣 Broadcast All", "📢 Announcement", "⏰ Schedule Message",
+  "📋 Group List", "🗑 Delete Group",
+  "➕ Add Chat Model", "➕ Add Image Model", "➕ Add Code Model", "🧪 Test Models",
 ]);
+
+async function handleOwnerReplyButton(
+  bot: TelegramBot,
+  chatId: number,
+  user: IUser,
+  text: string
+): Promise<void> {
+  const cfg = await getOrCreateBotConfig();
+
+  // ── Owner menu navigation ──────────────────────────────────────────────────
+  if (text === "👥 Users") {
+    await bot.sendMessage(chatId, "👥 User Management", { reply_markup: ownerUsersReplyKeyboard() });
+    return;
+  }
+  if (text === "💎 Premium") {
+    await bot.sendMessage(chatId, "💎 Premium Management", { reply_markup: ownerPremiumReplyKeyboard() });
+    return;
+  }
+  if (text === "🎟 Codes") {
+    await bot.sendMessage(chatId, "🎟 Redeem Codes", { reply_markup: ownerCodesReplyKeyboard() });
+    return;
+  }
+  if (text === "📢 Broadcast") {
+    await bot.sendMessage(chatId, "📢 Broadcast Messages", { reply_markup: ownerBroadcastReplyKeyboard() });
+    return;
+  }
+  if (text === "🏘 Groups") {
+    const { GroupSettings } = await import("../models/GroupSettings.js");
+    const groups = await GroupSettings.find().sort({ lastActivity: -1 }).limit(20);
+    const lines = groups.length
+      ? groups.map((g, i) => `${i + 1}. ${g.title || "Unnamed"} (${g.chatId})`)
+      : ["No groups yet."];
+    await bot.sendMessage(chatId, `🏘 Groups (${groups.length})\n\n${lines.join("\n")}`, { reply_markup: ownerGroupsReplyKeyboard() });
+    return;
+  }
+  if (text === "⚙️ Features") {
+    const imgEn = (cfg as any).features?.imageEnabled !== false;
+    const visEn = (cfg as any).features?.visionEnabled !== false;
+    await bot.sendMessage(chatId,
+      `⚙️ Features\n\n🖼 Image Generation: ${imgEn ? "✅ ON" : "❌ OFF"}\n🔍 Vision / Photo AI: ${visEn ? "✅ ON" : "❌ OFF"}`,
+      { reply_markup: ownerFeaturesMenuReplyKeyboard(imgEn, visEn) }
+    );
+    return;
+  }
+
+  // ── Owner stats ────────────────────────────────────────────────────────────
+  if (text === "📊 Stats") {
+    const { User: U } = await import("../models/User.js");
+    const { RedeemCode } = await import("../models/RedeemCode.js");
+    const { GroupSettings: GS } = await import("../models/GroupSettings.js");
+    const [total, premium, banned, codes, usedCodes, groups] = await Promise.all([
+      U.countDocuments(), U.countDocuments({ "premium.active": true }),
+      U.countDocuments({ banned: true }), RedeemCode.countDocuments(),
+      RedeemCode.countDocuments({ used: true }), GS.countDocuments(),
+    ]);
+    const activeModel = cfg.chatModels?.find((m: any) => m.id === cfg.activeChatModel)?.name ?? cfg.activeChatModel ?? "default";
+    await bot.sendMessage(chatId,
+      `📊 Nova Stats\n\n👥 Users: ${total}\n💎 Premium: ${premium}\n🚫 Banned: ${banned}\n🏘 Groups: ${groups}\n🎟 Codes: ${usedCodes}/${codes} used\n\n🧠 Active model: ${activeModel}\n🔧 Maintenance: ${getMaintenance() ? "🔴 ON" : "🟢 OFF"}`,
+      { reply_markup: ownerMainReplyKeyboard(getMaintenance()) }
+    );
+    return;
+  }
+
+  // ── Maintenance toggle ────────────────────────────────────────────────────
+  if (text === "🔴 Maintenance: ON") {
+    setMaintenance(false);
+    await bot.sendMessage(chatId, "🟢 Maintenance OFF — Nova is live!", { reply_markup: ownerMainReplyKeyboard(false) });
+    return;
+  }
+  if (text === "🟢 Maintenance: OFF") {
+    setMaintenance(true);
+    await bot.sendMessage(chatId, "🔴 Maintenance ON — users will see a maintenance message.", { reply_markup: ownerMainReplyKeyboard(true) });
+    return;
+  }
+
+  // ── Premium emoji toggle ──────────────────────────────────────────────────
+  if (text === "✨ Premium Emoji") {
+    const { setPremiumEmojiEnabled, isPremiumEmojiEnabled: isEnabled } = await import("../utils/premiumEmoji.js");
+    setPremiumEmojiEnabled(!isEnabled());
+    const nowOn = isEnabled();
+    await bot.sendMessage(chatId, `✨ Premium Emoji: ${nowOn ? "ON" : "OFF"}`, { reply_markup: ownerMainReplyKeyboard(getMaintenance()) });
+    return;
+  }
+
+  // ── Search / DM ───────────────────────────────────────────────────────────
+  if (text === "🔍 Search User") {
+    setPending(user.userId, "owner_searchuser");
+    await bot.sendMessage(chatId, "Enter username or ID to search:", { reply_markup: ownerMainReplyKeyboard(getMaintenance()) });
+    return;
+  }
+  if (text === "📩 DM User") {
+    setPending(user.userId, "owner_dm_step1");
+    await bot.sendMessage(chatId, "Enter the user ID to DM:", { reply_markup: ownerMainReplyKeyboard(getMaintenance()) });
+    return;
+  }
+
+  // ── Scheduled / Inbox ─────────────────────────────────────────────────────
+  if (text === "📋 Scheduled") {
+    await bot.sendMessage(chatId, "📋 No scheduled broadcasts pending.", { reply_markup: ownerBroadcastReplyKeyboard() });
+    return;
+  }
+  if (text === "📨 Inbox") {
+    const { Feedback } = await import("../models/Feedback.js");
+    const inbox = await (Feedback as any).find().sort({ createdAt: -1 }).limit(10);
+    if (!inbox.length) {
+      await bot.sendMessage(chatId, "📨 Inbox is empty.", { reply_markup: ownerMainReplyKeyboard(getMaintenance()) });
+      return;
+    }
+    const lines = inbox.map((f: any, i: number) =>
+      `${i + 1}. ${f.firstName ?? f.username ?? f.userId}: ${f.message?.substring(0, 60) ?? "?"}`
+    );
+    await bot.sendMessage(chatId, `📨 Feedback Inbox (${inbox.length})\n\n${lines.join("\n")}`, { reply_markup: ownerMainReplyKeyboard(getMaintenance()) });
+    return;
+  }
+
+  // ── User management ───────────────────────────────────────────────────────
+  if (text === "🔍 Lookup User") { setPending(user.userId, "owner_lookup"); await bot.sendMessage(chatId, "Enter user ID or @username to look up:", { reply_markup: ownerUsersReplyKeyboard() }); return; }
+  if (text === "⛔ Ban User") { setPending(user.userId, "owner_ban"); await bot.sendMessage(chatId, "Enter user ID to ban:", { reply_markup: ownerUsersReplyKeyboard() }); return; }
+  if (text === "✅ Unban User") { setPending(user.userId, "owner_unban"); await bot.sendMessage(chatId, "Enter user ID to unban:", { reply_markup: ownerUsersReplyKeyboard() }); return; }
+  if (text === "🗑 Delete User") { setPending(user.userId, "owner_deleteuser"); await bot.sendMessage(chatId, "Enter user ID to delete:", { reply_markup: ownerUsersReplyKeyboard() }); return; }
+  if (text === "🧹 Clear User Memory") { setPending(user.userId, "owner_cleardata"); await bot.sendMessage(chatId, "Enter user ID to clear memory:", { reply_markup: ownerUsersReplyKeyboard() }); return; }
+  if (text === "📋 User List") {
+    const { User: U2 } = await import("../models/User.js");
+    const users = await U2.find().sort({ lastSeen: -1 }).limit(15);
+    const lines = users.map((u: any, i: number) => {
+      const badge = u.premium?.active ? "💎" : u.banned ? "🚫" : "👤";
+      return `${badge} ${u.firstName ?? "?"} ${u.username ? "@" + u.username : ""} (${u.userId})`;
+    });
+    await bot.sendMessage(chatId, `👥 Users (${users.length} recent)\n\n${lines.join("\n")}`, { reply_markup: ownerUsersReplyKeyboard() });
+    return;
+  }
+
+  // ── Premium management ────────────────────────────────────────────────────
+  if (text === "➕ Grant Premium") { setPending(user.userId, "owner_grantpremium"); await bot.sendMessage(chatId, "Enter: <userId> <days>\nExample: 123456 30", { reply_markup: ownerPremiumReplyKeyboard() }); return; }
+  if (text === "➖ Revoke Premium") { setPending(user.userId, "owner_revokepremium"); await bot.sendMessage(chatId, "Enter user ID to revoke premium:", { reply_markup: ownerPremiumReplyKeyboard() }); return; }
+
+  // ── Codes management ──────────────────────────────────────────────────────
+  if (text === "➕ Create Code") { setPending(user.userId, "owner_createcode"); await bot.sendMessage(chatId, "Enter: <code> <plan> <days> [uses]\nExample: NOVA30 vip 30 1", { reply_markup: ownerCodesReplyKeyboard() }); return; }
+  if (text === "🔄 Reset Code") { setPending(user.userId, "owner_resetcode"); await bot.sendMessage(chatId, "Enter code to reset usage:", { reply_markup: ownerCodesReplyKeyboard() }); return; }
+  if (text === "📋 List Codes") {
+    const { RedeemCode: RC } = await import("../models/RedeemCode.js");
+    const codes = await RC.find().sort({ createdAt: -1 }).limit(20);
+    if (!codes.length) { await bot.sendMessage(chatId, "No codes yet.", { reply_markup: ownerCodesReplyKeyboard() }); return; }
+    const lines = codes.map((c: any) => `• ${c.code} | ${c.plan ?? "vip"} ${c.durationDays}d | ${c.usedBy?.length ?? 0}/${c.maxUses ?? "∞"} used`);
+    await bot.sendMessage(chatId, `🎟 Codes\n\n${lines.join("\n")}`, { reply_markup: ownerCodesReplyKeyboard() });
+    return;
+  }
+
+  // ── Broadcast ─────────────────────────────────────────────────────────────
+  if (text === "📣 Broadcast All") { setPending(user.userId, "owner_broadcast"); await bot.sendMessage(chatId, "Enter the broadcast message to send to ALL users:", { reply_markup: ownerBroadcastReplyKeyboard() }); return; }
+  if (text === "📢 Announcement") { setPending(user.userId, "owner_announcement"); await bot.sendMessage(chatId, "Enter the announcement message:", { reply_markup: ownerBroadcastReplyKeyboard() }); return; }
+  if (text === "⏰ Schedule Message") { setPending(user.userId, "owner_schedule"); await bot.sendMessage(chatId, "Enter: <delay_minutes> <message>\nExample: 60 Server maintenance in 1 hour", { reply_markup: ownerBroadcastReplyKeyboard() }); return; }
+
+  // ── Groups management ──────────────────────────────────────────────────────
+  if (text === "🗑 Delete Group") { setPending(user.userId, "owner_deletegroup"); await bot.sendMessage(chatId, "Enter group chat ID to delete:", { reply_markup: ownerGroupsReplyKeyboard() }); return; }
+  if (text === "📋 Group List") {
+    const { GroupSettings: GS2 } = await import("../models/GroupSettings.js");
+    const grps = await GS2.find().sort({ lastActivity: -1 }).limit(20);
+    if (!grps.length) { await bot.sendMessage(chatId, "No groups yet.", { reply_markup: ownerGroupsReplyKeyboard() }); return; }
+    const lines = grps.map((g: any, i: number) => `${i + 1}. ${g.title || "Unnamed"} (${g.chatId}) AI:${g.aiEnabled ? "on" : "off"}`);
+    await bot.sendMessage(chatId, `🏘 Groups (${grps.length})\n\n${lines.join("\n")}`, { reply_markup: ownerGroupsReplyKeyboard() });
+    return;
+  }
+
+  // ── AI Model management ───────────────────────────────────────────────────
+  if (text === "🧠 Chat Model" || text === "🖼 Image Model" || text === "💻 Code Model") {
+    const modelType = text === "🧠 Chat Model" ? "chat" : text === "🖼 Image Model" ? "image" : "code";
+    const models = (cfg as any)[`${modelType}Models`] ?? cfg.chatModels ?? [];
+    const activeKey = `active${modelType.charAt(0).toUpperCase() + modelType.slice(1)}Model`;
+    const active = (cfg as any)[activeKey] ?? "default";
+    const lines = models.length
+      ? models.map((m: any) => `${m.id === active ? "✅ " : ""}${m.name} (${m.id})`)
+      : ["No models configured."];
+    await bot.sendMessage(chatId,
+      `${text}\n\nActive: ${active}\n\n${lines.join("\n")}\n\nUse the owner panel commands to add or remove models.`,
+      { reply_markup: ownerMainReplyKeyboard(getMaintenance()) }
+    );
+    return;
+  }
+  if (text === "➕ Add Chat Model") { setPending(user.userId, "owner_add_chat_step1"); await bot.sendMessage(chatId, "Enter the model display name:", { reply_markup: ownerMainReplyKeyboard(getMaintenance()) }); return; }
+  if (text === "➕ Add Image Model") { setPending(user.userId, "owner_add_img_step1"); await bot.sendMessage(chatId, "Enter the image model display name:", { reply_markup: ownerMainReplyKeyboard(getMaintenance()) }); return; }
+  if (text === "➕ Add Code Model") { setPending(user.userId, "owner_add_code_step1"); await bot.sendMessage(chatId, "Enter the code model display name:", { reply_markup: ownerMainReplyKeyboard(getMaintenance()) }); return; }
+  if (text === "🧪 Test Models") {
+    await bot.sendMessage(chatId, "🧪 Testing models...");
+    try {
+      const { chat: testChat } = await import("../services/ai.js");
+      const result = await testChat(user.userId, chatId, "Say 'Model test OK' in exactly those 3 words.", { style: "balanced", emoji: false, length: "short" }, false);
+      await bot.sendMessage(chatId, `✅ Chat model OK\n\nResponse: ${result.substring(0, 100)}`, { reply_markup: ownerMainReplyKeyboard(getMaintenance()) });
+    } catch (err: any) {
+      await bot.sendMessage(chatId, `❌ Chat model failed: ${err?.message ?? "Unknown"}`, { reply_markup: ownerMainReplyKeyboard(getMaintenance()) });
+    }
+    return;
+  }
+
+  // Fallback: show owner panel
+  await bot.sendMessage(chatId, "Owner Panel 👑", { reply_markup: ownerMainReplyKeyboard(getMaintenance()) });
+}
 
 export async function handlePrivateMessage(
   bot: TelegramBot,
@@ -198,42 +514,152 @@ export async function handlePrivateMessage(
   const e = user.settings.emoji;
   const name = getUserName(msg);
 
-  // ── Reply Keyboard navigation (always works, escapes any pending action) ──────
-  if (REPLY_KEYBOARD_TEXTS.has(text)) {
+  // ── Pre-check: trivia/WYR answer capture (must come before REPLY_KEYBOARD_TEXTS clear) ──
+  {
+    const earlyPending = getPending(user.userId);
+    if (earlyPending?.type === "trivia_answer") {
+      if (text === "⬅️ Games Menu") {
+        clearPending(user.userId);
+        await bot.sendMessage(chatId, "Game Room 🎮", { reply_markup: gamesSubMenuReplyKeyboard() });
+        return;
+      }
+      const data = earlyPending.data ?? {};
+      clearPending(user.userId);
+      const correct = data.correctText ?? "";
+      if (text === correct) {
+        await bot.sendMessage(chatId, `✅ Correct! ${correct} is the right answer!\n\n${data.questionText}\n\nWell done! 🎉`, { reply_markup: gamesSubMenuReplyKeyboard() });
+      } else {
+        await bot.sendMessage(chatId, `❌ Wrong! The correct answer was: *${correct}*\n\n${data.questionText}`, { parse_mode: "Markdown", reply_markup: gamesSubMenuReplyKeyboard() });
+      }
+      return;
+    }
+    if (earlyPending?.type === "wyr_answer") {
+      if (text === "⬅️ Games Menu") {
+        clearPending(user.userId);
+        await bot.sendMessage(chatId, "Game Room 🎮", { reply_markup: gamesSubMenuReplyKeyboard() });
+        return;
+      }
+      if (text === "🔀 New Question") {
+        clearPending(user.userId);
+        const widx = Math.floor(Math.random() * WYR.length);
+        const wq = WYR[widx];
+        setPending(user.userId, "wyr_answer", { wyridx: String(widx), optionA: wq.a, optionB: wq.b });
+        await bot.sendMessage(chatId, `🤔 Would You Rather...\n\n🅰️ ${wq.a}\n\n— OR —\n\n🅱️ ${wq.b}\n\nPick one!`, { reply_markup: wyrOptionsReplyKeyboard() });
+        return;
+      }
+      const data = earlyPending.data ?? {};
+      const choice = text === "🅰️ Option A" ? "A" : text === "🅱️ Option B" ? "B" : null;
+      clearPending(user.userId);
+      if (choice) {
+        const picked = choice === "A" ? data.optionA : data.optionB;
+        const other = choice === "A" ? data.optionB : data.optionA;
+        const pct = Math.floor(Math.random() * 40) + 30;
+        await bot.sendMessage(chatId,
+          `You chose: 🅰️ ${picked}\n\n📊 Stats (fictional):\n• ${pct}% of people chose this\n• ${100 - pct}% chose: ${other}\n\nWant another?`,
+          { reply_markup: wyrOptionsReplyKeyboard() }
+        );
+        setPending(user.userId, "wyr_answer", { wyridx: data.wyridx, optionA: data.optionA, optionB: data.optionB });
+      } else {
+        const widx2 = Math.floor(Math.random() * WYR.length);
+        const wq2 = WYR[widx2];
+        setPending(user.userId, "wyr_answer", { wyridx: String(widx2), optionA: wq2.a, optionB: wq2.b });
+        await bot.sendMessage(chatId, `🤔 Would You Rather...\n\n🅰️ ${wq2.a}\n\n— OR —\n\n🅱️ ${wq2.b}\n\nPick one!`, { reply_markup: wyrOptionsReplyKeyboard() });
+      }
+      return;
+    }
+  }
+
+  // ── Reply Keyboard navigation (always works, escapes any other pending action) ──
+  const ntext = normalizeReplyText(text);
+  if (REPLY_KEYBOARD_TEXTS.has(text) || REPLY_KEYBOARD_TEXTS.has(ntext)) {
     clearPending(user.userId);
-    if (text === "💬 Chat") { await bot.sendMessage(chatId, "AI Tools — what do you need?", { reply_markup: aiMenuKeyboard() }); return; }
-    if (text === "🎨 Create") { await bot.sendMessage(chatId, "Image Tools — generate or transform images.", { reply_markup: imageMenuKeyboard() }); return; }
-    if (text === "🌐 Build") { await bot.sendMessage(chatId, "🌐 Website & App Builder — describe what you want to build:", { reply_markup: buildMenuKeyboard() }); return; }
-    if (text === "🔍 Search") { setPending(user.userId, "search_input"); await bot.sendMessage(chatId, "🔍 What do you want to search for?", { reply_markup: { inline_keyboard: [[{ text: "❌ Cancel", callback_data: "main_menu" }]] } }); return; }
-    if (text === "😄 Fun") { await bot.sendMessage(chatId, "Fun Zone 🎉", { reply_markup: funMenuKeyboard() }); return; }
-    if (text === "🎮 Games") { await bot.sendMessage(chatId, "Game Room 🎮", { reply_markup: gamesMenuKeyboard() }); return; }
+
+    // ── Navigation back buttons ──────────────────────────────────────────────
+    if (text === "⬅️ Main Menu") {
+      await bot.sendMessage(chatId, `Welcome back ${name}! What do you need?`, { reply_markup: mainMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "⬅️ Chat Menu") {
+      await bot.sendMessage(chatId, "Chat — what do you need?", { reply_markup: chatMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "⬅️ Create Menu") {
+      await bot.sendMessage(chatId, "Create — generate or transform images.", { reply_markup: createMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "⬅️ Build Menu") {
+      await bot.sendMessage(chatId, "Build — create websites & apps.", { reply_markup: buildSubMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "⬅️ Fun Menu") {
+      await bot.sendMessage(chatId, "Fun Zone 🎉", { reply_markup: funSubMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "⬅️ Games Menu") {
+      await bot.sendMessage(chatId, "Game Room 🎮", { reply_markup: gamesSubMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "⬅️ Settings") {
+      await bot.sendMessage(chatId,
+        `⚙️ Settings\n\nStyle: ${user.settings.style} | Lang: ${user.settings.language || "en"} | Emojis: ${user.settings.emoji ? "On" : "Off"} | Length: ${user.settings.length}`,
+        { reply_markup: settingsReplyKeyboard(user) }
+      );
+      return;
+    }
+    if (text === "⬅️ Owner Panel") {
+      if (!user.isOwner) return;
+      const cfg = await getOrCreateBotConfig();
+      await bot.sendMessage(chatId, "Owner Panel 👑", { reply_markup: ownerMainReplyKeyboard(getMaintenance()) });
+      return;
+    }
+
+    // ── Main menu ────────────────────────────────────────────────────────────
+    if (text === "💬 Chat") { await bot.sendMessage(chatId, "Chat — what do you need?", { reply_markup: chatMenuReplyKeyboard() }); return; }
+    if (text === "🎨 Create") { await bot.sendMessage(chatId, "Create — generate or transform images.", { reply_markup: createMenuReplyKeyboard() }); return; }
+    if (text === "🌐 Build") { await bot.sendMessage(chatId, "Build — create websites & apps.", { reply_markup: buildSubMenuReplyKeyboard() }); return; }
+    if (text === "😄 Fun") { await bot.sendMessage(chatId, "Fun Zone 🎉", { reply_markup: funSubMenuReplyKeyboard() }); return; }
+    if (text === "🎮 Games") { await bot.sendMessage(chatId, "Game Room 🎮", { reply_markup: gamesSubMenuReplyKeyboard() }); return; }
+    if (text === "🔍 Search") {
+      setPending(user.userId, "search_input");
+      await bot.sendMessage(chatId, "🔍 What do you want to search for? Type your query:", { reply_markup: mainMenuReplyKeyboard() });
+      return;
+    }
     if (text === "⚙️ Settings") {
       await bot.sendMessage(chatId,
-        `⚙️ Settings\n\nStyle: ${user.settings.style}\nLanguage: ${user.settings.language || "en"}\nEmojis: ${user.settings.emoji ? "On" : "Off"}\nReply length: ${user.settings.length}\nMood: ${user.mood || "Not set"}\n\nUse the buttons below to change anything:`,
-        { reply_markup: settingsMenuKeyboard(user) }
+        `⚙️ Settings\n\nStyle: ${user.settings.style} | Lang: ${user.settings.language || "en"} | Emojis: ${user.settings.emoji ? "On" : "Off"} | Length: ${user.settings.length}\nMood: ${user.mood || "Not set"}`,
+        { reply_markup: settingsReplyKeyboard(user) }
       );
       return;
     }
     if (text === "❓ Help") {
       await bot.sendMessage(chatId,
         `Hey ${name}! Here's what I can do:\n\n` +
-        `💬 *Chat* — Just type anything\n🎨 *Create* — Images, stickers, voice\n🌐 *Build* — Full websites & apps\n🔍 *Search* — Web search with AI summaries\n😄 *Fun* — Quotes, facts, jokes\n🎮 *Games* — Trivia, riddles, word games\n\n` +
-        `📄 Send any PDF/DOCX/TXT — I'll read it!\n🖼️ Send a photo — I'll describe or edit it!\n\n` +
-        `Use the menu buttons below 👇`,
-        { parse_mode: "Markdown", reply_markup: mainMenuKeyboard() }
+        `*💬 Chat* — Just type anything\n*🎨 Create* — Images, stickers\n*🌐 Build* — Full websites & apps\n*🔍 Search* — Web search with AI summaries\n*😄 Fun* — Jokes, compliments, dares\n*🎮 Games* — Trivia, Would You Rather, facts\n\n` +
+        `📄 Send any PDF/DOCX/TXT — I'll read it!\n🖼️ Send a photo — I'll describe or edit it!\n\nUse the menu buttons below 👇`,
+        { parse_mode: "Markdown", reply_markup: mainMenuReplyKeyboard() }
       );
       return;
     }
-    if (text === "📊 Profile") {
+    if (text === "📊 Profile" || text === "👤 My Profile") {
       const premiumLine = user.premium.active
         ? `✨ Premium — expires ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}`
-        : "Free";
+        : "🆓 Free";
+      const freshU = await User.findOne({ userId: user.userId });
+      const credits = (freshU as any)?.credits ?? 0;
       await bot.sendMessage(chatId,
-        `👤 ${name}\n\nID: ${user.userId}\nPlan: ${premiumLine}\nJoined: ${formatDate(user.firstSeen)}\n\nMessages: ${user.usage.messages}\nImages: ${user.usage.images}\nBuilds: ${user.usage.builds}`,
-        { reply_markup: { inline_keyboard: [
-          [{ text: "⚙️ Settings", callback_data: "settings_menu" }, { text: "💰 Credits", callback_data: "credits_menu" }],
-          [{ text: "🏅 Achievements", callback_data: "achievements_menu" }],
-        ]}}
+        `👤 ${name}\n\nID: ${user.userId}\nPlan: ${premiumLine}\nCredits: ${credits}\nJoined: ${formatDate(user.firstSeen)}\n\nMessages: ${user.usage.messages}\nImages: ${user.usage.images}\nBuilds: ${user.usage.builds}\n\nStyle: ${user.settings.style}\nLanguage: ${user.settings.language || "en"}\nMood: ${user.mood || "not set"}`,
+        { reply_markup: settingsReplyKeyboard(user) }
+      );
+      return;
+    }
+    if (text === "📊 My Stats") {
+      const lastFeats = await getLastFeatures(user.userId);
+      const featLines = lastFeats.length
+        ? lastFeats.map((f: string) => `• ${FEATURE_LABELS[f] ?? f}`).join("\n")
+        : "• None yet";
+      await bot.sendMessage(chatId,
+        `📊 Your Stats\n\nMessages today: ${user.usage.messages}\nImages today: ${user.usage.images}\nBuilds today: ${user.usage.builds}\nTotal images: ${user.totalImages ?? 0}\nTotal builds: ${user.totalBuilds ?? 0}\n\nRecent features:\n${featLines}`,
+        { reply_markup: settingsReplyKeyboard(user) }
       );
       return;
     }
@@ -244,8 +670,17 @@ export async function handlePrivateMessage(
       const imageCost2 = creditsCfg2.creditCosts?.image ?? 5;
       const buildCost2 = creditsCfg2.creditCosts?.build ?? 20;
       await bot.sendMessage(chatId,
-        `💰 Credits\n\nBalance: ${credits} credits\n\nCredit costs:\n• 💬 Chat: Free ✅\n• 🎨 Image: ${imageCost2} credits\n• 🌐 Build: ${buildCost2} credits\n\n${user.premium.active ? "⭐ VIP — No credit deductions!" : "Upgrade to VIP to skip all credit costs!"}`,
-        { reply_markup: creditsMenuKeyboard() }
+        `💰 Credits\n\nBalance: ${credits} credits\n\nCosts:\n• 💬 Chat: Free ✅\n• 🎨 Image: ${imageCost2} credits\n• 🌐 Build: ${buildCost2} credits\n\n${user.premium.active ? "⭐ VIP — No credit deductions!" : "Upgrade to VIP to skip all credit costs!"}`,
+        { reply_markup: creditsReplyKeyboard() }
+      );
+      return;
+    }
+    if (text === "💰 Credits & Packs") {
+      const freshC = await User.findOne({ userId: user.userId });
+      const credBal = (freshC as any)?.credits ?? 0;
+      await bot.sendMessage(chatId,
+        `💰 Credits & Packs\n\nBalance: ${credBal} credits\n\nBuy more with Telegram Stars ⭐:`,
+        { reply_markup: creditsReplyKeyboard() }
       );
       return;
     }
@@ -254,19 +689,14 @@ export async function handlePrivateMessage(
       const { earnCoinsPromoKeyboard } = await import("../utils/keyboards.js");
       const promoGroups = await getActivePromoGroups();
       if (promoGroups.length === 0) {
-        await bot.sendMessage(chatId, "🪙 Earn Coins\n\nNo active promotions right now. Check back later!", { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+        await bot.sendMessage(chatId, "🪙 Earn Coins\n\nNo active promotions right now. Check back later!", { reply_markup: mainMenuReplyKeyboard() });
         return;
       }
-      const mapped = promoGroups.map(g => ({
-        id: (g._id as any).toString(),
-        title: g.title,
-        reward: g.reward,
-        link: g.link,
-      }));
+      const mapped = promoGroups.map((g: any) => ({ id: g._id.toString(), title: g.title, reward: g.reward, link: g.link }));
       await bot.sendMessage(chatId, "🪙 Earn Coins\n\nJoin these groups to earn bonus credits:", { reply_markup: earnCoinsPromoKeyboard(mapped) });
       return;
     }
-    if (text === "👥 Refer") {
+    if (text === "👥 Refer" || text === "👥 Referral Link" || text === "👥 Refer Friends" || text === "👥 Invite Friends") {
       if (!user.referralCode) {
         user.referralCode = `NOVA${user.userId.toString(36).toUpperCase()}`;
         await user.save();
@@ -278,47 +708,656 @@ export async function handlePrivateMessage(
       try { const me = await bot.getMe(); botUsernameRef = me.username ?? botUsernameRef; } catch {}
       const referLink = `https://t.me/${botUsernameRef}?start=ref_${user.referralCode}`;
       await bot.sendMessage(chatId,
-        `👥 Your Referral Link\n\nShare this link with friends!\n\n🔗 ${referLink}\n\nYour code: \`${user.referralCode}\`\nFriends referred: ${user.referrals?.length ?? 0}\n\nWhen a friend joins:\n• You get: +${referrerBonus} credits + 7 days VIP\n• They get: +${newUserBonus} credits + 3 days VIP`,
-        { parse_mode: "Markdown", reply_markup: referralKeyboard(botUsernameRef, user.referralCode) }
+        `👥 Your Referral Link\n\nShare this with friends!\n\n🔗 ${referLink}\n\nYour code: \`${user.referralCode}\`\nFriends referred: ${user.referrals?.length ?? 0}\n\nWhen a friend joins:\n• You get: +${referrerBonus} credits + 7 days VIP\n• They get: +${newUserBonus} credits + 3 days VIP`,
+        { parse_mode: "Markdown", reply_markup: mainMenuReplyKeyboard() }
       );
       return;
     }
-    if (text === "🎁 Daily") {
+    if (text === "🎁 Daily" || text === "🎁 Daily Reward") {
+      await bot.sendMessage(chatId, "🎁 Daily Reward", { reply_markup: dailyMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "🎰 Claim Reward" || text === "🎁 Claim Daily") {
       if (!canClaimDailyWAT(user.lastDailyReward)) {
         const timeLeft = timeUntilMidnightWATStr();
-        await bot.sendMessage(chatId, `⏳ Already claimed today! Next reward resets at midnight Nigeria time 🇳🇬\n⏰ Time left: ${timeLeft}`, { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+        await bot.sendMessage(chatId, `⏳ Already claimed today! Next reward resets at midnight Nigeria time 🇳🇬\n⏰ Time left: ${timeLeft}`, { reply_markup: dailyMenuReplyKeyboard() });
         return;
       }
-      await bot.sendMessage(chatId, "🎁 Your daily reward is ready! Tap below to spin:", { reply_markup: { inline_keyboard: [[{ text: "🎰 Claim Daily Reward", callback_data: "daily_claim" }], [{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+      const dailyCfg = await getOrCreateBotConfig();
+      const baseReward = dailyCfg.creditRewards?.daily ?? 5;
+      const continued = isStreakContinuedWAT(user.lastDailyReward);
+      const streakDays = user.loginStreak ?? 0;
+      const bonus = continued ? Math.min((streakDays + 1) * 2, 20) : 0;
+      const totalReward = baseReward + bonus;
+      await addCredits(user.userId, totalReward);
+      user.lastDailyReward = new Date();
+      user.loginStreak = continued ? streakDays + 1 : 1;
+      await user.save();
+      const streakMsg = user.loginStreak > 1 ? `🔥 Streak: ${user.loginStreak} days` : "";
+      await bot.sendMessage(chatId,
+        `🎁 Daily Reward Claimed!\n\n+${baseReward} credits${bonus > 0 ? ` + ${bonus} streak bonus` : ""} = *+${totalReward} credits* ✅\n\n${streakMsg}\n\nCome back tomorrow for more!`,
+        { parse_mode: "Markdown", reply_markup: dailyMenuReplyKeyboard() }
+      );
       return;
     }
     if (text === "⏰ Reminders") {
       const remList = await listUserReminders(user.userId);
       if (remList.length === 0) {
-        await bot.sendMessage(chatId, "⏰ You have no active reminders.\n\nSet one with: /remind 10m Call John", { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+        await bot.sendMessage(chatId, "⏰ No active reminders.\n\nSet one — type the time + message:\nExample: 30m Call John", { reply_markup: remindersMenuReplyKeyboard() });
       } else {
         const remLines = remList.map((r, i) => `${i + 1}. ${r.message} (${formatDate(r.triggerAt)})`).join("\n");
-        await bot.sendMessage(chatId, `⏰ Your Reminders\n\n${remLines}`, { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
+        await bot.sendMessage(chatId, `⏰ Your Reminders\n\n${remLines}`, { reply_markup: remindersMenuReplyKeyboard() });
       }
       return;
     }
-    if (text === "⭐ Premium") {
+    if (text === "➕ Set Reminder") {
+      setPending(user.userId, "remind_input");
+      await bot.sendMessage(chatId, "⏰ Set a Reminder\n\nFormat: <time> <message>\n\nExamples:\n• 30m Call mom\n• 2h Take a break\n• 1d Pay rent", { reply_markup: remindersMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "⭐ Premium" || text === "⭐ Upgrade VIP" || text === "💎 Premium Plans") {
       const premLimCfg2 = await getOrCreateBotConfig();
       const premImgLim2 = premLimCfg2.usageLimits.premiumImages < 0 ? "Unlimited" : String(premLimCfg2.usageLimits.premiumImages);
       const freeImgLim2 = String(premLimCfg2.usageLimits.freeImages);
       if (user.premium.active) {
         await bot.sendMessage(chatId,
-          `✨ You are a Premium member!\n\nExpires: ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}\n\nPerks:\n• ${premImgLim2} images per day\n• Longer AI context\n• Richer responses`,
-          { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+          `✨ You are a Premium member!\n\nExpires: ${user.premium.expiresAt ? formatDate(user.premium.expiresAt) : "Never"}\n\nPerks:\n• ${premImgLim2} images/day\n• Longer AI context\n• Richer responses`,
+          { reply_markup: settingsReplyKeyboard(user) }
         );
       } else {
         await bot.sendMessage(chatId,
-          `You are on the Free plan.\n\nFree limits:\n• ${freeImgLim2} images per day\n• 5 photo edits per day\n• Standard AI responses\n\nUpgrade to VIP:\n• 💳 Buy with Telegram Stars — tap 💰 Credits\n• 🎟️ Redeem a code — /redeem CODE`,
-          { reply_markup: { inline_keyboard: [[{ text: "⭐ Buy VIP with Stars", callback_data: "credits_menu" }], [{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+          `You are on the Free plan.\n\nFree limits:\n• ${freeImgLim2} images/day\n• Standard AI\n\nUpgrade to VIP:\n• ⭐ Buy with Telegram Stars — tap 💰 Credits\n• 🎟️ Redeem a code — /redeem CODE`,
+          { reply_markup: creditsReplyKeyboard() }
         );
       }
       return;
     }
+
+    // ── Credits star packs ───────────────────────────────────────────────────
+    {
+      const packMap: Record<string, string> = {
+        "🌱 50 Credits — 15⭐": "pack_50",
+        "⚡ 150 Credits — 40⭐": "pack_150",
+        "🚀 500 Credits — 115⭐": "pack_500",
+        "💎 1500 Credits — 299⭐": "pack_1500",
+        "⭐ VIP Monthly — 149⭐": "vip_monthly",
+        "👑 VIP Lifetime — 499⭐": "vip_lifetime",
+      };
+      if (packMap[text]) {
+        const { sendStarsInvoice } = await import("../services/payment.js");
+        await sendStarsInvoice(bot, chatId, packMap[text]);
+        return;
+      }
+    }
+
+    // ── Chat submenu ─────────────────────────────────────────────────────────
+    if (text === "💬 Ask Nova") {
+      setPending(user.userId, "ai_ask");
+      await bot.sendMessage(chatId, "Ask me anything! What's on your mind?", { reply_markup: chatMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "📝 Summarize") {
+      setPending(user.userId, "ai_summarize_input");
+      await bot.sendMessage(chatId, "📝 Summarize — paste the text you want summarized:", { reply_markup: chatMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "🌍 Translate") {
+      setPending(user.userId, "ai_translate");
+      await bot.sendMessage(chatId, "🌍 Translate — send the text you want translated. Add the target language at the end (e.g. \"Hello world — to Spanish\")", { reply_markup: chatMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "✍️ Write for Me") {
+      await bot.sendMessage(chatId, "✍️ Write — what do you need?", { reply_markup: writeMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "🗣️ Debate Me") {
+      setPending(user.userId, "ai_debate");
+      await bot.sendMessage(chatId, "🗣️ Debate Me — give me a topic and I'll take the opposite side:", { reply_markup: chatMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "🔬 Analyze Text") {
+      setPending(user.userId, "ai_analyze");
+      await bot.sendMessage(chatId, "🔬 Analyze — paste the text you want me to analyze:", { reply_markup: chatMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "📜 Chat History") {
+      const stopTyping = startTypingLoop(bot, chatId);
+      try {
+        const histPrompt = "Give a detailed summary of our conversation history. List topics, questions, and key things shared. If there's no history yet, say so briefly.";
+        const histReply = await chat(user.userId, chatId, histPrompt, { style: "serious", emoji: false, length: "long" }, user.premium.active);
+        stopTyping();
+        await bot.sendMessage(chatId, `📜 Conversation History\n\n${histReply}`, { reply_markup: chatMenuReplyKeyboard() });
+      } catch {
+        stopTyping();
+        await bot.sendMessage(chatId, "Could not retrieve history. Try again.", { reply_markup: chatMenuReplyKeyboard() });
+      }
+      return;
+    }
+    if (text === "🧹 Clear Memory") {
+      await clearMemory(user.userId, chatId);
+      await bot.sendMessage(chatId, "🧹 Memory cleared! Fresh start.", { reply_markup: chatMenuReplyKeyboard() });
+      return;
+    }
+
+    // ── Write submenu ────────────────────────────────────────────────────────
+    if (text === "🐦 Tweet") { setPending(user.userId, "write_tweet"); await bot.sendMessage(chatId, "🐦 Tweet — what's the topic or vibe?", { reply_markup: writeMenuReplyKeyboard() }); return; }
+    if (text === "📸 IG Caption") { setPending(user.userId, "write_caption"); await bot.sendMessage(chatId, "📸 IG Caption — describe the photo or vibe:", { reply_markup: writeMenuReplyKeyboard() }); return; }
+    if (text === "👤 Bio") { setPending(user.userId, "write_bio"); await bot.sendMessage(chatId, "👤 Bio — describe yourself or who it's for:", { reply_markup: writeMenuReplyKeyboard() }); return; }
+    if (text === "🎵 Song Lyrics") { setPending(user.userId, "write_lyrics"); await bot.sendMessage(chatId, "🎵 Song Lyrics — give me a theme or feeling:", { reply_markup: writeMenuReplyKeyboard() }); return; }
+    if (text === "📧 Email") { setPending(user.userId, "write_email"); await bot.sendMessage(chatId, "📧 Email — describe the email you need (purpose, tone, recipient):", { reply_markup: writeMenuReplyKeyboard() }); return; }
+    if (text === "🎭 Poem") { setPending(user.userId, "write_poem"); await bot.sendMessage(chatId, "🎭 Poem — give me a theme or feeling:", { reply_markup: writeMenuReplyKeyboard() }); return; }
+
+    // ── Create / Image submenu ───────────────────────────────────────────────
+    if (text === "✨ Generate Image") {
+      setPending(user.userId, "img_generate_text");
+      await bot.sendMessage(chatId, "✨ Image Generation — describe what you want to create:", { reply_markup: createMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "🎨 Style Presets") {
+      await bot.sendMessage(chatId, "🎨 Style Presets — pick a style and describe your image:", { reply_markup: imgStyleReplyKeyboard() });
+      return;
+    }
+    if (text === "🖼️ Create Sticker") {
+      setPending(user.userId, "sticker_input");
+      await bot.sendMessage(chatId, "🖼️ Sticker — describe what the sticker should look like:", { reply_markup: createMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "✏️ Edit Image") {
+      setPending(user.userId, "img_edit");
+      await bot.sendMessage(chatId, "✏️ Edit Image — send me a photo with a description of what to change:", { reply_markup: createMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "🔆 Enhance Photo") {
+      setPending(user.userId, "img_enhance");
+      await bot.sendMessage(chatId, "🔆 Enhance — send me a photo to enhance:", { reply_markup: createMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "🎭 Stylize Photo") {
+      setPending(user.userId, "img_stylize");
+      await bot.sendMessage(chatId, "🎭 Stylize — send me a photo to stylize:", { reply_markup: createMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "🔧 Restore Photo") {
+      setPending(user.userId, "img_restore");
+      await bot.sendMessage(chatId, "🔧 Restore — send me an old or damaged photo to restore:", { reply_markup: createMenuReplyKeyboard() });
+      return;
+    }
+
+    // ── Image style presets ──────────────────────────────────────────────────
+    {
+      const stylePresets: Record<string, string> = {
+        "🎌 Anime": "anime style, vibrant colors, detailed",
+        "🤖 Cyberpunk": "cyberpunk style, neon lights, futuristic city",
+        "🌌 Fantasy": "epic fantasy art, magical, detailed",
+        "📸 Realistic": "photorealistic, ultra detailed, 8k",
+        "🎨 Oil Painting": "oil painting style, classical art, brushstrokes",
+        "💧 Watercolor": "watercolor painting, soft colors, artistic",
+        "✏️ Sketch": "pencil sketch, black and white, hand drawn",
+        "👾 Pixel Art": "pixel art, retro game style, 16-bit",
+      };
+      if (stylePresets[ntext]) {
+        const stylePrefix = stylePresets[ntext];
+        setPending(user.userId, "img_generate_text", { stylePrefix });
+        await bot.sendMessage(chatId, `${ntext} style selected!\n\nNow describe what you want to see:`, { reply_markup: imgStyleReplyKeyboard() });
+        return;
+      }
+    }
+
+    // ── Build submenu ────────────────────────────────────────────────────────
+    {
+      const buildTypeMap: Record<string, string> = {
+        "🌐 Website": "website",
+        "⚛️ React App": "react app",
+        "🖥️ Dashboard": "admin dashboard",
+        "🛒 Landing Page": "landing page",
+        "💡 Custom Idea": "custom project",
+      };
+      if (buildTypeMap[text]) {
+        const buildType = buildTypeMap[text];
+        setPending(user.userId, "build_input", { buildType });
+        await bot.sendMessage(chatId, `🌐 ${buildType.charAt(0).toUpperCase() + buildType.slice(1)} — describe what you want to build:`, { reply_markup: buildSubMenuReplyKeyboard() });
+        return;
+      }
+    }
+    if (text === "📁 My Projects") {
+      const cached = await getCachedBuild(user.userId);
+      if (!cached) {
+        await bot.sendMessage(chatId, "📁 No recent project found. Build something first!", { reply_markup: buildSubMenuReplyKeyboard() });
+        return;
+      }
+      await bot.sendMessage(chatId,
+        `📁 Your Latest Project\n\n📦 ${cached.project.name}\n🔗 ${cached.repoUrl ?? "Not pushed yet"}\n${cached.project.files.length} files · ${typeLabel(cached.project.type)}\n\nBuilt: ${formatDate(new Date(cached.savedAt))}`,
+        { reply_markup: buildResultMenuReplyKeyboard() }
+      );
+      return;
+    }
+    if (text === "🌐 Build Another") {
+      await bot.sendMessage(chatId, "Build — create websites & apps.", { reply_markup: buildSubMenuReplyKeyboard() });
+      return;
+    }
+
+    // ── Build result deploy buttons ──────────────────────────────────────────
+    if (text === "⚡ Deploy to Vercel" || text === "🟣 Deploy to Render") {
+      const cached = await getCachedBuild(user.userId);
+      if (!cached) {
+        await bot.sendMessage(chatId, "No recent build found. Build a project first!", { reply_markup: buildSubMenuReplyKeyboard() });
+        return;
+      }
+      if (text === "⚡ Deploy to Vercel") {
+        const creds = await resolveGitHubCreds(user);
+        if (!creds) {
+          await bot.sendMessage(chatId, "❌ GitHub not connected. Set your GitHub username and token in ⚙️ Settings → GitHub.", { reply_markup: buildResultMenuReplyKeyboard() });
+          return;
+        }
+        const vercelToken = (user as any).vercelTokenEncrypted
+          ? (() => { try { return decrypt((user as any).vercelTokenEncrypted!); } catch { return null; } })()
+          : process.env.VERCEL_TOKEN;
+        if (!vercelToken) {
+          await bot.sendMessage(chatId, "❌ Vercel token not set. Add it in ⚙️ Settings → Deployments.", { reply_markup: buildResultMenuReplyKeyboard() });
+          return;
+        }
+        await bot.sendMessage(chatId, "⏳ Deploying to Vercel...");
+        try {
+          const result = await deployToVercel(
+            vercelToken,
+            cached.project.name.toLowerCase().replace(/\s+/g, "-"),
+            cached.project.files
+          );
+          await cacheUserBuild(user.userId, cached.project, cached.prompt, result.url);
+          await bot.sendMessage(chatId,
+            `⚡ Live on Vercel!\n\n🌐 ${result.url}`,
+            { reply_markup: { inline_keyboard: [
+              [{ text: "🌐 Open Live Site", url: `https://${result.url}` }],
+              [{ text: "🔍 Inspector", url: result.inspectorUrl }],
+            ]}}
+          );
+        } catch (err: any) {
+          await bot.sendMessage(chatId, `❌ Vercel deployment failed: ${err?.message ?? "Unknown error"}`, { reply_markup: buildResultMenuReplyKeyboard() });
+        }
+        return;
+      }
+      if (text === "🟣 Deploy to Render") {
+        const creds = await resolveGitHubCreds(user);
+        if (!creds) {
+          await bot.sendMessage(chatId, "❌ GitHub not connected. Set your GitHub username and token in ⚙️ Settings → GitHub.", { reply_markup: buildResultMenuReplyKeyboard() });
+          return;
+        }
+        const repoSlug = cached.repoUrl ? cached.repoUrl.replace(/^https?:\/\/github\.com\//, "") : `${creds.username}/${cached.project.name.toLowerCase().replace(/\s+/g, "-")}`;
+        const renderUrl = getRenderBlueprintUrl(repoSlug);
+        await bot.sendMessage(chatId,
+          `🟣 Deploy to Render\n\n1. Click the button below to start deployment\n2. Sign in to Render (free)\n3. Your app will be live in ~2 min`,
+          { reply_markup: { inline_keyboard: [[{ text: "🟣 Open Render Deploy", url: renderUrl }]] } }
+        );
+        return;
+      }
+    }
+
+    // ── Fun submenu ──────────────────────────────────────────────────────────
+    if (text === "😂 Joke") {
+      const stopTyping = startTypingLoop(bot, chatId);
+      try {
+        const joke = await chat(user.userId, chatId, "Tell me a hilarious, original joke. Make it funny and punchy.", { style: "funny", emoji: e, length: "short" }, user.premium.active);
+        stopTyping();
+        await bot.sendMessage(chatId, joke, { reply_markup: funSubMenuReplyKeyboard() });
+      } catch { stopTyping(); await bot.sendMessage(chatId, "Couldn't think of one. Try again!", { reply_markup: funSubMenuReplyKeyboard() }); }
+      return;
+    }
+    if (text === "🎱 Magic 8-Ball") {
+      setPending(user.userId, "fun_8ball");
+      await bot.sendMessage(chatId, "🎱 Magic 8-Ball — ask your question:", { reply_markup: funSubMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "💘 Ship Us") {
+      setPending(user.userId, "fun_ship");
+      await bot.sendMessage(chatId, "💘 Ship — enter two names to ship (e.g. \"Alex and Jordan\"):", { reply_markup: funSubMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "🔥 Roast Me") {
+      setPending(user.userId, "fun_roast_name");
+      await bot.sendMessage(chatId, "🔥 Roast Me — tell me something about yourself for a personalized roast:", { reply_markup: funSubMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "🧠 IQ Test") {
+      const stopTyping = startTypingLoop(bot, chatId);
+      try {
+        const iqPrompt = `Give ${name} a fun, creative "IQ Test" result. Make it entertaining. Give a score between 85-145, a funny title, and a one-paragraph personality description. Be playful.`;
+        const iqRes = await chat(user.userId, chatId, iqPrompt, { style: "funny", emoji: e, length: "long" }, user.premium.active);
+        stopTyping();
+        await bot.sendMessage(chatId, iqRes, { reply_markup: funSubMenuReplyKeyboard() });
+      } catch { stopTyping(); await bot.sendMessage(chatId, "Brain too big to test. Try again!", { reply_markup: funSubMenuReplyKeyboard() }); }
+      return;
+    }
+    if (text === "🌟 Compliment") {
+      const stopTyping = startTypingLoop(bot, chatId);
+      try {
+        const compRes = await chat(user.userId, chatId, `Give ${name} a genuine, specific, and heartfelt compliment. Make it feel personal and real.`, { style: "friendly", emoji: e, length: "short" }, user.premium.active);
+        stopTyping();
+        await bot.sendMessage(chatId, compRes, { reply_markup: funSubMenuReplyKeyboard() });
+      } catch { stopTyping(); await bot.sendMessage(chatId, "You're amazing — try again for more!", { reply_markup: funSubMenuReplyKeyboard() }); }
+      return;
+    }
+    if (text === "🔮 Fortune") {
+      const stopTyping = startTypingLoop(bot, chatId);
+      try {
+        const fortRes = await chat(user.userId, chatId, `Tell ${name} their fortune for today. Be creative, mystical, and fun. Mix real advice with a bit of mystery.`, { style: "friendly", emoji: e, length: "short" }, user.premium.active);
+        stopTyping();
+        await bot.sendMessage(chatId, fortRes, { reply_markup: funSubMenuReplyKeyboard() });
+      } catch { stopTyping(); await bot.sendMessage(chatId, "The stars are unclear. Try again!", { reply_markup: funSubMenuReplyKeyboard() }); }
+      return;
+    }
+    if (text === "😈 Daily Dare") {
+      const stopTyping = startTypingLoop(bot, chatId);
+      try {
+        const dareRes = await chat(user.userId, chatId, "Give me a fun, creative daily dare challenge. It should be something slightly out of comfort zone but safe and doable.", { style: "funny", emoji: e, length: "short" }, user.premium.active);
+        stopTyping();
+        await bot.sendMessage(chatId, dareRes, { reply_markup: funSubMenuReplyKeyboard() });
+      } catch { stopTyping(); await bot.sendMessage(chatId, "Dare me again!", { reply_markup: funSubMenuReplyKeyboard() }); }
+      return;
+    }
+    if (text === "✨ Vibe Check") {
+      const stopTyping = startTypingLoop(bot, chatId);
+      try {
+        const vibeRes = await chat(user.userId, chatId, `Based on our conversation, give ${name} a vibe check. Be real, be fun, be specific. Rate their vibe out of 10.`, { style: "funny", emoji: e, length: "short" }, user.premium.active);
+        stopTyping();
+        await bot.sendMessage(chatId, vibeRes, { reply_markup: funSubMenuReplyKeyboard() });
+      } catch { stopTyping(); await bot.sendMessage(chatId, "Vibes immeasurable. Try again!", { reply_markup: funSubMenuReplyKeyboard() }); }
+      return;
+    }
+    if (text === "💭 Truth Question") {
+      const stopTyping = startTypingLoop(bot, chatId);
+      try {
+        const truthQ = await chat(user.userId, chatId, "Ask me a deep, thought-provoking truth question. Something that makes a person really think about themselves.", { style: "serious", emoji: e, length: "short" }, user.premium.active);
+        stopTyping();
+        setPending(user.userId, "fun_truth_reply");
+        await bot.sendMessage(chatId, truthQ, { reply_markup: funSubMenuReplyKeyboard() });
+      } catch { stopTyping(); await bot.sendMessage(chatId, "Truth evades me. Try again!", { reply_markup: funSubMenuReplyKeyboard() }); }
+      return;
+    }
+
+    // ── Games submenu ────────────────────────────────────────────────────────
+    if (text === "🎯 Trivia") {
+      const tidx = Math.floor(Math.random() * TRIVIA.length);
+      const tq = TRIVIA[tidx];
+      const shuffled = [...tq.opts].sort(() => Math.random() - 0.5);
+      const correctText = tq.opts[tq.ans];
+      setPending(user.userId, "trivia_answer", { questionText: tq.q, correctText, questionIdx: String(tidx) });
+      await bot.sendMessage(chatId,
+        `🎯 Trivia!\n\n${tq.q}\n\nPick the correct answer:`,
+        { reply_markup: triviaOptionsReplyKeyboard(shuffled) }
+      );
+      return;
+    }
+    if (text === "🤔 Would You Rather" || text === "🔀 New Question") {
+      const widx = Math.floor(Math.random() * WYR.length);
+      const wq = WYR[widx];
+      setPending(user.userId, "wyr_answer", { wyridx: String(widx), optionA: wq.a, optionB: wq.b });
+      await bot.sendMessage(chatId,
+        `🤔 Would You Rather...\n\n🅰️ ${wq.a}\n\n— OR —\n\n🅱️ ${wq.b}\n\nPick one!`,
+        { reply_markup: wyrOptionsReplyKeyboard() }
+      );
+      return;
+    }
+    if (text === "📖 Word of the Day") {
+      const stopTyping = startTypingLoop(bot, chatId);
+      try {
+        const wordRes = await chat(user.userId, chatId, "Give me today's word of the day. Include: the word, pronunciation, part of speech, definition, and an example sentence. Make it interesting.", { style: "serious", emoji: e, length: "short" }, user.premium.active);
+        stopTyping();
+        await bot.sendMessage(chatId, wordRes, { reply_markup: gamesSubMenuReplyKeyboard() });
+      } catch { stopTyping(); await bot.sendMessage(chatId, "Couldn't fetch a word today. Try again!", { reply_markup: gamesSubMenuReplyKeyboard() }); }
+      return;
+    }
+    if (text === "🎲 Random Fact") {
+      const stopTyping = startTypingLoop(bot, chatId);
+      try {
+        const factRes = await chat(user.userId, chatId, "Share a mind-blowing, truly fascinating random fact. Make it something most people don't know.", { style: "friendly", emoji: e, length: "short" }, user.premium.active);
+        stopTyping();
+        await bot.sendMessage(chatId, factRes, { reply_markup: gamesSubMenuReplyKeyboard() });
+      } catch { stopTyping(); await bot.sendMessage(chatId, "Fact machine broken. Try again!", { reply_markup: gamesSubMenuReplyKeyboard() }); }
+      return;
+    }
+
+    // ── Settings submenu ─────────────────────────────────────────────────────
+    if (text === "🎭 AI Style") {
+      await bot.sendMessage(chatId,
+        `🎭 AI Style\n\nCurrent: ${user.settings.style}\n\nHow do you want Nova to talk to you?`,
+        { reply_markup: aiStyleReplyKeyboard(user.settings.style) }
+      );
+      return;
+    }
+    if (text === "📏 Reply Length") {
+      await bot.sendMessage(chatId,
+        `📏 Reply Length\n\nCurrent: ${user.settings.length}\n\nHow long should replies be?`,
+        { reply_markup: replyLengthReplyKeyboard(user.settings.length) }
+      );
+      return;
+    }
+    if (text === "🌐 Language") {
+      await bot.sendMessage(chatId,
+        `🌐 Language\n\nCurrent: ${user.settings.language || "en"}\n\nPick your preferred language:`,
+        { reply_markup: langMenuReplyKeyboard(user.settings.language || "en") }
+      );
+      return;
+    }
+    if (text === "😶 Set Mood") {
+      await bot.sendMessage(chatId,
+        `😶 Set Mood\n\nCurrent: ${user.mood || "not set"}\n\nHow are you feeling?`,
+        { reply_markup: moodReplyKeyboard(user.mood || undefined) }
+      );
+      return;
+    }
+    if (text === "😊 Emojis: ON") {
+      user.settings.emoji = false;
+      await user.save();
+      const freshU = await User.findOne({ userId: user.userId });
+      await bot.sendMessage(chatId, "😑 Emojis turned OFF. Clean and minimal.", { reply_markup: settingsReplyKeyboard(freshU!) });
+      return;
+    }
+    if (text === "😑 Emojis: OFF") {
+      user.settings.emoji = true;
+      await user.save();
+      const freshU = await User.findOne({ userId: user.userId });
+      await bot.sendMessage(chatId, "😊 Emojis turned ON! Nova will express freely.", { reply_markup: settingsReplyKeyboard(freshU!) });
+      return;
+    }
+    if (text === "🤖 AI Model") {
+      const modelCfg = await getOrCreateBotConfig();
+      const chatModels = modelCfg.chatModels ?? [];
+      const active = modelCfg.activeChatModel ?? "meta-llama/llama-3.3-70b-instruct";
+      const modelLines = chatModels.length
+        ? chatModels.map((m: any) => `• ${m.name}${m.modelId === active ? " ✅" : ""}`).join("\n")
+        : "• Default model ✅";
+      await bot.sendMessage(chatId, `🤖 AI Models\n\nActive: ${active}\n\n${modelLines}`, { reply_markup: settingsReplyKeyboard(user) });
+      return;
+    }
+    if (text === "✅ GitHub" || text === "🔑 GitHub") {
+      const hasToken = !!(user as any).github?.tokenEncrypted || !!(user as any).github?.token;
+      await bot.sendMessage(chatId,
+        `🔗 GitHub\n\nUsername: ${user.github?.username || "Not set"}\nToken: ${hasToken ? "✅ Connected" : "❌ Not set"}\n\nConnect your GitHub to push builds directly.`,
+        { reply_markup: githubMenuReplyKeyboard(hasToken, user.github?.username) }
+      );
+      return;
+    }
+    if (text === "🚀 Deployments") {
+      const hasVercel = !!(user as any).vercelToken;
+      await bot.sendMessage(chatId,
+        `🚀 Deployments\n\nVercel: ${hasVercel ? "✅ Connected" : "Not set"}\n\nConnect Vercel to deploy builds instantly.`,
+        { reply_markup: deploymentsMenuReplyKeyboard(hasVercel) }
+      );
+      return;
+    }
+    if (text === "🔒 Privacy") {
+      await bot.sendMessage(chatId,
+        `🔒 Privacy\n\nNova stores: your messages (for AI memory), settings, and usage stats.\n\nYour data is never shared with third parties.`,
+        { reply_markup: privacyReplyKeyboard() }
+      );
+      return;
+    }
+    if (text === "🏅 Achievements") {
+      const achs = await getUserAchievements(user.userId);
+      const earned = achs.filter((a: any) => a.earned);
+      const achText = earned.length
+        ? earned.map((a: any) => `${a.icon ?? "🏅"} ${a.name}`).join("\n")
+        : "No achievements yet — keep using Nova!";
+      await bot.sendMessage(chatId, `🏅 Achievements\n\n${achText}`, { reply_markup: achievementsMenuReplyKeyboard() });
+      return;
+    }
+
+    // ── AI Style picker ──────────────────────────────────────────────────────
+    {
+      const styleMap: Record<string, string> = {
+        "🤝 Friendly": "friendly", "😄 Funny Style": "funny",
+        "💼 Serious": "serious", "⚖️ Balanced": "balanced",
+      };
+      if (styleMap[ntext]) {
+        user.settings.style = styleMap[ntext] as any;
+        await user.save();
+        await bot.sendMessage(chatId, `✅ Style set to: ${styleMap[ntext]}`, { reply_markup: aiStyleReplyKeyboard(styleMap[ntext]) });
+        return;
+      }
+    }
+
+    // ── Reply length picker ──────────────────────────────────────────────────
+    if (ntext === "📌 Short Replies") {
+      user.settings.length = "short";
+      await user.save();
+      await bot.sendMessage(chatId, "📌 Short replies set!", { reply_markup: replyLengthReplyKeyboard("short") });
+      return;
+    }
+    if (ntext === "📖 Long Replies") {
+      user.settings.length = "long";
+      await user.save();
+      await bot.sendMessage(chatId, "📖 Long replies set!", { reply_markup: replyLengthReplyKeyboard("long") });
+      return;
+    }
+
+    // ── Language picker ──────────────────────────────────────────────────────
+    {
+      const langMap: Record<string, string> = {
+        "🇬🇧 English": "en", "🇸🇦 Arabic": "ar", "🇫🇷 French": "fr",
+        "🇪🇸 Spanish": "es", "🇩🇪 German": "de", "🇨🇳 Chinese": "zh",
+        "🇮🇳 Hindi": "hi", "🇧🇷 Portuguese": "pt", "🇷🇺 Russian": "ru",
+        "🇯🇵 Japanese": "ja",
+      };
+      if (langMap[ntext]) {
+        user.settings.language = langMap[ntext];
+        await user.save();
+        await bot.sendMessage(chatId, `✅ Language set to: ${ntext}`, { reply_markup: langMenuReplyKeyboard(langMap[ntext]) });
+        return;
+      }
+    }
+
+    // ── Mood picker ──────────────────────────────────────────────────────────
+    {
+      const moodMap: Record<string, string> = {
+        "😊 Happy": "happy", "😔 Sad": "sad", "😤 Stressed": "stressed",
+        "😴 Bored": "bored", "🤩 Excited": "excited", "🎯 Focused": "focused",
+        "😍 Romantic": "romantic", "😠 Angry": "angry",
+      };
+      if (moodMap[ntext]) {
+        user.mood = moodMap[ntext];
+        await user.save();
+        await bot.sendMessage(chatId, `✅ Mood set to: ${moodMap[ntext]}`, { reply_markup: moodReplyKeyboard(moodMap[ntext]) });
+        return;
+      }
+    }
+    if (text === "🗑️ Clear Mood") {
+      user.mood = undefined;
+      await user.save();
+      await bot.sendMessage(chatId, "Mood cleared.", { reply_markup: settingsReplyKeyboard(user) });
+      return;
+    }
+
+    // ── GitHub settings ──────────────────────────────────────────────────────
+    if (text === "✏️ Set Username") {
+      setPending(user.userId, "github_set_username");
+      const hasToken2 = !!(user as any).github?.tokenEncrypted || !!(user as any).github?.token;
+      await bot.sendMessage(chatId, "Enter your GitHub username:", { reply_markup: githubMenuReplyKeyboard(hasToken2, user.github?.username) });
+      return;
+    }
+    if (text === "🔑 Set Token") {
+      setPending(user.userId, "github_set_token");
+      const hasToken2 = !!(user as any).github?.tokenEncrypted || !!(user as any).github?.token;
+      await bot.sendMessage(chatId, "Enter your GitHub Personal Access Token (repo scope required):", { reply_markup: githubMenuReplyKeyboard(hasToken2, user.github?.username) });
+      return;
+    }
+    if (text === "🗑 Remove Username") {
+      if (user.github) user.github.username = undefined as any;
+      await user.save();
+      await bot.sendMessage(chatId, "GitHub username removed.", { reply_markup: settingsReplyKeyboard(user) });
+      return;
+    }
+    if (text === "🗑 Remove Token") {
+      if (user.github) { (user.github as any).tokenEncrypted = undefined; (user.github as any).token = undefined; }
+      await user.save();
+      await bot.sendMessage(chatId, "GitHub token removed.", { reply_markup: settingsReplyKeyboard(user) });
+      return;
+    }
+
+    // ── Deployments settings ─────────────────────────────────────────────────
+    if (text === "⚡ Vercel: Not set") {
+      setPending(user.userId, "vercel_set_token");
+      await bot.sendMessage(chatId, "Enter your Vercel API token:", { reply_markup: deploymentsMenuReplyKeyboard(false) });
+      return;
+    }
+    if (text === "⚡ Vercel: ✅ Connected") {
+      const hasVercel2 = !!(user as any).vercelToken;
+      await bot.sendMessage(chatId, "Vercel is connected. You can deploy builds from the build result screen.", { reply_markup: deploymentsMenuReplyKeyboard(hasVercel2) });
+      return;
+    }
+    if (text === "🗑 Remove Vercel") {
+      (user as any).vercelToken = undefined;
+      await user.save();
+      await bot.sendMessage(chatId, "Vercel token removed.", { reply_markup: settingsReplyKeyboard(user) });
+      return;
+    }
+
+    // ── Privacy ──────────────────────────────────────────────────────────────
+    if (text === "🗑️ Delete My Data") {
+      setPending(user.userId, "deletedata_confirm");
+      await bot.sendMessage(chatId,
+        "⚠️ Delete All Data\n\nThis will permanently delete:\n• Your conversation memory\n• Settings & preferences\n• Premium status\n• Credit balance\n\nType DELETE to confirm:",
+        { reply_markup: privacyReplyKeyboard() }
+      );
+      return;
+    }
+    if (text === "📤 Export Data") {
+      const exportData = {
+        userId: user.userId,
+        username: user.username,
+        firstName: user.firstName,
+        settings: user.settings,
+        premium: user.premium,
+        usage: user.usage,
+        joinDate: user.firstSeen,
+        mood: user.mood,
+        referralCode: user.referralCode,
+      };
+      await bot.sendMessage(chatId, `📤 Your Data Export:\n\n\`\`\`json\n${JSON.stringify(exportData, null, 2)}\n\`\`\``, { parse_mode: "Markdown", reply_markup: privacyReplyKeyboard() });
+      return;
+    }
+
+    // ── Owner panel (isOwner only) ───────────────────────────────────────────
+    const ownerOnlyTexts = new Set([
+      "📊 Stats", "👥 Users", "💎 Premium", "🎟 Codes", "📢 Broadcast", "🏘 Groups",
+      "💰 Promotions", "⚙️ Features", "🧠 Chat Model", "🖼 Image Model", "💻 Code Model",
+      "🔴 Maintenance: ON", "🟢 Maintenance: OFF", "✨ Premium Emoji",
+      "🔍 Search User", "📩 DM User", "📋 Scheduled", "📨 Inbox",
+      "🔍 Lookup User", "📋 User List", "⛔ Ban User", "✅ Unban User",
+      "🗑 Delete User", "🧹 Clear User Memory", "➕ Grant Premium", "➖ Revoke Premium",
+      "➕ Create Code", "📋 List Codes", "🔄 Reset Code",
+      "📣 Broadcast All", "📢 Announcement", "⏰ Schedule Message",
+      "📋 Group List", "🗑 Delete Group",
+      "➕ Add Chat Model", "➕ Add Image Model", "➕ Add Code Model", "🧪 Test Models",
+    ]);
+    if (ownerOnlyTexts.has(text)) {
+      if (!user.isOwner) {
+        await bot.sendMessage(chatId, "⛔ Access denied.", { reply_markup: mainMenuReplyKeyboard() });
+        return;
+      }
+      await handleOwnerReplyButton(bot, chatId, user, text);
+      return;
+    }
+
     return;
   }
 
@@ -1478,20 +2517,8 @@ async function handlePendingText(
         break;
       }
       case "img_generate_text": {
-        const styleMap: Record<string, string> = {
-          anime: "anime art style, vibrant colors, cel shading",
-          cyberpunk: "cyberpunk aesthetic, neon lights, dark city, futuristic",
-          fantasy: "epic fantasy art, dramatic lighting, detailed illustration",
-          realistic: "photorealistic, ultra detailed, 8k photography",
-          oil: "oil painting style, textured brushstrokes, classical art",
-          watercolor: "soft watercolor painting, gentle washes, artistic",
-          sketch: "detailed pencil sketch, black and white, fine line art",
-          pixel: "pixel art style, retro 16-bit, colorful pixelated",
-        };
-        const preset = pendingData?.preset;
-        const styledPrompt = preset && styleMap[preset]
-          ? `${input}, ${styleMap[preset]}`
-          : input;
+        const stylePrefix = pendingData?.stylePrefix;
+        const styledPrompt = stylePrefix ? `${input}, ${stylePrefix}` : input;
         await handleImageGeneration(bot, chatId, user, styledPrompt, e);
         break;
       }

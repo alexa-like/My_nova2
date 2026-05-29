@@ -30,210 +30,114 @@ Nova is a production Telegram AI assistant with personality modes, group moderat
 - T007 — MongoDB-backed `RateLimit` model (TTL index); rateLimiter persists/loads from DB while keeping sync API
 - T008 — `GET /api/admin/analytics/features` endpoint: feature usage counts, active users, top-features leaderboard
 - T009 — `feedback_pending` case in `handlePendingText`: saves feedback to user record, notifies owner
-- T010 — Resolved all 5 cross-account git merge conflicts (engagement.ts, User.ts, keyboards.ts, callbackHandler.ts, privateHandler.ts); build passes clean
+- T010 — Resolved all 5 cross-account git merge conflicts; build passes clean
 
 **Files changed in this session:**
-- `artifacts/api-server/src/bot/services/engagement.ts` — full unified rewrite (merged both branches)
-- `artifacts/api-server/src/bot/models/User.ts` — merged fields from both branches
-- `artifacts/api-server/src/bot/utils/keyboards.ts` — merged all keyboard functions from both branches
-- `artifacts/api-server/src/bot/handlers/callbackHandler.ts` — merged imports, Stars payment, onboarding flow
-- `artifacts/api-server/src/bot/handlers/privateHandler.ts` — /deletedata, feedback, deduped imports
-- `artifacts/api-server/src/bot/services/intentEngine.ts` — full rewrite, richer patterns
-- `artifacts/api-server/src/bot/models/RateLimit.ts` — new MongoDB TTL model
-- `artifacts/api-server/src/bot/utils/rateLimiter.ts` — MongoDB-backed, sync API
-- `artifacts/api-server/src/bot/utils/pendingActions.ts` — added `deletedata_confirm` type
-- `artifacts/api-server/src/index.ts` — startup env validation (prod-only hard abort)
-- `artifacts/api-server/src/app.ts` — webhook route
-- `artifacts/api-server/src/bot/index.ts` — webhook mode + group-join welcome
-- `artifacts/api-server/src/routes/admin.ts` — `/api/admin/analytics/features` endpoint
-
----
-
-## Current State (as of end of Session 2)
-
-- **Build:** ✅ Clean — `pnpm --filter @workspace/api-server run typecheck` passes with 0 errors
-- **Bundle:** ✅ esbuild produces `dist/index.mjs`
-- **Workflows:** All 4 running (`Start application`, `admin-dashboard: web`, `api-server: API Server`, `mockup-sandbox`)
-- **Bot:** Starts cleanly, defaults to AI chat + auto-intent detection; no mode locking
-- **Secrets needed to run the bot:** `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`
-
----
-
-## Session 2 — Mode Removal + Builder Config + Deploy UX (completed)
-
-**Goal given by user:** Remove ALL mode switching (Nova defaults to AI chat + auto-detect intent). Website builder uses 3 BotConfig-driven code models (owner switchable, addable). Deploy buttons always shown after build, tokens collected inline when missing. Tokens stored permanently, never deleted.
-
-**Tasks completed:**
-- T001 — Removed mode switching entirely: `/mode` command, mode routing switch block, `modes_menu`/`mode_set_*` callbacks, `🎯 Mode` button from main menu
-- T002 — Replaced mode button with `🔊 Voice` (`tts_btn`) in both `mainMenuKeyboard` and `mainMenuWithNewsKeyboard`; removed `MODES`/`ModeDefinition` imports from keyboards.ts; removed `modeSelectKeyboard`/`currentModeKeyboard` functions
-- T003 — All `mainMenuKeyboard(activeMode)` calls → `mainMenuKeyboard()` and all `mainMenuWithNewsKeyboard(activeMode, hasNews)` → `mainMenuWithNewsKeyboard(hasNews)` across all handlers
-- T004 — `buildResultKeyboard` now always shows Vercel + Render deploy buttons (no conditional); deploy buttons always visible after every build
-- T005 — `deploy_live`/`deploy_render` callbacks now collect token inline when missing (via `setPending`) instead of just showing a settings redirect
-- T006 — After saving Vercel/Render token, shows "Deploy Now" button so user can immediately deploy
-- T007 — Added `activeCodeModel`/`codeModels` to `IBotConfig` interface and `BotConfigSchema` with 3 defaults (Llama 3.3 70B, DeepSeek V4 Flash, Gemma 4 31B); backfill logic for existing configs
-- T008 — `generateProject` in `projectGenerator.ts` now reads active code model from BotConfig (tries active first, then rest, then hardcoded fallbacks)
-- T009 — Added `ownerCodeModelsKeyboard` to keyboards.ts and `💻 Code Model` button to owner panel keyboard
-- T010 — Added `own_code_models`/`own_set_code_*`/`own_del_code_*`/`own_add_code` callbacks to callbackHandler.ts
-- T011 — Added `owner_add_code_step1`/`owner_add_code_step2` pending handlers to ownerHandler.ts
-- T012 — Added `owner_add_code_step1`/`owner_add_code_step2` to pendingActions.ts type union and OWNER_PENDING_ACTIONS set
-- T013 — No-GitHub build path now always shows both Vercel + Render deploy buttons (removed `canDeploy` conditional)
-
-**Files changed in this session:**
-- `artifacts/api-server/src/bot/utils/keyboards.ts` — remove mode functions/button, add ownerCodeModelsKeyboard, update buildResultKeyboard, update both mainMenu keyboards
-- `artifacts/api-server/src/bot/models/BotConfig.ts` — add activeCodeModel/codeModels to interface/schema/defaults/backfill
-- `artifacts/api-server/src/bot/services/projectGenerator.ts` — BotConfig-driven code model chain
-- `artifacts/api-server/src/bot/handlers/privateHandler.ts` — remove mode imports/command/routing, fix all mainMenuKeyboard calls, inline token save flow, always-show deploy path
-- `artifacts/api-server/src/bot/handlers/callbackHandler.ts` — remove mode callbacks/imports, add code model owner callbacks, inline token collect for deploy
-- `artifacts/api-server/src/bot/handlers/ownerHandler.ts` — add owner_add_code_step1/step2 pending handlers
-- `artifacts/api-server/src/bot/utils/pendingActions.ts` — add owner_add_code_step1/step2 types
-
----
-
----
-
-## Session 3 — Inline Keyboard UX Fixes + Full Codebase Audit (completed)
-
-**Goal:** Fix build menu UX (only showing Back button), back navigation inconsistencies, then full project audit.
-
-**Keyboard/navigation fixes:**
-- T001 — Removed duplicate `build_menu` handler (lines ~248-253) that blocked the real handler with all build options
-- T002 — Build type prompt cancel: `⬅️ Back → build_menu` + `❌ Cancel → main_menu`
-- T003 — `my_projects` empty state back button: changed from `settings_deployments` → `build_menu`
-- T004 — `my_projects` list back row: changed from `settings_deployments` → `build_menu` with "🌐 Build Another" sibling
-- T005 — After all projects deleted: back → `build_menu` instead of settings
-- T006 — `show_help` callback: removed stale `/voice <text>` command reference
-
-**Full audit fixes:**
-- T007 — `index.ts`: Removed 2 unused groupGate imports (`getMandatoryGroups`, `sendLeftGroupDM`) — only `seedDefaultMandatoryGroup` is actually called
-- T008 — `scripts/tsconfig.json`: Fixed `TS18003` typecheck error by replacing empty `"include": ["src"]` with `"files": []` (no TS sources in scripts package)
-- T009 — `ai.ts`: Reduced per-model timeout from 25 000 ms → 12 000 ms; worst-case 7-model chain now ~84 s max (previously ~175 s, exceeding Telegram webhook timeout)
-- T010 — `pendingActions.ts`: Removed dead `voice_tts_input` action type (TTS service deleted in previous session)
-- T011 — `engagement.ts` `FEATURE_LABELS`: Removed duplicate `cb` property (identical to `callback`), removed dead `tts`/`stt` entries
-- T012 — `engagement.ts` `checkAndGrantAchievements`: Removed `tts`/`stt` from typeMap (those features no longer exist)
-- T013 — `utils/suggestions.ts`: Removed dead `tts`/`stt` suggestion entries; updated `translate` and `summarize` suggestions to use live features
-- T014 — `services/suggestions.ts`: Removed dead `voice` context entry that pointed to `stt_btn`/`tts_btn`
-- T015 — `keyboards.ts` `creditsMenuKeyboard`: Removed unused `_hasPayment` parameter; updated both call sites
-- T016 — `keyboards.ts` `welcomeBackKeyboard`: Removed `tts`/`stt` entries from `FEATURE_BTNS` map
-- T017 — `keyboards.ts` credits display: Removed "🔊 Voice" line from credits cost breakdown (feature gone)
-- T018 — `privateHandler.ts`: Removed orphaned `ttsCost` variable; removed now-unused `hasAnyPaymentProvider` import
-- T019 — `callbackHandler.ts`: Removed `hasAnyPaymentProvider` (now unused); improved `tts_btn`/`stt_btn` toast message to inform users the feature was removed
-- T020 — `callbackHandler.ts` `my_projects` empty-state: Fixed duplicate "Build a Project" + "Back to Build" both pointing to `build_menu` (keeps layout clean)
-- T021 — Full typecheck passes: 0 errors across all 4 packages (`api-server`, `admin-dashboard`, `mockup-sandbox`, `scripts`)
-
-**Files changed this session:**
+- `artifacts/api-server/src/bot/services/engagement.ts`
+- `artifacts/api-server/src/bot/models/User.ts`
+- `artifacts/api-server/src/bot/utils/keyboards.ts`
 - `artifacts/api-server/src/bot/handlers/callbackHandler.ts`
 - `artifacts/api-server/src/bot/handlers/privateHandler.ts`
-- `artifacts/api-server/src/bot/utils/keyboards.ts`
-- `artifacts/api-server/src/bot/utils/suggestions.ts`
+- `artifacts/api-server/src/bot/services/intentEngine.ts`
+- `artifacts/api-server/src/bot/models/RateLimit.ts`
+- `artifacts/api-server/src/bot/utils/rateLimiter.ts`
 - `artifacts/api-server/src/bot/utils/pendingActions.ts`
-- `artifacts/api-server/src/bot/services/ai.ts`
-- `artifacts/api-server/src/bot/services/engagement.ts`
-- `artifacts/api-server/src/bot/services/suggestions.ts`
+- `artifacts/api-server/src/index.ts`
+- `artifacts/api-server/src/app.ts`
 - `artifacts/api-server/src/bot/index.ts`
-- `scripts/tsconfig.json`
+- `artifacts/api-server/src/routes/admin.ts`
 
 ---
 
+### Session 2 — Mode Removal + Builder Config + Deploy UX (completed)
+
+**Goal given by user:** Remove ALL mode switching (Nova defaults to AI chat + auto-detect intent). Website builder uses 3 BotConfig-driven code models. Deploy buttons always shown after build, tokens collected inline when missing.
+
+**Tasks completed:** (T001–T013 — see previous AGENTHANDOFF for details)
+
 ---
 
-## Session 4 — Full Project Audit, Debug, Repair & Cleanup (completed)
+### Session 3 — Inline Keyboard UX Fixes + Full Codebase Audit (completed)
 
-**Goal:** Complete deep audit of all commands, callbacks, handlers, services, security, packages, and deployment — fix all bugs found.
+**Goal:** Fix build menu UX, back navigation inconsistencies, then full project audit.
 
-**Bugs fixed:**
+**Tasks completed:** (T001–T021 — see previous AGENTHANDOFF for details)
 
-- **BUG-01 CRITICAL** — `build_pending` pending action had NO handler in privateHandler.ts; users who clicked a build type button then typed their description got "Something went wrong." Fixed: changed `setPending(userId, "build_pending")` → `setPending(userId, "build_input")` in callbackHandler.ts; removed dead `build_pending` type from pendingActions.ts.
+---
 
-- **BUG-02 CRITICAL** — `privacy_delete_data` callback had two handlers; the second (line 3111) was dead code and referenced a non-existent `/deleteaccount` command. The first (line 353) had wrong instructions ("send `/deletedata confirm`" but command expects text "DELETE MY DATA"). Fixed: first handler now directly calls `setPending(userId, "deletedata_confirm")` with correct confirmation instructions; second dead handler removed.
+### Session 4 — Full Project Audit, Debug, Repair & Cleanup (completed)
 
-- **BUG-03** — `answer()` helper function in callbackHandler.ts only accepted 3 args but was called with 4 (`true` for `show_alert`) in promo_claim flow (lines 3002, 3004, 3008), causing TypeScript errors TS2554. Fixed: added optional `showAlert?: boolean` parameter.
+**Goal:** Deep audit — all commands, callbacks, handlers, services, security, packages, deployment.
 
-- **BUG-04** — Duplicate `/daily` handler in privateHandler.ts (lines 500–524): old 20-hour cooldown version that directly added credits and bypassed the daily_claim callback flow. Removed; kept the correct version at line 1064 (24h, streak-aware, uses dailyRewardKeyboard).
+**Tasks completed:** (BUG-01 through CLEANUP-05 — see previous AGENTHANDOFF for details)
 
-- **BUG-05** — Duplicate `/achievements` handler (lines 527–535): used broken `Object.keys(ACHIEVEMENTS)` (array → returns indices) and stale `formatAchievementsText`. Removed; kept the correct version at line 334.
+---
 
-- **BUG-06** — Duplicate `/privacy` handler (lines 538–555): stale Markdown version that mentioned "voice messages (discarded after transcription)" — a removed feature. Removed; kept the correct version at line 315 with proper privacyMenuKeyboard().
+### Session 5 — Full Project Audit, Debug, Repair, Security Hardening (completed)
 
-- **BUG-07** — Second `/refer` handler (line 1092) was dead code for `/refer` (596 fires first) but handled `/referral` and `/invite` aliases. Fixed: changed condition to `/referral || /invite` only so both handlers are reachable.
+**Goal:** Second deep-pass audit covering dead imports, handler consistency, group settings, admin route security, ObjectId injection, callback field injection.
 
-- **BUG-08** — `first_voice` achievement in engagement.ts could never be earned (TTS removed) and `case "voice": award("first_voice")` would award a non-existent achievement. Removed both the achievement definition and the award call.
+**Fixes:** DEAD-01–03, SEC-01–03 — see previous AGENTHANDOFF for details.
 
-- **CLEANUP-01** — Stale `/deploy` command references cleaned across 4 files: groupHandler redirect message, ownerHandler status panel, callbackHandler onboarding step 3 text, announcements.ts build_deploy entry — all updated to reference `/build` + Deploy button flow.
+---
 
-- **CLEANUP-02** — `@Nova /voice <text>` removed from group `/help` command output (TTS removed).
+### Session 6 — AI Markdown Code Blocks + Reply Keyboard Migration (completed)
 
-- **CLEANUP-03** — `• 🔊 Long Text TTS` removed from `/updates` command text.
+**Goal:** (1) AI responses use proper Markdown code blocks (triple backticks + language hints). (2) Replace ALL inline keyboards with reply keyboards in private chats (exceptions: group settings, Telegram payment invoices, URL buttons).
 
-- **CLEANUP-04** — Unused imports removed from privateHandler.ts: `privacyKeyboard` (from keyboards.ts) and `formatAchievementsText` (from engagement.ts) — both only used in removed duplicate handlers.
+**Tasks completed:**
 
-- **CLEANUP-05** — Unused packages removed from package.json: `msedge-tts` (TTS removed) and `cookie-parser` + `@types/cookie-parser` (never imported anywhere in the codebase).
+- **AI Markdown** — `ai.ts`: Added `CODE FORMATTING` instruction to `buildSystemPrompt` requiring triple-backtick code blocks with language hints. `sendAIReply` in `privateHandler.ts` now tries `parse_mode: "Markdown"` before falling back to plain text.
 
-**Final state:** TypeScript checks clean for all bot code. Zero orphaned keyboard buttons. Zero stale /deploy command references. All pending action types have matching handlers.
+- **games.ts** — Created `artifacts/api-server/src/bot/data/games.ts` with shared TRIVIA (20 questions) and WYR (25 questions) arrays exported for use in both handlers.
+
+- **pendingActions.ts** — Added `"trivia_answer"` and `"wyr_answer"` to `PendingTextAction` union type.
+
+- **keyboards.ts** — Appended ~30 new reply keyboard functions: `chatMenuReplyKeyboard`, `writeMenuReplyKeyboard`, `createMenuReplyKeyboard`, `imgStyleReplyKeyboard`, `buildSubMenuReplyKeyboard`, `buildResultMenuReplyKeyboard`, `funSubMenuReplyKeyboard`, `gamesSubMenuReplyKeyboard`, `triviaOptionsReplyKeyboard`, `wyrOptionsReplyKeyboard`, `settingsReplyKeyboard`, `aiStyleReplyKeyboard`, `replyLengthReplyKeyboard`, `langMenuReplyKeyboard`, `moodReplyKeyboard`, `creditsReplyKeyboard`, `accountReplyKeyboard`, `dailyMenuReplyKeyboard`, `achievementsMenuReplyKeyboard`, `privacyReplyKeyboard`, `deploymentsMenuReplyKeyboard`, `githubMenuReplyKeyboard`, `remindersMenuReplyKeyboard`, `ownerMainReplyKeyboard`, `ownerUsersReplyKeyboard`, `ownerPremiumReplyKeyboard`, `ownerCodesReplyKeyboard`, `ownerBroadcastReplyKeyboard`, `ownerGroupsReplyKeyboard`, `ownerFeaturesMenuReplyKeyboard`.
+
+- **privateHandler.ts** — Complete routing block rewrite:
+  - `REPLY_KEYBOARD_TEXTS` expanded to ~100+ button texts with `normalizeReplyText()` helper (strips `✅ ` prefix for style/lang/mood buttons)
+  - Full sub-menu routing: chat, write, create, image styles, build, build deploy, fun, games, settings, AI style, reply length, language, mood, GitHub, deployments, privacy, credits/star packs
+  - Trivia/WYR early-capture block at the top of `handlePrivateMessage` (before pending clear) — trivia checks answer against `pendingData.correctText`; WYR checks against `pendingData.optionA/B`
+  - `handleOwnerReplyButton(bot, chatId, user, text)` function added — handles all owner reply keyboard buttons (stats, user management, premium, codes, broadcast, groups, features, model info, maintenance toggle, premium emoji toggle)
+  - `img_generate_text` pending handler updated to use `stylePrefix` from pending data (instead of old `preset` key)
+  - `sendAIReply` updated with Markdown fallback chain
+
+- **callbackHandler.ts** — 
+  - Replaced inline TRIVIA/WYR arrays with `import { TRIVIA, WYR } from "../data/games.js"`
+  - Navigation callbacks (`main_menu`, `fun_menu`, `games_menu`, `ai_menu`, `img_menu`, `build_menu`, `settings_menu`) now send a new message with the appropriate reply keyboard instead of editing the old message with inline buttons
+  - Added reply keyboard imports (`mainMenuReplyKeyboard`, `funSubMenuReplyKeyboard`, `gamesSubMenuReplyKeyboard`, `chatMenuReplyKeyboard`, `createMenuReplyKeyboard`, `buildSubMenuReplyKeyboard`, `settingsReplyKeyboard`)
+  - Removed duplicate `build_menu` inline handler (now handled by navigation section)
+
+**TypeScript:** 0 errors after all fixes. Build passes clean.
 
 **Files changed this session:**
-- `artifacts/api-server/src/bot/handlers/callbackHandler.ts` — answer() signature, build_pending→build_input, privacy_delete_data fix, remove dead duplicate, /deploy onboarding text
-- `artifacts/api-server/src/bot/handlers/privateHandler.ts` — remove 3 duplicate handlers (/daily, /achievements, /privacy), fix /refer aliases, remove TTS from /updates, clean imports
-- `artifacts/api-server/src/bot/handlers/groupHandler.ts` — remove /voice from help, fix /deploy redirect
-- `artifacts/api-server/src/bot/handlers/ownerHandler.ts` — fix Vercel /deploy reference
-- `artifacts/api-server/src/bot/utils/pendingActions.ts` — remove dead build_pending type
-- `artifacts/api-server/src/bot/services/engagement.ts` — remove first_voice achievement + award case
-- `artifacts/api-server/src/bot/services/announcements.ts` — update build_deploy entry
-- `artifacts/api-server/package.json` — remove msedge-tts, cookie-parser, @types/cookie-parser
+- `artifacts/api-server/src/bot/services/ai.ts`
+- `artifacts/api-server/src/bot/utils/pendingActions.ts`
+- `artifacts/api-server/src/bot/utils/keyboards.ts`
+- `artifacts/api-server/src/bot/data/games.ts` (new file)
+- `artifacts/api-server/src/bot/handlers/privateHandler.ts`
+- `artifacts/api-server/src/bot/handlers/callbackHandler.ts`
 
 ---
 
----
+## Current State (as of end of Session 6)
 
-## Session 5 — Full Project Audit, Debug, Repair, Security Hardening (completed)
-
-**Goal:** Second deep-pass audit covering: dead imports, handler consistency, group settings, admin route security, ObjectId injection, callback field injection, TypeScript clean build.
-
-**Fixes applied:**
-
-- **DEAD-01** — `parseDuration` imported from `RedeemCode.ts` in `privateHandler.ts` but never called (only `parseDurationToMs` from Reminder is used). Removed import.
-- **DEAD-02** — `trackFeature` imported in `callbackHandler.ts` but never called anywhere in that file. Removed from import statement (kept `track`).
-- **DEAD-03** — `getNewCount as _getNewCount` imported in `callbackHandler.ts` but never used (underscore prefix was a suppression hint). Removed from import statement (kept `formatAnnouncements`).
-
-- **SEC-01** — `grp_tog_` callback handler in `callbackHandler.ts` accepted any field name from callback data and applied it directly via `(gs as any)[field] = !value` with no whitelist. A group admin (or anyone who crafted a callback) could corrupt arbitrary GroupSettings fields. Added `ALLOWED_TOGGLE_FIELDS` Set (`aiEnabled`, `emoji`, `length`, `antilink`, `antiflood`, `captchaEnabled`, `autoDeleteServiceMessages`, `locked`) — unknown fields now rejected with "Unknown setting." before any DB access.
-
-- **SEC-02** — `DELETE /api/admin/codes/:id` passed `req.params.id` directly to `RedeemCode.deleteOne({ _id: ... })` without validating it was a valid MongoDB ObjectId. An invalid string would cause Mongoose to throw a CastError (caught, but leaks internal error info). Added `isValidObjectId()` guard; returns 400 before the DB call.
-
-- **SEC-03** — `PATCH /api/admin/feedback/:id/read` same pattern — `req.params.id` passed to `findByIdAndUpdate` without ObjectId validation. Same guard added.
-
-**Full audit findings (no code change needed — confirmed correct):**
-
-- All 153+ callback handlers verified wired and reachable — no orphaned buttons
-- `own_panel` and `owner_panel` callbacks both call `sendOwnerPanel()` — intentional, different nav paths
-- `groupSettingsKeyboard` fields (`antilink`, `antiflood`, `captchaEnabled`, etc.) all match GroupSettings schema exactly
-- Group handler `IUser` type import used as type annotation at line 195 — not dead
-- `broadcastNewPromo`, `invalidateBotConfigCache`, `getDailySummary`, `getTopCommands`, `getActiveUsers` all confirmed called at their respective call sites
-- `Memory` model in `ownerHandler.ts` used for 5 `.deleteMany()` and 1 `.countDocuments()` — not dead
-- AI `MAX_HISTORY = 20` — enforced both on save (`> 20 → slice`) and on read (`.slice(-20)`) — no memory growth risk
-- RateLimit is MongoDB-backed with TTL index — survives restarts
-- CORS: allows Replit preview domains + env-configured origins — correct for dev + prod
-- Admin API key: accepts both `x-admin-key` header and `Authorization: Bearer …` — consistent with dashboard client
-- Broadcast message length validated at 4000 chars before dispatch — correct
-- Admin routes have brute-force lockout (5 failures → 15 min) + constant-time `safeEqual()` compare — secure
-- BuildCache abstracted correctly through `utils/buildCache.ts` → `models/BuildCache.ts` — no dual-path conflict
-- No circular imports; no eval/exec; no console.log (pino throughout)
-
-**Final build state:**
-- TypeScript: **0 errors** across all 4 packages
-- esbuild: `dist/index.mjs` 7.9 MB — builds clean in ~4 s
-- Server starts and responds on port 5000 with correct env-validation warnings when secrets are absent
-
-**Files changed this session:**
-- `artifacts/api-server/src/bot/handlers/privateHandler.ts` — remove `parseDuration` import
-- `artifacts/api-server/src/bot/handlers/callbackHandler.ts` — remove `trackFeature` + `_getNewCount` imports; add `ALLOWED_TOGGLE_FIELDS` whitelist to `grp_tog_` handler
-- `artifacts/api-server/src/routes/admin.ts` — add `mongoose` import + `isValidObjectId()` helper; add ObjectId guard to DELETE /codes/:id and PATCH /feedback/:id/read
+- **Build:** ✅ Clean — `pnpm run typecheck` passes with 0 errors across all 4 packages
+- **Bundle:** ✅ esbuild produces `dist/index.mjs` ~8 MB
+- **Workflow:** `Start application` running cleanly on port 5000
+- **Bot:** Starts cleanly; all env-validation warnings appear correctly when secrets are absent
+- **Secrets needed to run the bot:** `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`
 
 ---
 
 ## Next Tasks (suggested, not yet started)
 
+- [ ] Test the reply keyboard flow end-to-end with real Telegram account (ensure all ~100 button texts route correctly)
+- [ ] Some callbacks still send inline keyboards for non-navigation flows (fun_joke, fun_iq, fun_compliment, etc.) — consider also converting those result messages to use reply keyboards
 - [ ] Captcha store is in-memory — if server restarts mid-captcha, users get stuck muted; consider persisting captcha state to MongoDB
-- [ ] Admin dashboard chunk size is 647 KB (warn threshold 500 KB) — consider lazy-loading heavy routes to improve load time
-- [ ] Admin read-only DB queries (`.find()`, `.findOne()`) in `admin.ts` do not use `.lean()` — adds Mongoose document overhead for responses that are serialized straight to JSON (9 call sites)
+- [ ] Admin dashboard chunk size is 647 KB (warn threshold 500 KB) — consider lazy-loading heavy routes
+- [ ] Admin read-only DB queries in `admin.ts` do not use `.lean()` — adds Mongoose document overhead
 - [ ] Deploy to Render — set env secrets: `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`, `WEBHOOK_URL`
 
 ---
@@ -252,6 +156,7 @@ Nova is a production Telegram AI assistant with personality modes, group moderat
 | Engagement/achievements | `artifacts/api-server/src/bot/services/engagement.ts` |
 | Intent detection | `artifacts/api-server/src/bot/services/intentEngine.ts` |
 | All keyboards | `artifacts/api-server/src/bot/utils/keyboards.ts` |
+| Shared game data | `artifacts/api-server/src/bot/data/games.ts` |
 | User model | `artifacts/api-server/src/bot/models/User.ts` |
 | Rate limiter | `artifacts/api-server/src/bot/utils/rateLimiter.ts` |
 | Server entry + env validation | `artifacts/api-server/src/index.ts` |

@@ -15,6 +15,8 @@ export type PendingTextAction =
   | "fun_ship"
   | "fun_roast_name"
   | "fun_truth_reply"
+  | "trivia_answer"
+  | "wyr_answer"
   | "write_tweet"
   | "write_caption"
   | "write_bio"

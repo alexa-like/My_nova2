@@ -1210,3 +1210,404 @@ export function mainMenuWithNewsKeyboard(hasNews = false): TelegramBot.InlineKey
     ],
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Reply Keyboards for All Submenus ─────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+
+export function chatMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "💬 Ask Nova" }, { text: "📝 Summarize" }],
+      [{ text: "🌍 Translate" }, { text: "✍️ Write for Me" }],
+      [{ text: "🗣️ Debate Me" }, { text: "🔬 Analyze Text" }],
+      [{ text: "📜 Chat History" }, { text: "🧹 Clear Memory" }],
+      [{ text: "⬅️ Main Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function writeMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "🐦 Tweet" }, { text: "📸 IG Caption" }],
+      [{ text: "👤 Bio" }, { text: "🎵 Song Lyrics" }],
+      [{ text: "📧 Email" }, { text: "🎭 Poem" }],
+      [{ text: "⬅️ Chat Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function createMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "✨ Generate Image" }, { text: "🎨 Style Presets" }],
+      [{ text: "🖼️ Create Sticker" }, { text: "✏️ Edit Image" }],
+      [{ text: "🔆 Enhance Photo" }, { text: "🎭 Stylize Photo" }],
+      [{ text: "🔧 Restore Photo" }],
+      [{ text: "⬅️ Main Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function imgStyleReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "🎌 Anime" }, { text: "🤖 Cyberpunk" }],
+      [{ text: "🌌 Fantasy" }, { text: "📸 Realistic" }],
+      [{ text: "🎨 Oil Painting" }, { text: "💧 Watercolor" }],
+      [{ text: "✏️ Sketch" }, { text: "👾 Pixel Art" }],
+      [{ text: "⬅️ Create Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function buildSubMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "🌐 Website" }, { text: "⚛️ React App" }],
+      [{ text: "🖥️ Dashboard" }, { text: "🛒 Landing Page" }],
+      [{ text: "💡 Custom Idea" }],
+      [{ text: "📁 My Projects" }, { text: "⬅️ Main Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function buildResultMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "⚡ Deploy to Vercel" }, { text: "🟣 Deploy to Render" }],
+      [{ text: "📁 My Projects" }, { text: "🌐 Build Another" }],
+      [{ text: "⬅️ Main Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function funSubMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "😂 Joke" }, { text: "🎱 Magic 8-Ball" }],
+      [{ text: "💘 Ship Us" }, { text: "🔥 Roast Me" }],
+      [{ text: "🧠 IQ Test" }, { text: "🌟 Compliment" }],
+      [{ text: "🔮 Fortune" }, { text: "😈 Daily Dare" }],
+      [{ text: "✨ Vibe Check" }, { text: "💭 Truth Question" }],
+      [{ text: "⬅️ Main Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function gamesSubMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "🎯 Trivia" }, { text: "🤔 Would You Rather" }],
+      [{ text: "📖 Word of the Day" }, { text: "🎲 Random Fact" }],
+      [{ text: "⬅️ Main Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function triviaOptionsReplyKeyboard(options: string[]): TelegramBot.ReplyKeyboardMarkup {
+  const rows: TelegramBot.KeyboardButton[][] = [];
+  for (let i = 0; i < options.length; i += 2) {
+    const row: TelegramBot.KeyboardButton[] = [{ text: options[i] }];
+    if (options[i + 1]) row.push({ text: options[i + 1] });
+    rows.push(row);
+  }
+  rows.push([{ text: "⬅️ Games Menu" }]);
+  return { keyboard: rows, resize_keyboard: true, is_persistent: true };
+}
+
+export function wyrOptionsReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "🅰️ Option A" }, { text: "🅱️ Option B" }],
+      [{ text: "🔀 New Question" }, { text: "⬅️ Games Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function settingsReplyKeyboard(user: IUser): TelegramBot.ReplyKeyboardMarkup {
+  const emojiLabel = user.settings.emoji ? "😊 Emojis: ON" : "😑 Emojis: OFF";
+  const githubLabel = user.github?.username ? "✅ GitHub" : "🔑 GitHub";
+  return {
+    keyboard: [
+      [{ text: "👤 My Profile" }, { text: "📊 My Stats" }],
+      [{ text: "🎭 AI Style" }, { text: "📏 Reply Length" }],
+      [{ text: "🌐 Language" }, { text: "😶 Set Mood" }],
+      [{ text: emojiLabel }, { text: "🤖 AI Model" }],
+      [{ text: "💎 Premium Plans" }, { text: githubLabel }],
+      [{ text: "🚀 Deployments" }, { text: "🔒 Privacy" }],
+      [{ text: "🏅 Achievements" }],
+      [{ text: "⬅️ Main Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function aiStyleReplyKeyboard(current: string): TelegramBot.ReplyKeyboardMarkup {
+  const mark = (style: string, label: string) => ({ text: (current === style ? "✅ " : "") + label });
+  return {
+    keyboard: [
+      [mark("friendly", "🤝 Friendly"), mark("funny", "😄 Funny Style")],
+      [mark("serious", "💼 Serious"), mark("balanced", "⚖️ Balanced")],
+      [{ text: "⬅️ Settings" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function replyLengthReplyKeyboard(current: string): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [
+        { text: (current === "short" ? "✅ " : "") + "📌 Short Replies" },
+        { text: (current === "long" ? "✅ " : "") + "📖 Long Replies" },
+      ],
+      [{ text: "⬅️ Settings" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function langMenuReplyKeyboard(current: string): TelegramBot.ReplyKeyboardMarkup {
+  const langs: [string, string][] = [
+    ["🇬🇧 English", "en"], ["🇸🇦 Arabic", "ar"],
+    ["🇫🇷 French", "fr"], ["🇪🇸 Spanish", "es"],
+    ["🇩🇪 German", "de"], ["🇨🇳 Chinese", "zh"],
+    ["🇮🇳 Hindi", "hi"], ["🇧🇷 Portuguese", "pt"],
+    ["🇷🇺 Russian", "ru"], ["🇯🇵 Japanese", "ja"],
+  ];
+  const keyboard: TelegramBot.KeyboardButton[][] = [];
+  for (let i = 0; i < langs.length; i += 2) {
+    keyboard.push([
+      { text: (langs[i][1] === current ? "✅ " : "") + langs[i][0] },
+      { text: (langs[i + 1][1] === current ? "✅ " : "") + langs[i + 1][0] },
+    ]);
+  }
+  keyboard.push([{ text: "⬅️ Settings" }]);
+  return { keyboard, resize_keyboard: true, is_persistent: true };
+}
+
+export function moodReplyKeyboard(current?: string): TelegramBot.ReplyKeyboardMarkup {
+  const moods: [string, string][] = [
+    ["😊 Happy", "happy"], ["😔 Sad", "sad"],
+    ["😤 Stressed", "stressed"], ["😴 Bored", "bored"],
+    ["🤩 Excited", "excited"], ["🎯 Focused", "focused"],
+    ["😍 Romantic", "romantic"], ["😠 Angry", "angry"],
+  ];
+  const keyboard: TelegramBot.KeyboardButton[][] = [];
+  for (let i = 0; i < moods.length; i += 2) {
+    keyboard.push([
+      { text: (moods[i][1] === current ? "✅ " : "") + moods[i][0] },
+      { text: (moods[i + 1][1] === current ? "✅ " : "") + moods[i + 1][0] },
+    ]);
+  }
+  keyboard.push([{ text: "🗑️ Clear Mood" }, { text: "⬅️ Settings" }]);
+  return { keyboard, resize_keyboard: true, is_persistent: true };
+}
+
+export function creditsReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "🌱 50 Credits — 15⭐" }, { text: "⚡ 150 Credits — 40⭐" }],
+      [{ text: "🚀 500 Credits — 115⭐" }, { text: "💎 1500 Credits — 299⭐" }],
+      [{ text: "⭐ VIP Monthly — 149⭐" }, { text: "👑 VIP Lifetime — 499⭐" }],
+      [{ text: "🎁 Claim Daily" }, { text: "👥 Invite Friends" }],
+      [{ text: "⬅️ Main Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function accountReplyKeyboard(isPremium: boolean): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "💰 Credits & Packs" }, { text: "🎁 Daily Reward" }],
+      [{ text: "👥 Referral Link" }, ...(isPremium ? [] : [{ text: "⭐ Upgrade VIP" }])],
+      [{ text: "⬅️ Main Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function dailyMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "🎰 Claim Reward" }],
+      [{ text: "👥 Invite Friends" }, { text: "⬅️ Main Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function achievementsMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "🎁 Daily Reward" }, { text: "👥 Refer Friends" }],
+      [{ text: "⬅️ Main Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function privacyReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "🗑️ Delete My Data" }, { text: "📤 Export Data" }],
+      [{ text: "🧹 Clear Memory" }],
+      [{ text: "⬅️ Settings" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function deploymentsMenuReplyKeyboard(hasVercel: boolean): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: hasVercel ? "⚡ Vercel: ✅ Connected" : "⚡ Vercel: Not set" }],
+      ...(hasVercel ? [[{ text: "🗑 Remove Vercel" }]] : []),
+      [{ text: "📁 My Projects" }, { text: "⬅️ Settings" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function githubMenuReplyKeyboard(hasToken: boolean, username?: string): TelegramBot.ReplyKeyboardMarkup {
+  const rows: TelegramBot.KeyboardButton[][] = [
+    [{ text: "✏️ Set Username" }, { text: "🔑 Set Token" }],
+  ];
+  if (username) rows.push([{ text: "🗑 Remove Username" }]);
+  if (hasToken) rows.push([{ text: "🗑 Remove Token" }]);
+  rows.push([{ text: "⬅️ Settings" }]);
+  return { keyboard: rows, resize_keyboard: true, is_persistent: true };
+}
+
+export function remindersMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "➕ Set Reminder" }],
+      [{ text: "⬅️ Main Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function ownerMainReplyKeyboard(maintenanceOn: boolean): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "📊 Stats" }, { text: "👥 Users" }],
+      [{ text: "💎 Premium" }, { text: "🎟 Codes" }],
+      [{ text: "📢 Broadcast" }, { text: "🏘 Groups" }],
+      [{ text: "💰 Promotions" }, { text: "⚙️ Features" }],
+      [{ text: "🧠 Chat Model" }, { text: "🖼 Image Model" }],
+      [{ text: "💻 Code Model" }],
+      [{ text: maintenanceOn ? "🔴 Maintenance: ON" : "🟢 Maintenance: OFF" }, { text: "✨ Premium Emoji" }],
+      [{ text: "🔍 Search User" }, { text: "📩 DM User" }],
+      [{ text: "📋 Scheduled" }, { text: "📨 Inbox" }],
+      [{ text: "⬅️ Main Menu" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function ownerUsersReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "🔍 Lookup User" }, { text: "📋 User List" }],
+      [{ text: "⛔ Ban User" }, { text: "✅ Unban User" }],
+      [{ text: "🗑 Delete User" }, { text: "🧹 Clear User Memory" }],
+      [{ text: "⬅️ Owner Panel" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function ownerPremiumReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "➕ Grant Premium" }, { text: "➖ Revoke Premium" }],
+      [{ text: "⬅️ Owner Panel" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function ownerCodesReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "➕ Create Code" }, { text: "📋 List Codes" }],
+      [{ text: "🔄 Reset Code" }],
+      [{ text: "⬅️ Owner Panel" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function ownerBroadcastReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "📣 Broadcast All" }, { text: "📢 Announcement" }],
+      [{ text: "⏰ Schedule Message" }, { text: "📋 Scheduled" }],
+      [{ text: "⬅️ Owner Panel" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function ownerGroupsReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "📋 Group List" }, { text: "🗑 Delete Group" }],
+      [{ text: "⬅️ Owner Panel" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+export function ownerFeaturesMenuReplyKeyboard(imageEnabled: boolean, visionEnabled: boolean): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [
+        { text: `🖼 Images: ${imageEnabled ? "✅ ON" : "❌ OFF"}` },
+        { text: `🔍 Vision: ${visionEnabled ? "✅ ON" : "❌ OFF"}` },
+      ],
+      [{ text: "⬅️ Owner Panel" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}

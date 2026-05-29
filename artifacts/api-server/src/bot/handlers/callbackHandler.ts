@@ -80,6 +80,13 @@ import {
   creditsMenuKeyboard,
   referralKeyboard,
   insufficientCreditsKeyboard,
+  mainMenuReplyKeyboard,
+  funSubMenuReplyKeyboard,
+  gamesSubMenuReplyKeyboard,
+  chatMenuReplyKeyboard,
+  createMenuReplyKeyboard,
+  buildSubMenuReplyKeyboard,
+  settingsReplyKeyboard,
 } from "../utils/keyboards.js";
 import { logger } from "../../lib/logger.js";
 import { addCredits, getCredits } from "../services/credits.js";
@@ -100,60 +107,8 @@ import { track } from "../services/analytics.js";
 import { formatAnnouncements } from "../services/announcements.js";
 import { getPromoGroups, getActivePromoGroups, removePromoGroup, togglePromoGroup, claimPromoReward } from "../services/groupGate.js";
 
-// ── Trivia questions ──────────────────────────────────────────────────────────
-
-const TRIVIA = [
-  { q: "What planet is known as the Red Planet?", opts: ["Venus", "Mars", "Jupiter", "Saturn"], ans: 1 },
-  { q: "How many sides does a hexagon have?", opts: ["5", "6", "7", "8"], ans: 1 },
-  { q: "What is the largest ocean on Earth?", opts: ["Atlantic", "Indian", "Arctic", "Pacific"], ans: 3 },
-  { q: "Who painted the Mona Lisa?", opts: ["Van Gogh", "Picasso", "Da Vinci", "Rembrandt"], ans: 2 },
-  { q: "What is the capital of Japan?", opts: ["Osaka", "Kyoto", "Tokyo", "Seoul"], ans: 2 },
-  { q: "How many bones are in the adult human body?", opts: ["106", "206", "306", "406"], ans: 1 },
-  { q: "What is the fastest land animal?", opts: ["Lion", "Horse", "Cheetah", "Leopard"], ans: 2 },
-  { q: "In what year did World War 2 end?", opts: ["1943", "1944", "1945", "1946"], ans: 2 },
-  { q: "What does H2O stand for?", opts: ["Hydrogen only", "Oxygen only", "Water", "Carbon dioxide"], ans: 2 },
-  { q: "How many continents are on Earth?", opts: ["5", "6", "7", "8"], ans: 2 },
-  { q: "What is the smallest planet in our solar system?", opts: ["Mars", "Venus", "Mercury", "Pluto"], ans: 2 },
-  { q: "Who wrote Romeo and Juliet?", opts: ["Charles Dickens", "Shakespeare", "Homer", "Tolstoy"], ans: 1 },
-  { q: "What is the chemical symbol for gold?", opts: ["Go", "Gd", "Au", "Ag"], ans: 2 },
-  { q: "Which country invented pizza?", opts: ["Greece", "France", "Spain", "Italy"], ans: 3 },
-  { q: "How many colors are in a rainbow?", opts: ["5", "6", "7", "8"], ans: 2 },
-  { q: "What is the capital of Australia?", opts: ["Sydney", "Melbourne", "Canberra", "Brisbane"], ans: 2 },
-  { q: "How many players are on a soccer team?", opts: ["9", "10", "11", "12"], ans: 2 },
-  { q: "What language has the most native speakers?", opts: ["English", "Spanish", "Mandarin", "Hindi"], ans: 2 },
-  { q: "What is the hardest natural substance on Earth?", opts: ["Gold", "Iron", "Diamond", "Platinum"], ans: 2 },
-  { q: "Which planet has the most moons?", opts: ["Jupiter", "Saturn", "Uranus", "Neptune"], ans: 1 },
-];
-
-// ── Would You Rather questions ────────────────────────────────────────────────
-
-const WYR = [
-  { a: "be able to fly", b: "be invisible whenever you want" },
-  { a: "always know when someone is lying", b: "get away with any lie you tell" },
-  { a: "speak every language fluently", b: "play every instrument perfectly" },
-  { a: "be incredibly smart", b: "be incredibly attractive" },
-  { a: "never feel pain", b: "never feel sad" },
-  { a: "live without music", b: "live without social media" },
-  { a: "have unlimited money but no friends", b: "have great friends but always be broke" },
-  { a: "be famous for something embarrassing", b: "be unknown but very successful" },
-  { a: "read minds but can't turn it off", b: "see 5 minutes into the future, once a day" },
-  { a: "always be 10 minutes late", b: "always be 20 minutes early" },
-  { a: "eat the same meal every day forever", b: "never eat your favorite food again" },
-  { a: "lose all your photos", b: "lose all memories of the last 3 years" },
-  { a: "be able to control time", b: "be able to control minds" },
-  { a: "live in the past (your choice of era)", b: "live in the future 100 years ahead" },
-  { a: "have a photographic memory", b: "be able to forget anything on command" },
-  { a: "only be able to whisper", b: "only be able to shout" },
-  { a: "never need to sleep", b: "never need to eat" },
-  { a: "know how you will die", b: "know when you will die" },
-  { a: "fight 100 duck-sized horses", b: "fight 1 horse-sized duck" },
-  { a: "travel back in time but never return", b: "see the future but never change it" },
-  { a: "always speak your mind", b: "always know what others are thinking" },
-  { a: "have no internet for a year", b: "have no friends for a year" },
-  { a: "be the funniest person in any room", b: "be the smartest person in any room" },
-  { a: "never use a phone again", b: "never travel again" },
-  { a: "have one real superpower", b: "be the most talented human alive" },
-];
+// ── Game data (shared with privateHandler via games.ts) ───────────────────────
+import { TRIVIA, WYR } from "../data/games.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -210,51 +165,41 @@ export async function handleCallbackQuery(
     // ── Navigation ─────────────────────────────────────────────────────────
 
     if (data === "main_menu" || data === "back_main") {
-      await editMsg(bot, query,
-        `Hey ${name}! What would you like to do?\n\nPick a category below:`,
-        mainMenuKeyboard()
-      );
+      await bot.sendMessage(chatId, `Hey ${name}! What would you like to do?`, { reply_markup: mainMenuReplyKeyboard() });
       return;
     }
 
     if (data === "fun_menu") {
-      await editMsg(bot, query,
-        `Fun Zone 🎉\n\nPick something fun — I dare you:`,
-        funMenuKeyboard()
-      );
+      await bot.sendMessage(chatId, `Fun Zone 🎉`, { reply_markup: funSubMenuReplyKeyboard() });
       return;
     }
 
     if (data === "games_menu") {
-      await editMsg(bot, query,
-        `Game Room 🎮\n\nChallenge yourself:`,
-        gamesMenuKeyboard()
-      );
+      await bot.sendMessage(chatId, `Game Room 🎮`, { reply_markup: gamesSubMenuReplyKeyboard() });
       return;
     }
 
     if (data === "ai_menu") {
-      await editMsg(bot, query,
-        `AI Tools 🤖\n\nWhat do you need?`,
-        aiMenuKeyboard()
-      );
+      await bot.sendMessage(chatId, `Chat — what do you need?`, { reply_markup: chatMenuReplyKeyboard() });
       return;
     }
 
     if (data === "img_menu") {
-      await editMsg(bot, query,
-        `Image Tools 🎨\n\nGenerate or transform images.\nFor editing tools — select one, then send me a photo.`,
-        imageMenuKeyboard()
-      );
+      await bot.sendMessage(chatId, `Create — generate or transform images.`, { reply_markup: createMenuReplyKeyboard() });
+      return;
+    }
+
+    if (data === "build_menu") {
+      await bot.sendMessage(chatId, `Build — create websites & apps.`, { reply_markup: buildSubMenuReplyKeyboard() });
       return;
     }
 
     if (data === "settings_menu") {
       const freshUser = await User.findOne({ userId });
       if (!freshUser) return;
-      await editMsg(bot, query,
+      await bot.sendMessage(chatId,
         `Settings ⚙️\n\nStyle: ${freshUser.settings.style}  |  Lang: ${freshUser.settings.language || "en"}  |  Emojis: ${freshUser.settings.emoji ? "On" : "Off"}\nMood: ${freshUser.mood || "not set"}  |  Length: ${freshUser.settings.length}`,
-        settingsMenuWithPrivacyKeyboard(freshUser)
+        { reply_markup: settingsReplyKeyboard(freshUser) }
       );
       return;
     }
@@ -437,18 +382,7 @@ export async function handleCallbackQuery(
       return;
     }
 
-    // ── Build menu callback ───────────────────────────────────────────────────
-
-    if (data === "build_menu") {
-      await bot.answerCallbackQuery(query.id);
-      await editMsg(bot, query,
-        `🌐 *Website & App Builder*\n\n` +
-        `Tell me what to build and I'll generate the full code — HTML, CSS, JavaScript, and more.\n\n` +
-        `Choose a template or describe your own idea 👇`,
-        buildMenuKeyboard()
-      );
-      return;
-    }
+    // ── Build type selection callbacks ───────────────────────────────────────
 
     if (data === "build_website" || data === "build_react" || data === "build_dashboard" || data === "build_landing" || data === "build_custom") {
       const typeMap: Record<string, string> = {
