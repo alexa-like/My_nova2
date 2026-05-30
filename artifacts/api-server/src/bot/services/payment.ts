@@ -114,8 +114,8 @@ export async function handleStarPayment(
       const newBal = await addCredits(userId, pack.credits);
       await bot.sendMessage(
         chatId,
-        `✅ Payment confirmed!\n\n${pack.badge} +${pack.credits} credits added to your account.\n💰 New balance: ${newBal} credits\n\nThank you for supporting Nova! 🙏`,
-        { reply_markup: { inline_keyboard: [[{ text: "💰 View Credits", callback_data: "credits_menu" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+        `🎉 Payment received — thank you!\n\n${pack.badge} <b>+${pack.credits} credits</b> have been added to your account.\n💰 New balance: <b>${newBal} credits</b>\n\nCredits let you generate images, build projects, and use premium AI features. Enjoy! 🚀`,
+        { parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "💰 View Credits", callback_data: "credits_menu" }, { text: "🏠 Main Menu", callback_data: "main_menu" }]] } }
       );
 
     } else if (payload.startsWith("premium:")) {
@@ -133,8 +133,16 @@ export async function handleStarPayment(
       const durationText = plan.days === -1 ? "Lifetime" : `${plan.days} days`;
       await bot.sendMessage(
         chatId,
-        `✅ Payment confirmed!\n\n${plan.badge} You are now a VIP member!\nDuration: ${durationText}\nExpires: ${expiresAt ? expiresAt.toDateString() : "Never"}\n\nEnjoy unlimited images, priority AI, all premium modes, and zero credit deductions!\n\nThank you! 🙏`,
-        { reply_markup: { inline_keyboard: [[{ text: "💎 View Status", callback_data: "settings_premium" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+        `🎉 Welcome to Premium!\n\n${plan.badge} <b>You are now a VIP member!</b>\n\n` +
+        `⏱ Duration: <b>${durationText}</b>\n📅 Expires: <b>${expiresAt ? expiresAt.toDateString() : "Never (Lifetime!)"}</b>\n\n` +
+        `✨ <b>What you unlocked:</b>\n` +
+        `• 🎨 Up to 20 images per day\n` +
+        `• 🧠 Priority AI with smarter responses\n` +
+        `• 💬 Higher daily message limit\n` +
+        `• 🏗️ More daily builds\n` +
+        `• 🚫 No credit deductions\n\n` +
+        `Thank you so much for your support — it means the world! 🙏`,
+        { parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "💎 View Premium Status", callback_data: "settings_premium" }, { text: "🏠 Main Menu", callback_data: "main_menu" }]] } }
       );
 
     } else {

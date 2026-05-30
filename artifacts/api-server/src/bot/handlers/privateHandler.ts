@@ -499,14 +499,14 @@ export async function handlePrivateMessage(
   if (isRateLimited(user.userId)) {
     await bot.sendMessage(chatId,
       user.settings.emoji
-        ? "You are sending messages too fast. Please wait a minute."
-        : "Slow down! Too many messages. Wait a minute."
+        ? "⏳ You're sending messages a bit too fast! Take a breath and try again in about a minute. I'll be right here 😊"
+        : "⏳ Too many messages in a short time. Please wait about a minute before sending another message."
     );
     return;
   }
 
   if (maintenanceMode) {
-    await bot.sendMessage(chatId, "Nova is currently under maintenance. Check back soon!");
+    await bot.sendMessage(chatId, "🔧 Nova is currently under maintenance — we're making things better for you! Please check back in a little while. Thanks for your patience 🙏");
     return;
   }
 
@@ -1550,11 +1550,36 @@ export async function handlePrivateMessage(
       `🎁 /redeem — Redeem a code\n` +
       `🧹 /forget — Clear memory\n` +
       `❌ /cancel — Cancel current action\n` +
-      `📢 /feedback <msg> — Send feedback\n\n` +
+      `📢 /feedback <msg> — Send feedback\n` +
+      `📡 /status — Check bot & service status\n\n` +
       `📄 Send any PDF/TXT/DOCX — I'll read and analyze it!\n` +
       `🖼️ Send a photo — I'll describe or edit it!\n\n` +
       `Or tap a button below to explore everything 👇`,
       { reply_markup: mainMenuKeyboard() }
+    );
+    return;
+  }
+
+  // /status — show bot service health
+  if (text === "/status") {
+    const maintenance = getMaintenance();
+    const hasAI = !!process.env.OPENROUTER_API_KEY;
+    const hasHF = !!process.env.HUGGINGFACE_API_TOKEN;
+    const premiumBadge = user.premium.active ? "💎 Premium" : "🆓 Free";
+    const imageLimit = await getImageLimit(user.premium.active);
+    const imagesLeft = Math.max(0, imageLimit - user.usage.images);
+    await bot.sendMessage(chatId,
+      `📡 <b>Nova Status</b>\n\n` +
+      `${maintenance ? "🔧 Bot: Under Maintenance" : "🟢 Bot: Online"}\n` +
+      `${hasAI ? "🟢 AI Chat: Online" : "🔴 AI Chat: Offline"}\n` +
+      `🟢 Image Gen: Online (Pollinations)\n` +
+      `${hasHF ? "🟢 HuggingFace: Configured" : "🟡 HuggingFace: Not configured (using free tier)"}\n\n` +
+      `👤 <b>Your Account</b>\n` +
+      `Plan: ${premiumBadge}\n` +
+      `Images left today: ${imagesLeft >= 999999 ? "Unlimited" : imagesLeft}\n` +
+      `Messages today: ${user.usage.messages}\n\n` +
+      `_Having issues? Use /feedback to report them!_`,
+      { parse_mode: "HTML" }
     );
     return;
   }
@@ -1960,7 +1985,8 @@ export async function handlePrivateMessage(
       const senderName = user.username ? `@${user.username}` : (user.firstName || String(user.userId));
       try {
         await bot.sendMessage(ownerId,
-          `Feedback from ${senderName} (ID: ${user.userId}):\n\n${feedbackText}`
+          `💬 <b>New Feedback!</b>\nFrom: ${senderName} (ID: <code>${user.userId}</code>)\n\n${feedbackText}`,
+          { parse_mode: "HTML" }
         );
         user.feedbackCount = (user.feedbackCount || 0) + 1;
         await user.save();
@@ -2382,8 +2408,9 @@ export async function handlePrivateMessage(
   const msgLimit = user.premium.active ? msgLimCfg.usageLimits.premiumMessages : msgLimCfg.usageLimits.freeMessages;
   if (msgLimit >= 0 && user.usage.messages >= msgLimit) {
     await bot.sendMessage(chatId,
-      `Daily message limit reached (${msgLimit}/day). Resets tomorrow.` +
-      (user.premium.active ? "" : " Upgrade to /premium for more messages.")
+      `💬 You've reached your daily message limit (${msgLimit}/day). Your limit resets tomorrow morning — come back then!` +
+      (user.premium.active ? "" : "\n\n💎 Upgrade to Premium for a higher daily limit — tap /premium to learn more."),
+      user.premium.active ? undefined : { reply_markup: { inline_keyboard: [[{ text: "💎 Upgrade to Premium", callback_data: "buy_premium" }]] } }
     );
     return;
   }
@@ -2842,8 +2869,8 @@ export async function handlePhotoMessage(
   const currentEdits = user.usage.edits ?? 0;
   if (currentEdits >= editDailyLimit) {
     await bot.sendMessage(chatId,
-      `Daily photo edit limit reached (${editDailyLimit >= 999999 ? "∞" : editDailyLimit}/day).` +
-      (user.premium.active ? "" : " Upgrade to VIP for unlimited edits — tap 💰 Credits."),
+      `🖼️ You've reached your daily photo edit limit (${editDailyLimit >= 999999 ? "unlimited" : `${editDailyLimit}/day`}). Your limit resets tomorrow!` +
+      (user.premium.active ? "" : "\n\n💎 Premium members get unlimited photo edits every day!"),
       { reply_markup: user.premium.active ? undefined : insufficientCreditsKeyboard() }
     );
     clearPending(user.userId);
@@ -2960,8 +2987,9 @@ async function handleBuildRequest(
   const buildLimit = user.premium.active ? buildLimCfg.usageLimits.premiumBuilds : buildLimCfg.usageLimits.freeBuilds;
   if (buildLimit >= 0 && (user.usage.builds ?? 0) >= buildLimit) {
     await bot.sendMessage(chatId,
-      `Daily build limit reached (${buildLimit}/day). Resets tomorrow.` +
-      (user.premium.active ? "" : " Upgrade to /premium for more daily builds.")
+      `🏗️ You've used all your builds for today (${buildLimit}/day). Your limit resets tomorrow — great work building!` +
+      (user.premium.active ? "" : "\n\n💎 Premium members get more daily builds. Tap /premium to upgrade."),
+      user.premium.active ? undefined : { reply_markup: { inline_keyboard: [[{ text: "💎 Upgrade to Premium", callback_data: "buy_premium" }]] } }
     );
     return;
   }
@@ -3077,7 +3105,10 @@ async function handleStickerGeneration(
   const isPrem = user.premium.active;
   const limit = await getImageLimit(isPrem);
   if (user.usage.images >= limit) {
-    await bot.sendMessage(chatId, `Daily image limit reached (${limit}/day).`);
+    await bot.sendMessage(chatId,
+      `🎨 You've used all ${limit} image${limit === 1 ? "" : "s"} for today!${isPrem ? "\n\nYour limit resets tomorrow. See you then! 😊" : "\n\nUpgrade to Premium for up to 20 images/day 💎\nTap /premium to unlock more."}`,
+      isPrem ? undefined : { reply_markup: { inline_keyboard: [[{ text: "💎 Upgrade to Premium", callback_data: "buy_premium" }]] } }
+    );
     return;
   }
   const stickerStatus = await startLiveStatus(bot, chatId, "🖼️ Creating your sticker", "upload_photo");
@@ -3121,7 +3152,7 @@ export async function handleDocumentMessage(
   if (user.banned) return;
 
   if (getMaintenance()) {
-    await bot.sendMessage(chatId, "Nova is currently under maintenance.");
+    await bot.sendMessage(chatId, "🔧 Nova is currently under maintenance — we're making things better for you! Please check back in a little while. Thanks for your patience 🙏");
     return;
   }
 
@@ -3192,7 +3223,8 @@ async function handleImageGeneration(
 
   if (user.usage.images >= limit) {
     await bot.sendMessage(chatId,
-      `Daily image limit reached (${limit}/day).${isPrem ? "" : " Upgrade to Premium for more: /premium"}`
+      `🎨 You've used all ${limit} image${limit === 1 ? "" : "s"} for today!${isPrem ? "\n\nYour limit resets tomorrow. See you then! 😊" : "\n\nWant more? Premium gives you up to 20 images/day 💎"}`,
+      isPrem ? undefined : { reply_markup: { inline_keyboard: [[{ text: "💎 Upgrade to Premium", callback_data: "buy_premium" }]] } }
     );
     return;
   }

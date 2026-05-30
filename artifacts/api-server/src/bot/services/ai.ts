@@ -289,8 +289,8 @@ export async function chat(
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     return settings.emoji
-      ? "AI service is not configured. Please set OPENROUTER_API_KEY. 😅"
-      : "AI service is not configured. Please set OPENROUTER_API_KEY.";
+      ? "🤖 I'm not fully set up yet — the bot owner needs to configure the AI service. Please check back soon! 😊"
+      : "🤖 The AI service isn't configured yet. The bot owner needs to set it up before I can chat. Please check back soon!";
   }
 
   // ── Sequential fallback chain ─────────────────────────────────────────────

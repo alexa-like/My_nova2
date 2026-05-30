@@ -1022,11 +1022,11 @@ export async function handleGroupMessage(
       try {
         const groupName = msg.chat.title || "a group";
         // DM the user before banning (can't send DM after ban takes effect)
-        await tryDM(bot, target.userId, `You have been banned from ${groupName}.`);
+        await tryDM(bot, target.userId, `🚫 You have been banned from *${groupName}*.\n\nIf you believe this was a mistake, please contact the group admins.`);
         await bot.banChatMember(chatId, target.userId);
         const dbUser = await User.findOne({ userId: target.userId });
         if (dbUser) { dbUser.banned = true; await dbUser.save(); }
-        await bot.sendMessage(chatId, `${name} has been banned.`);
+        await bot.sendMessage(chatId, `🚫 ${name} has been banned from the group.`);
         track("ban", target.userId, chatId).catch(() => {});
       } catch (err: any) {
         logger.error({ err: err?.message, userId: target.userId }, "Ban failed");
@@ -1040,8 +1040,8 @@ export async function handleGroupMessage(
         await bot.unbanChatMember(chatId, target.userId);
         const dbUser = await User.findOne({ userId: target.userId });
         if (dbUser) { dbUser.banned = false; await dbUser.save(); }
-        await tryDM(bot, target.userId, `You have been unbanned from ${msg.chat.title || "a group"}. You may rejoin.`);
-        await bot.sendMessage(chatId, `${name} has been unbanned.`);
+        await tryDM(bot, target.userId, `✅ Good news — you've been unbanned from *${msg.chat.title || "a group"}*! You're welcome to rejoin.`);
+        await bot.sendMessage(chatId, `✅ ${name} has been unbanned and can rejoin the group.`);
       } catch (err: any) {
         logger.error({ err: err?.message }, "Unban failed");
         await bot.sendMessage(chatId, `Failed to unban ${name}.`);
@@ -1053,10 +1053,10 @@ export async function handleGroupMessage(
       try {
         const groupName = msg.chat.title || "a group";
         // DM before kicking (can't reach after removal)
-        await tryDM(bot, target.userId, `You have been kicked from ${groupName}. You may rejoin using an invite link.`);
+        await tryDM(bot, target.userId, `👢 You have been removed from *${groupName}*. You may rejoin using an invite link if you wish.`);
         await bot.banChatMember(chatId, target.userId);
         await bot.unbanChatMember(chatId, target.userId);
-        await bot.sendMessage(chatId, `${name} has been kicked.`);
+        await bot.sendMessage(chatId, `👢 ${name} has been removed from the group.`);
       } catch (err: any) {
         logger.error({ err: err?.message }, "Kick failed");
         await bot.sendMessage(chatId, `Failed to kick ${name}. Make sure I am an admin with ban permission.`);
