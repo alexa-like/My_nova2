@@ -213,6 +213,20 @@ export async function startBot(): Promise<void> {
     try {
       const user = await ensureUser(msg);
 
+      // Notify user if their premium just expired this request
+      if ((user as any)._premiumJustExpired && isPrivate(msg)) {
+        await bot!.sendMessage(msg.chat.id,
+          `💎 Your Premium membership has expired.\n\n` +
+          `You've been moved to the free plan, but all your data and history are safe.\n\n` +
+          `✨ <b>Enjoyed Premium?</b> Renew anytime to get back:\n` +
+          `• 🎨 Up to 20 images/day\n` +
+          `• 🧠 Priority AI responses\n` +
+          `• 💬 Higher message limits\n` +
+          `• 🚫 No credit deductions`,
+          { parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "💎 Renew Premium", callback_data: "buy_premium" }, { text: "🏠 Menu", callback_data: "main_menu" }]] } }
+        ).catch(() => {});
+      }
+
       const isCmd = msg.text?.startsWith("/");
       if (isCmd) {
         const cmdName = msg.text!.trim().split(/\s+/)[0];

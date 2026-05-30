@@ -77,6 +77,7 @@ export async function ensureUser(msg: TelegramBot.Message): Promise<IUser> {
       user.premium.active = false;
       user.premium.plan   = undefined;
       dirty = true;
+      (user as any)._premiumJustExpired = true;
     }
   }
 
