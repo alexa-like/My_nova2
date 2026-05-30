@@ -69,7 +69,7 @@ app.post("/api/bot/webhook", (req, res) => {
 });
 
 // Fallback: serve index.html for all non-API routes (SPA routing)
-app.get("/{*path}", (_req, res) => {
+app.get("*", (_req, res) => {
   res.sendFile(path.join(dashboardDist, "index.html"));
 });
 

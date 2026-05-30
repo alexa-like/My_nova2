@@ -2108,7 +2108,7 @@ export async function handleCallbackQuery(
 
     if (data === "own_test_img") {
       if (!user.isOwner) { await answer(bot, query.id, "Not authorized."); return; }
-      const hfKey = process.env.HUGGING_FACE_API_KEY;
+      const hfKey = process.env.HUGGINGFACE_API_TOKEN;
       await answer(bot, query.id);
 
       const config = await getOrCreateBotConfig();
@@ -2164,7 +2164,7 @@ export async function handleCallbackQuery(
             } catch { /* ignore */ }
             imgLines.push(`⏳ <b>${label}</b> — Loading${esc(eta)}\n   Model warming up on HuggingFace`);
           } else if (status === 401 || status === 403) {
-            imgLines.push(`🔑 <b>${label}</b> — Auth error\n   Check HUGGING_FACE_API_KEY`);
+            imgLines.push(`🔑 <b>${label}</b> — Auth error\n   Check HUGGINGFACE_API_TOKEN`);
           } else if (err.code === "ECONNABORTED") {
             imgLines.push(`✅ <b>${label}</b> — Alive (timeout after 8s)\n   Model is loaded &amp; responding`);
           } else {
@@ -2176,7 +2176,7 @@ export async function handleCallbackQuery(
 
       const passing = imgLines.filter(l => l.startsWith("✅") || l.startsWith("⏳")).length;
       const active = config.imageModels.find(m => m.id === activeId);
-      const noKey = !hfKey ? "\n⚠️ <i>HUGGING_FACE_API_KEY not set — using anonymous tier</i>" : "";
+      const noKey = !hfKey ? "\n⚠️ <i>HUGGINGFACE_API_TOKEN not set — using anonymous tier</i>" : "";
 
       await editMsg(bot, query,
         `🧪 <b>Image Model Test Results</b>\n━━━━━━━━━━━━━━━━\n` +

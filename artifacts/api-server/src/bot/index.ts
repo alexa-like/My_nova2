@@ -256,7 +256,7 @@ export async function startBot(): Promise<void> {
           if (parts.length === 2) {
             const groupChatId = parseInt(parts[0], 10);
             const targetUserId = parseInt(parts[1], 10);
-            if (msg.from!.id !== targetUserId) {
+            if (!msg.from || msg.from.id !== targetUserId) {
               await bot!.sendMessage(msg.chat.id, "This verification link is not for you.");
               return;
             }
@@ -308,7 +308,7 @@ export async function startBot(): Promise<void> {
         // Captcha: muted users use inline keyboard buttons, not text
         // (text answers still supported as fallback but muted users can't type)
         if (msg.text) {
-          const captchaKey = `${msg.chat.id}:${msg.from!.id}`;
+          const captchaKey = `${msg.chat.id}:${msg.from?.id ?? 0}`;
           const challenge = captchaStore.get(captchaKey);
           if (challenge) {
             await bot!.deleteMessage(msg.chat.id, msg.message_id).catch(() => {});
