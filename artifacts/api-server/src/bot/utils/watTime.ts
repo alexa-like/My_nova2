@@ -40,6 +40,31 @@ export function msUntilNextMidnightWAT(): number {
   return nextMidnightUTC - now.getTime();
 }
 
+/** Returns the Date object for the next midnight in WAT */
+export function nextMidnightWATDate(): Date {
+  return new Date(Date.now() + msUntilNextMidnightWAT());
+}
+
+/** Milliseconds until a specific HH:MM in WAT (today if not yet passed, otherwise tomorrow) */
+export function msUntilWATTime(hour: number, minute: number): number {
+  const now = new Date();
+  const nowWAT = new Date(now.getTime() + WAT_OFFSET_MS);
+
+  let targetUTC = Date.UTC(
+    nowWAT.getUTCFullYear(), nowWAT.getUTCMonth(), nowWAT.getUTCDate(),
+    hour, minute, 0, 0
+  ) - WAT_OFFSET_MS;
+
+  if (targetUTC <= now.getTime()) {
+    targetUTC = Date.UTC(
+      nowWAT.getUTCFullYear(), nowWAT.getUTCMonth(), nowWAT.getUTCDate() + 1,
+      hour, minute, 0, 0
+    ) - WAT_OFFSET_MS;
+  }
+
+  return targetUTC - now.getTime();
+}
+
 /** Human-readable time remaining until next midnight WAT (e.g. "3h 42m") */
 export function timeUntilMidnightWATStr(): string {
   const ms = msUntilNextMidnightWAT();

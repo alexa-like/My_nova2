@@ -10,8 +10,18 @@ export interface IUser extends Document {
   settings: {
     style: "friendly" | "funny" | "serious" | "balanced";
     emoji: boolean;
-    length: "long" | "short";
     language: string;
+  };
+  dailyGift?: {
+    label: string;
+    type: "images" | "credits";
+    amount: number;
+    remaining: number;
+    command: string;
+    expiresAt: Date;
+    warned: boolean;
+    expired: boolean;
+    giftDate: string;
   };
   mood?: string;
   interests: string[];
@@ -83,7 +93,6 @@ const UserSchema = new Schema<IUser>(
         default: "friendly",
       },
       emoji: { type: Boolean, default: true },
-      length: { type: String, enum: ["long", "short"], default: "long" },
       language: { type: String, default: "en" },
     },
     mood: { type: String },
@@ -141,6 +150,17 @@ const UserSchema = new Schema<IUser>(
     totalImages:       { type: Number, default: 0 },
     totalBuilds:       { type: Number, default: 0 },
     totalSearches:     { type: Number, default: 0 },
+    dailyGift: {
+      label:     { type: String },
+      type:      { type: String, enum: ["images", "credits"] },
+      amount:    { type: Number },
+      remaining: { type: Number },
+      command:   { type: String },
+      expiresAt: { type: Date },
+      warned:    { type: Boolean, default: false },
+      expired:   { type: Boolean, default: false },
+      giftDate:  { type: String },
+    },
   },
   { timestamps: true }
 );

@@ -35,7 +35,7 @@ import {
   moodPickerKeyboard,
   settingsMenuKeyboard,
   styleMenuKeyboard,
-  lengthMenuKeyboard,
+
   langMenuKeyboard,
   backToMainKeyboard,
   backToSettingsKeyboard,
@@ -198,7 +198,7 @@ export async function handleCallbackQuery(
       const freshUser = await User.findOne({ userId });
       if (!freshUser) return;
       await bot.sendMessage(chatId,
-        `Settings ⚙️\n\nStyle: ${freshUser.settings.style}  |  Lang: ${freshUser.settings.language || "en"}  |  Emojis: ${freshUser.settings.emoji ? "On" : "Off"}\nMood: ${freshUser.mood || "not set"}  |  Length: ${freshUser.settings.length}`,
+        `Settings ⚙️\n\nStyle: ${freshUser.settings.style}  |  Lang: ${freshUser.settings.language || "en"}  |  Emojis: ${freshUser.settings.emoji ? "On" : "Off"}\nMood: ${freshUser.mood || "not set"}`,
         { reply_markup: settingsReplyKeyboard(freshUser) }
       );
       return;
@@ -420,7 +420,7 @@ export async function handleCallbackQuery(
 
     if (data === "fun_joke") {
       await editMsg(bot, query, "Cooking up something funny... 🍳");
-      const joke = await chat(userId, chatId + 7001, "Tell me one short, clever, clean joke. Just the joke — no intro, no explanation.", { style: "funny", emoji: e, length: "short" }, user.premium.active);
+      const joke = await chat(userId, chatId + 7001, "Tell me one short, clever, clean joke. Just the joke — no intro, no explanation.", { style: "funny", emoji: e }, user.premium.active);
       await editMsg(bot, query, `😂 Joke\n\n${joke}`, funMenuKeyboard());
       return;
     }
@@ -455,7 +455,7 @@ export async function handleCallbackQuery(
     if (data === "fun_iq") {
       await editMsg(bot, query, "🧠 Calculating your genius level...");
       const iqPrompt = `Give ${name} a funny, creative, fictional IQ test result. Make up a score between 60 and 160 and give a humorous personality description. Keep it light and playful, 3-4 sentences.`;
-      const result = await chat(userId, chatId + 7002, iqPrompt, { style: "funny", emoji: e, length: "short" }, user.premium.active);
+      const result = await chat(userId, chatId + 7002, iqPrompt, { style: "funny", emoji: e }, user.premium.active);
       await editMsg(bot, query, `🧠 IQ Test Results\n\n${result}`, funMenuKeyboard());
       return;
     }
@@ -463,7 +463,7 @@ export async function handleCallbackQuery(
     if (data === "fun_compliment") {
       await editMsg(bot, query, "✨ Preparing something special just for you...");
       const prompt = `Give ${name} a genuinely warm, specific, and uplifting compliment. Make it feel personal and real — not generic. 2-3 sentences.`;
-      const result = await chat(userId, chatId + 8001, prompt, { style: "friendly", emoji: e, length: "short" }, user.premium.active);
+      const result = await chat(userId, chatId + 8001, prompt, { style: "friendly", emoji: e }, user.premium.active);
       await editMsg(bot, query, `🌟 Just for You\n\n${result}`, funMenuKeyboard());
       return;
     }
@@ -471,7 +471,7 @@ export async function handleCallbackQuery(
     if (data === "fun_fortune") {
       await editMsg(bot, query, "🔮 Gazing into the crystal ball...");
       const prompt = `Tell ${name} a mystical, dramatic, slightly cryptic fortune reading. Reference their energy, upcoming choices, and a surprise twist. Make it feel magical and real. 4-5 sentences.`;
-      const result = await chat(userId, chatId + 8002, prompt, { style: "friendly", emoji: e, length: "short" }, user.premium.active);
+      const result = await chat(userId, chatId + 8002, prompt, { style: "friendly", emoji: e }, user.premium.active);
       await editMsg(bot, query, `🔮 Your Fortune\n\n${result}`, funMenuKeyboard());
       return;
     }
@@ -479,7 +479,7 @@ export async function handleCallbackQuery(
     if (data === "fun_dare") {
       await editMsg(bot, query, "😈 Picking your dare...");
       const prompt = `Give ${name} a fun, safe, creative dare they can do alone or with friends. Nothing embarrassing, harmful, or illegal. Just playful and amusing. Keep it to 1-2 sentences.`;
-      const result = await chat(userId, chatId + 8003, prompt, { style: "funny", emoji: e, length: "short" }, user.premium.active);
+      const result = await chat(userId, chatId + 8003, prompt, { style: "funny", emoji: e }, user.premium.active);
       await editMsg(bot, query, `😈 Your Dare\n\n${result}\n\nDo you accept? 😏`, funMenuKeyboard());
       return;
     }
@@ -487,7 +487,7 @@ export async function handleCallbackQuery(
     if (data === "fun_vibe") {
       await editMsg(bot, query, "✨ Reading your energy...");
       const prompt = `Do a playful vibe check on ${name}. Based on nothing but vibes, describe their energy, aura color, spirit animal, and give them a vibe score out of 10. Make it fun and dramatic. 4-5 sentences.`;
-      const result = await chat(userId, chatId + 8004, prompt, { style: "funny", emoji: e, length: "short" }, user.premium.active);
+      const result = await chat(userId, chatId + 8004, prompt, { style: "funny", emoji: e }, user.premium.active);
       await editMsg(bot, query, `✨ Vibe Check Results\n\n${result}`, funMenuKeyboard());
       return;
     }
@@ -495,7 +495,7 @@ export async function handleCallbackQuery(
     if (data === "fun_truth") {
       await editMsg(bot, query, "💭 Coming up with a deep one...");
       const prompt = `Ask ${name} one deep, thought-provoking "truth" question — the kind asked in a late-night honest conversation. Something philosophical, personal, or revealing. Just the question. Make it really good.`;
-      const result = await chat(userId, chatId + 8005, prompt, { style: "balanced", emoji: e, length: "short" }, user.premium.active);
+      const result = await chat(userId, chatId + 8005, prompt, { style: "balanced", emoji: e }, user.premium.active);
       setPending(userId, "fun_truth_reply");
       await editMsg(bot, query, `💭 Truth Question for You\n\n${result}\n\nTake your time and reply whenever you're ready... 👀`, backToFunKeyboard());
       return;
@@ -566,7 +566,7 @@ export async function handleCallbackQuery(
     if (data === "fun_word") {
       await editMsg(bot, query, "📖 Looking up something interesting...");
       const prompt = `Give me a fascinating, obscure, or beautiful word (from any language) that most people don't know. Format:\n\nWord: [word]\nOrigin: [language/origin]\nMeaning: [clear definition]\nExample: [one sentence using it]\n\nMake it genuinely interesting.`;
-      const result = await chat(userId, chatId + 8006, prompt, { style: "balanced", emoji: false, length: "short" }, user.premium.active);
+      const result = await chat(userId, chatId + 8006, prompt, { style: "balanced", emoji: false }, user.premium.active);
       await editMsg(bot, query, `📖 Word of the Day\n\n${result}`, gamesMenuKeyboard());
       return;
     }
@@ -574,7 +574,7 @@ export async function handleCallbackQuery(
     if (data === "fun_fact_game") {
       await editMsg(bot, query, "🎲 Digging through the archives of reality...");
       const prompt = `Tell me one genuinely mind-blowing, true, verifiable fact that most people don't know. Start directly with the fact. 2-3 sentences max.`;
-      const result = await chat(userId, chatId + 8007, prompt, { style: "balanced", emoji: e, length: "short" }, user.premium.active);
+      const result = await chat(userId, chatId + 8007, prompt, { style: "balanced", emoji: e }, user.premium.active);
       await editMsg(bot, query, `🎲 Mind-Blowing Fact\n\n${result}`, gamesMenuKeyboard());
       return;
     }
@@ -1111,7 +1111,7 @@ export async function handleCallbackQuery(
           "• Key things you've told me\n" +
           "• Any preferences or settings I've mentioned\n\n" +
           "If there's no significant history yet, say so briefly.";
-        const reply = await chat(userId, chatId, historyPrompt, { style: "serious", emoji: false, length: "long" }, user.premium.active);
+        const reply = await chat(userId, chatId, historyPrompt, { style: "serious", emoji: false }, user.premium.active);
         stopTyping();
         await bot.sendMessage(chatId, `📜 Conversation History\n\n${reply}`, {
           reply_markup: { inline_keyboard: [
@@ -1306,28 +1306,6 @@ export async function handleCallbackQuery(
         `✅ Style set to: ${newStyle}\n\nPick another or go back:`,
         styleMenuKeyboard(newStyle)
       );
-      return;
-    }
-
-    if (data === "settings_length") {
-      await editMsg(bot, query,
-        `📏 Reply Length\n\nCurrent: ${user.settings.length}\n\nHow long should Nova's replies be?`,
-        lengthMenuKeyboard(user.settings.length)
-      );
-      return;
-    }
-
-    if (data === "settings_length_short") {
-      user.settings.length = "short";
-      await user.save();
-      await editMsg(bot, query, `✅ Short replies — quick and to the point.`, lengthMenuKeyboard("short"));
-      return;
-    }
-
-    if (data === "settings_length_long") {
-      user.settings.length = "long";
-      await user.save();
-      await editMsg(bot, query, `✅ Long replies — detailed and expressive.`, lengthMenuKeyboard("long"));
       return;
     }
 
@@ -1589,21 +1567,21 @@ export async function handleCallbackQuery(
 
     if (data === "quick_quote") {
       await editMsg(bot, query, "✍️ Fetching a quote...");
-      const reply = await chat(userId, chatId + 1111, "Give me one inspiring or thought-provoking quote. Format: \"Quote\" — Author. No intro.", { style: "friendly", emoji: e, length: "short" }, user.premium.active);
+      const reply = await chat(userId, chatId + 1111, "Give me one inspiring or thought-provoking quote. Format: \"Quote\" — Author. No intro.", { style: "friendly", emoji: e }, user.premium.active);
       await editMsg(bot, query, `💬 Quote\n\n${reply}`, repeatKeyboard("quick_quote", "fun_menu"));
       return;
     }
 
     if (data === "quick_fact") {
       await editMsg(bot, query, "🔍 Looking up something wild...");
-      const reply = await chat(userId, chatId + 2222, "Tell me one surprising, mind-blowing, and true fact. Keep it to 2-3 sentences. Start directly with the fact.", { style: "balanced", emoji: e, length: "short" }, user.premium.active);
+      const reply = await chat(userId, chatId + 2222, "Tell me one surprising, mind-blowing, and true fact. Keep it to 2-3 sentences. Start directly with the fact.", { style: "balanced", emoji: e }, user.premium.active);
       await editMsg(bot, query, `🎲 Did You Know?\n\n${reply}`, repeatKeyboard("quick_fact", "fun_menu"));
       return;
     }
 
     if (data === "quick_tip") {
       await editMsg(bot, query, "💡 Thinking...");
-      const reply = await chat(userId, chatId + 3333, "Give me one specific, actionable productivity, health, or life improvement tip. 2-3 sentences. No generic advice.", { style: "balanced", emoji: e, length: "short" }, user.premium.active);
+      const reply = await chat(userId, chatId + 3333, "Give me one specific, actionable productivity, health, or life improvement tip. 2-3 sentences. No generic advice.", { style: "balanced", emoji: e }, user.premium.active);
       await editMsg(bot, query, `💡 Tip\n\n${reply}`, repeatKeyboard("quick_tip", "main_menu"));
       return;
     }
@@ -1627,8 +1605,7 @@ export async function handleCallbackQuery(
         `Style: ${user.settings.style}\n` +
         `Language: ${user.settings.language || "en"}\n` +
         `Mood: ${user.mood || "Not set"}\n` +
-        `Emojis: ${user.settings.emoji ? "On" : "Off"}\n` +
-        `Reply length: ${user.settings.length}\n\n` +
+        `Emojis: ${user.settings.emoji ? "On" : "Off"}\n\n` +
         `── Usage ──\n` +
         `Messages today: ${user.usage.messages}\n` +
         `Images today: ${user.usage.images}/${await getImageLimit(user.premium.active)}\n` +
@@ -2524,7 +2501,7 @@ export async function handleCallbackQuery(
       const field = match[1];
       const groupChatId = parseInt(match[2]);
       const ALLOWED_TOGGLE_FIELDS = new Set([
-        "aiEnabled", "emoji", "length", "antilink", "antiflood",
+        "aiEnabled", "emoji", "antilink", "antiflood",
         "captchaEnabled", "autoDeleteServiceMessages", "locked",
       ]);
       if (!ALLOWED_TOGGLE_FIELDS.has(field)) { await answer(bot, query.id, "Unknown setting."); return; }
@@ -2532,13 +2509,7 @@ export async function handleCallbackQuery(
       if (!isAdm) { await answer(bot, query.id, "Only group admins can change settings."); return; }
       const gs = await GroupSettings.findOne({ chatId: groupChatId });
       if (!gs) { await answer(bot, query.id, "Settings not found."); return; }
-      const lengthOptions: Array<"short" | "long"> = ["short", "long"];
-      if (field === "length") {
-        const cur = lengthOptions.indexOf(gs.length);
-        gs.length = lengthOptions[(cur + 1) % lengthOptions.length];
-      } else {
-        (gs as any)[field] = !(gs as any)[field];
-      }
+      (gs as any)[field] = !(gs as any)[field];
       await gs.save();
       await answer(bot, query.id, "✅ Updated");
       const { groupSettingsKeyboard } = await import("../utils/keyboards.js");
@@ -2695,17 +2666,18 @@ export async function handleCallbackQuery(
         const expiry = user.premium.expiresAt && user.premium.expiresAt > now ? user.premium.expiresAt : now;
         user.premium.active = true; user.premium.expiresAt = addDays(expiry, 7);
         user.premium.plan = user.premium.plan || "daily";
-        rewardMsg = `🌟 LEGENDARY! You won 7 days of Premium!\n\nKeep your streak going for better odds!`;
+        rewardMsg = `🎉 You won: 7 days of Premium!\n🌟 LEGENDARY reward!\n\nEnjoy all premium perks for a full week!`;
       } else if (roll < 15 + streakBonus) {
         const expiry = user.premium.expiresAt && user.premium.expiresAt > now ? user.premium.expiresAt : now;
         user.premium.active = true; user.premium.expiresAt = addDays(expiry, 3);
         user.premium.plan = user.premium.plan || "daily";
-        rewardMsg = `💎 RARE! You won 3 days of Premium!\n\nEnjoy unlimited images and priority AI!`;
+        rewardMsg = `🎉 You won: 3 days of Premium!\n💎 RARE reward!\n\nEnjoy unlimited images and priority AI!`;
       } else if (roll < 40 + Math.floor(streakBonus / 2)) {
         user.bonusImages = (user.bonusImages || 0) + 10;
-        rewardMsg = `✨ Nice! +10 bonus image slots for today!\n\nGenerate more images than usual today!`;
+        rewardMsg = `🎉 You won: +10 bonus image slots!\n✨ Generate more images than usual today!`;
       } else {
-        rewardMsg = `💫 Good job showing up!\n\nNothing special today, but your streak grows. Longer streaks unlock better odds for rare rewards!`;
+        user.credits = (user.credits ?? 0) + 5;
+        rewardMsg = `🎉 You won: +5 credits!\n💰 Credits added to your account. Use /image or other features to spend them!`;
       }
       user.streak = newStreak;
       user.lastDailyReward = now;

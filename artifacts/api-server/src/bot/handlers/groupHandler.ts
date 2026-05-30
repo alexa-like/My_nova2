@@ -441,7 +441,7 @@ export async function handleGroupMessage(
     const reply = await chat(fromId, chatId + 1111,
       "Give me one mind-blowing fact. Just the fact itself, no intro text.",
       {
-        style: "friendly", emoji: groupSettings.emoji, length: "short",
+        style: "friendly", emoji: groupSettings.emoji,
         language: groupSettings.language !== "auto" ? groupSettings.language : undefined,
       },
       user.premium.active
@@ -459,7 +459,7 @@ export async function handleGroupMessage(
     const reply = await chat(fromId, chatId + 2222,
       `Give me one inspiring quote with attribution. Format: "Quote" — Author. Nothing else.`,
       {
-        style: "friendly", emoji: false, length: "short",
+        style: "friendly", emoji: false,
         language: groupSettings.language !== "auto" ? groupSettings.language : undefined,
       },
       user.premium.active
@@ -477,7 +477,7 @@ export async function handleGroupMessage(
     const reply = await chat(fromId, chatId + 3333,
       "Give me one practical life or productivity tip. 2 sentences max, no fluff.",
       {
-        style: "friendly", emoji: groupSettings.emoji, length: "short",
+        style: "friendly", emoji: groupSettings.emoji,
         language: groupSettings.language !== "auto" ? groupSettings.language : undefined,
       },
       user.premium.active
@@ -535,7 +535,7 @@ export async function handleGroupMessage(
       const summary = await chat(fromId, chatId + 8888,
         `Summarize this conversation in 3-5 bullet points. Be concise:\n\n${convoText}`,
         {
-          style: "serious", emoji: groupSettings.emoji, length: "short",
+          style: "serious", emoji: groupSettings.emoji,
           language: groupSettings.language !== "auto" ? groupSettings.language : undefined,
         },
         user.premium.active
@@ -1339,7 +1339,6 @@ export async function handleGroupMessage(
     const reply = await chat(fromId, chatId + 5555, question, {
       style: groupSettings.style,
       emoji: groupSettings.emoji,
-      length: "short",
     }, user.premium.active);
     stopTypingAsk();
     await safeSend(bot, chatId, reply);
@@ -1359,7 +1358,7 @@ export async function handleGroupMessage(
     const stopTypingTr = startTypingLoop(bot, chatId);
     const reply = await chat(fromId, chatId + 9999,
       `Translate the following to English. Only respond with the translation, nothing else:\n\n"${textToTranslate}"`,
-      { style: "serious", emoji: false, length: "short" },
+      { style: "serious", emoji: false },
       user.premium.active
     );
     stopTypingTr();
@@ -1400,7 +1399,7 @@ export async function handleGroupMessage(
       }
       const aiPrompt = `Based on these web search results for "${query}":\n\n${raw}\n\nSummarize the key findings briefly and helpfully. Be concise.`;
       const aiReply = await chat(fromId, chatId + 7777, aiPrompt,
-        { style: groupSettings.style, emoji: groupSettings.emoji, length: "short" },
+        { style: groupSettings.style, emoji: groupSettings.emoji },
         user.premium.active
       );
       stopSearchTyping();
@@ -1502,7 +1501,6 @@ export async function handleGroupMessage(
   const reply = await chat(fromId, chatId, cleanText, {
     style: groupSettings.style,
     emoji: groupSettings.emoji,
-    length: "short",
   }, user.premium.active, user.mood ?? undefined);
   stopTyping();
 

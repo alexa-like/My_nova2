@@ -17,6 +17,8 @@ import { disconnectDB } from "./services/db.js";
 import { logger } from "../lib/logger.js";
 import { seedDefaultMandatoryGroup } from "./services/groupGate.js";
 import { handleStarPayment } from "./services/payment.js";
+import { msUntilNextMidnightWAT, msUntilWATTime, nextMidnightWATDate } from "./utils/watTime.js";
+import { User } from "./models/User.js";
 
 // ── In-memory captcha store ─────────────────────────────────────────────────
 interface CaptchaChallenge {
@@ -717,29 +719,130 @@ export async function startBot(): Promise<void> {
   process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
   process.on("SIGINT",  () => gracefulShutdown("SIGINT"));
 
-  // ── Daily report scheduler ─────────────────────────────────────────────────
+  // ── Schedulers ─────────────────────────────────────────────────────────────
   scheduleDailyReport(bot);
+  scheduleAutoGifts(bot);
+  scheduleGiftExpiryWarnings(bot);
 
   logger.info("Nova is listening for messages");
 }
 
 function scheduleDailyReport(botInstance: TelegramBot): void {
-  const msUntilMidnight = (): number => {
-    const now = new Date();
-    const midnight = new Date(now);
-    midnight.setUTCHours(24, 0, 0, 0);
-    return midnight.getTime() - now.getTime();
-  };
-
   const scheduleNext = () => {
     setTimeout(async () => {
       await sendDailyReport(botInstance);
       scheduleNext();
-    }, msUntilMidnight());
+    }, msUntilNextMidnightWAT());
   };
-
   scheduleNext();
-  logger.info({ nextReportMs: msUntilMidnight() }, "Daily report scheduled");
+  logger.info({ nextReportMs: msUntilNextMidnightWAT() }, "Daily report scheduled (WAT midnight)");
+}
+
+function scheduleAutoGifts(botInstance: TelegramBot): void {
+  const scheduleNext = () => {
+    setTimeout(async () => {
+      try {
+        const now = new Date();
+        // Calculate gift expiry = next midnight WAT from now
+        const expiresAt = nextMidnightWATDate();
+
+        // Step 1: expire any old unredeemed gifts from yesterday
+        await User.updateMany(
+          { "dailyGift.expired": false, "dailyGift.expiresAt": { $lt: now } },
+          { $set: { "dailyGift.expired": true } }
+        );
+
+        // Step 2: gift ALL users with 3 free image slots for today
+        const giftLabel = "3 free image generations";
+        await User.updateMany(
+          {},
+          {
+            $set: {
+              "dailyGift.label": giftLabel,
+              "dailyGift.type": "image",
+              "dailyGift.amount": 3,
+              "dailyGift.remaining": 3,
+              "dailyGift.command": "/image",
+              "dailyGift.expiresAt": expiresAt,
+              "dailyGift.expired": false,
+              "dailyGift.warned": false,
+              "dailyGift.giftDate": now,
+            }
+          }
+        );
+
+        // Step 3: notify all users with a Telegram ID (userId > 0)
+        const users = await User.find({ userId: { $gt: 0 } }).select("userId").lean();
+        let sent = 0;
+        for (const u of users) {
+          try {
+            await botInstance.sendMessage(
+              u.userId,
+              `🎁 Daily Gift!\n\nYou've received 3 free image generations for today!\n\nUse /image to generate images — no credits needed.\n\n⏰ Gift expires at midnight Nigeria time 🇳🇬`
+            );
+            sent++;
+          } catch {
+            // User may have blocked the bot — silently skip
+          }
+          // Small delay to avoid Telegram rate limits
+          await new Promise(r => setTimeout(r, 50));
+        }
+        logger.info({ sent, total: users.length }, "Auto-gifts sent");
+      } catch (err) {
+        logger.error({ err }, "scheduleAutoGifts error");
+      }
+      scheduleNext();
+    }, msUntilNextMidnightWAT());
+  };
+  scheduleNext();
+  logger.info({ nextGiftMs: msUntilNextMidnightWAT() }, "Auto-gift scheduler armed (WAT midnight)");
+}
+
+function scheduleGiftExpiryWarnings(botInstance: TelegramBot): void {
+  const scheduleNext = () => {
+    setTimeout(async () => {
+      try {
+        // Find users with remaining gift that has not been warned yet and expires tonight
+        const now = new Date();
+        const users = await User.find({
+          "dailyGift.expired": false,
+          "dailyGift.warned": false,
+          "dailyGift.remaining": { $gt: 0 },
+          "dailyGift.expiresAt": { $gt: now },
+          userId: { $gt: 0 },
+        }).select("userId dailyGift").lean();
+
+        for (const u of users) {
+          try {
+            const g = (u as any).dailyGift;
+            await botInstance.sendMessage(
+              u.userId,
+              `⏰ Reminder: You still have ${g.remaining} free image generation${g.remaining !== 1 ? "s" : ""} left!\n\nThey expire at midnight Nigeria time 🇳🇬 — use them before they're gone!\n\nType /image to generate now.`
+            );
+          } catch {
+            // User may have blocked the bot
+          }
+          await new Promise(r => setTimeout(r, 50));
+        }
+        // Mark them as warned
+        await User.updateMany(
+          {
+            "dailyGift.expired": false,
+            "dailyGift.warned": false,
+            "dailyGift.remaining": { $gt: 0 },
+            "dailyGift.expiresAt": { $gt: now },
+          },
+          { $set: { "dailyGift.warned": true } }
+        );
+        logger.info({ warned: users.length }, "Gift expiry warnings sent");
+      } catch (err) {
+        logger.error({ err }, "scheduleGiftExpiryWarnings error");
+      }
+      scheduleNext();
+    }, msUntilWATTime(23, 59));
+  };
+  scheduleNext();
+  logger.info({ nextWarningMs: msUntilWATTime(23, 59) }, "Gift expiry warning scheduler armed (23:59 WAT)");
 }
 
 export function getBot(): TelegramBot | null {

@@ -74,7 +74,7 @@ export async function handleInlineQuery(
       userId,
       userId, // use userId as chatId for inline (separate context)
       text,
-      { style: "balanced", emoji: true, length: "short" },
+      { style: "balanced", emoji: true },
       false
     );
 

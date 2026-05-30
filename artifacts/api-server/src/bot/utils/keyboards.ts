@@ -451,24 +451,6 @@ export function styleMenuKeyboard(current: string): TelegramBot.InlineKeyboardMa
 
 // ── Reply length keyboard ─────────────────────────────────────────────────────
 
-export function lengthMenuKeyboard(current: string): TelegramBot.InlineKeyboardMarkup {
-  return {
-    inline_keyboard: [
-      [
-        {
-          text: (current === "short" ? "✅ " : "") + "📌 Short",
-          callback_data: "settings_length_short",
-        },
-        {
-          text: (current === "long" ? "✅ " : "") + "📖 Long",
-          callback_data: "settings_length_long",
-        },
-      ],
-      [{ text: "⬅️ Back", callback_data: "settings_menu" }],
-    ],
-  };
-}
-
 // ── Language keyboard — 2 per row ─────────────────────────────────────────────
 
 export function langMenuKeyboard(current: string): TelegramBot.InlineKeyboardMarkup {
@@ -847,7 +829,7 @@ export function userModelKeyboard(
 
 export function groupSettingsKeyboard(
   gs: {
-    aiEnabled: boolean; style: string; emoji: boolean; length: string;
+    aiEnabled: boolean; style: string; emoji: boolean;
     antilink: boolean; antiflood: boolean; captchaEnabled: boolean;
     autoDeleteServiceMessages: boolean; locked: boolean; slowmode: number; warnLimit: number;
   },
@@ -859,11 +841,10 @@ export function groupSettingsKeyboard(
     inline_keyboard: [
       [
         { text: `🤖 AI: ${gs.aiEnabled ? on : off}`, callback_data: `grp_tog_aiEnabled_${c}` },
-        { text: `😂 Emoji: ${gs.emoji ? on : off}`, callback_data: `grp_tog_emoji_${c}` },
+        { text: `🎭 Style: ${gs.style}`, callback_data: `grp_style_${c}` },
       ],
       [
-        { text: `🎭 Style: ${gs.style}`, callback_data: `grp_style_${c}` },
-        { text: `📏 Length: ${gs.length}`, callback_data: `grp_tog_length_${c}` },
+        { text: `😂 Emoji: ${gs.emoji ? on : off}`, callback_data: `grp_tog_emoji_${c}` },
       ],
       [
         { text: `🔗 Anti-link: ${gs.antilink ? on : off}`, callback_data: `grp_tog_antilink_${c}` },
@@ -1125,11 +1106,10 @@ export function settingsMenuWithPrivacyKeyboard(user: IUser): TelegramBot.Inline
         { text: "📊 My Stats",   callback_data: "show_stats" },
       ],
       [
-        { text: "🎭 AI Style",      callback_data: "settings_style" },
-        { text: "📏 Reply Length",  callback_data: "settings_length" },
+        { text: "🎭 AI Style",  callback_data: "settings_style" },
+        { text: "🌐 Language",  callback_data: "settings_lang" },
       ],
       [
-        { text: "🌐 Language",  callback_data: "settings_lang" },
         { text: moodLabel,      callback_data: "settings_mood" },
       ],
       [
@@ -1350,7 +1330,7 @@ export function settingsReplyKeyboard(user: IUser): TelegramBot.ReplyKeyboardMar
   return {
     keyboard: [
       [{ text: "👤 My Profile" }, { text: "📊 My Stats" }],
-      [{ text: "🎭 AI Style" }, { text: "📏 Reply Length" }],
+      [{ text: "🎭 AI Style" }],
       [{ text: "🌐 Language" }, { text: "😶 Set Mood" }],
       [{ text: emojiLabel }, { text: "🤖 AI Model" }],
       [{ text: "💎 Premium Plans" }, { text: githubLabel }],
@@ -1369,20 +1349,6 @@ export function aiStyleReplyKeyboard(current: string): TelegramBot.ReplyKeyboard
     keyboard: [
       [mark("friendly", "🤝 Friendly"), mark("funny", "😄 Funny Style")],
       [mark("serious", "💼 Serious"), mark("balanced", "⚖️ Balanced")],
-      [{ text: "⬅️ Settings" }],
-    ],
-    resize_keyboard: true,
-    is_persistent: true,
-  };
-}
-
-export function replyLengthReplyKeyboard(current: string): TelegramBot.ReplyKeyboardMarkup {
-  return {
-    keyboard: [
-      [
-        { text: (current === "short" ? "✅ " : "") + "📌 Short Replies" },
-        { text: (current === "long" ? "✅ " : "") + "📖 Long Replies" },
-      ],
       [{ text: "⬅️ Settings" }],
     ],
     resize_keyboard: true,

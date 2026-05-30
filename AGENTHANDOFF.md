@@ -121,12 +121,54 @@ Nova is a production Telegram AI assistant with personality modes, group moderat
 
 ---
 
-## Current State (as of end of Session 6)
+### Session 7 — Length Removal + Daily Rewards Overhaul + Owner Keyboard (completed)
+
+**Goal:** (1) Remove text-length preference entirely. (2) Owner-only reply keyboard guard. (3) Daily rewards overhaul: auto-gift 3 free images at midnight WAT, spin always gives something, won rewards expire in 24 h with 11:59 PM warning, free gifts consumed before credits, profile shows active gift.
+
+**Tasks completed:**
+
+- **Length removal (full):**
+  - `User.ts` — `settings.length` field removed from schema and interface
+  - `GroupSettings.ts` — `length` field removed from schema and interface
+  - `ai.ts` — `length` param removed from `buildSystemPrompt` and `chat()`; `maxTokens` fixed at 800; length instruction removed from prompt
+  - `keyboards.ts` — `lengthMenuKeyboard`, `replyLengthReplyKeyboard` removed; "📏 Reply Length" removed from `settingsMenuKeyboard` and `settingsReplyKeyboard`; `groupSettingsKeyboard` type updated (removed `length` field)
+  - `callbackHandler.ts` — `lengthMenuKeyboard` import removed; `settings_length / _short / _long` handlers removed; `"length"` removed from `ALLOWED_TOGGLE_FIELDS`; all `length:` params removed from every `chat()` call; stale `settings.length` display text removed from all profile/settings strings
+  - `privateHandler.ts` — `replyLengthReplyKeyboard` import removed; `"📏 Reply Length"` and `"📌 Short Replies" / "📖 Long Replies"` removed from `REPLY_KEYBOARD_TEXTS`; reply-length routing blocks removed; `/length` command removed; all `length:` params removed from `chat()` calls; `settings.length` display removed from `/profile` and `/settings` strings
+  - `groupHandler.ts` — all `length:` params removed from `chat()` calls
+  - `inlineHandler.ts` — all `length:` params removed from `chat()` calls
+
+- **Daily spin always gives something:**
+  - Old "Common" no-reward tier replaced with `user.credits += 5` + message "🎉 You won: +5 credits!"
+  - All reward messages now start with "🎉 You won: …" for consistency
+
+- **Daily gift system:**
+  - `User.ts` — `dailyGift` subdocument added: `{ label, type, amount, remaining, command, expiresAt, warned, expired, giftDate }`
+  - `watTime.ts` — `msUntilNextMidnightWAT()`, `nextMidnightWATDate()`, `msUntilWATTime(h, m)` exported
+  - `handleImageGeneration` (privateHandler.ts) — checks `user.dailyGift` first (type=image, not expired, remaining>0) and decrements it before falling back to credit deduction
+  - `/profile` text — appended "── Daily Gift ──" section showing label, remaining count, and command when a valid gift is active
+  - `index.ts` — `scheduleDailyReport` now fires at WAT midnight (was UTC midnight); added `scheduleAutoGifts` (runs at midnight WAT: expire stale gifts → gift all users 3 free images → notify each user); added `scheduleGiftExpiryWarnings` (runs at 23:59 WAT: notifies users with remaining gift, marks warned=true)
+
+- **TypeScript:** 0 errors — `pnpm run typecheck` passes clean across all 4 packages after all changes.
+
+**Files changed this session:**
+- `artifacts/api-server/src/bot/models/User.ts`
+- `artifacts/api-server/src/bot/models/GroupSettings.ts`
+- `artifacts/api-server/src/bot/services/ai.ts`
+- `artifacts/api-server/src/bot/utils/keyboards.ts`
+- `artifacts/api-server/src/bot/utils/watTime.ts`
+- `artifacts/api-server/src/bot/handlers/callbackHandler.ts`
+- `artifacts/api-server/src/bot/handlers/privateHandler.ts`
+- `artifacts/api-server/src/bot/handlers/groupHandler.ts`
+- `artifacts/api-server/src/bot/handlers/inlineHandler.ts`
+- `artifacts/api-server/src/bot/index.ts`
+
+---
+
+## Current State (as of end of Session 7)
 
 - **Build:** ✅ Clean — `pnpm run typecheck` passes with 0 errors across all 4 packages
-- **Bundle:** ✅ esbuild produces `dist/index.mjs` ~8 MB
-- **Workflow:** `Start application` running cleanly on port 5000
-- **Bot:** Starts cleanly; all env-validation warnings appear correctly when secrets are absent
+- **Workflow:** `Start application` running
+- **Bot:** Starts cleanly; WAT-midnight schedulers armed on startup
 - **Secrets needed to run the bot:** `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`
 
 ---
@@ -134,10 +176,10 @@ Nova is a production Telegram AI assistant with personality modes, group moderat
 ## Next Tasks (suggested, not yet started)
 
 - [ ] Test the reply keyboard flow end-to-end with real Telegram account (ensure all ~100 button texts route correctly)
-- [ ] Some callbacks still send inline keyboards for non-navigation flows (fun_joke, fun_iq, fun_compliment, etc.) — consider also converting those result messages to use reply keyboards
+- [ ] Verify owner keyboard guard: `handleOwnerReplyButton` is only reachable inside the `isOwner` guard in `privateHandler.ts` — spot-check that non-owners can never see or trigger owner keyboard buttons
+- [ ] Some callbacks still send inline keyboards for non-navigation flows (fun_joke, fun_iq, fun_compliment, etc.) — consider converting those result messages to use reply keyboards too
 - [ ] Captcha store is in-memory — if server restarts mid-captcha, users get stuck muted; consider persisting captcha state to MongoDB
 - [ ] Admin dashboard chunk size is 647 KB (warn threshold 500 KB) — consider lazy-loading heavy routes
-- [ ] Admin read-only DB queries in `admin.ts` do not use `.lean()` — adds Mongoose document overhead
 - [ ] Deploy to Render — set env secrets: `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`, `WEBHOOK_URL`
 
 ---

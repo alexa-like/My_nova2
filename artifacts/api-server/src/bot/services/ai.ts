@@ -60,7 +60,6 @@ type Style = "friendly" | "funny" | "serious" | "balanced";
 function buildSystemPrompt(
   style: Style,
   emoji: boolean,
-  length: "long" | "short",
   isPremium: boolean,
   mood?: string,
   language?: string
@@ -68,11 +67,6 @@ function buildSystemPrompt(
   const emojiInstruction = emoji
     ? "Use emojis naturally to express personality — but don't overdo it."
     : "No emojis. Keep it clean and text-only.";
-
-  const lengthInstruction =
-    length === "short"
-      ? "Be concise — usually 1-3 sentences. Get to the point fast."
-      : "Be thorough and expressive. Make the conversation feel rich and real.";
 
   const styleMap: Record<Style, string> = {
     friendly:
@@ -129,7 +123,7 @@ YOUR FULL CAPABILITIES (these are REAL, working features — not suggestions):
 • AI tools: summarize text, translate languages, debate topics, analyze writing
 • Games: trivia, Would You Rather, Word of the Day, random facts
 • Fun: jokes, roasts, fortune telling, vibe checks, IQ tests, dares, compliments
-• Settings: personality style, language, mood, emoji preference, reply length
+• Settings: personality style, language, mood, emoji preference
 • Memory: remembers conversations (use /forget to clear)
 • Premium: more images, richer responses (use /redeem CODE)
 
@@ -182,7 +176,6 @@ RULES — READ CAREFULLY:
 - You can be cheeky, flirty, sarcastic, dark-humored, or intense depending on context
 - CODE FORMATTING: When your response includes any code, commands, scripts, file contents, configuration snippets, JSON, SQL, or other technical syntax — ALWAYS wrap them in Markdown code blocks with a language hint (e.g. \`\`\`python, \`\`\`javascript, \`\`\`bash, \`\`\`json, \`\`\`html, \`\`\`css, \`\`\`sql). Use single backticks for brief inline references. Never output raw code outside of a code block.
 - ${emojiInstruction}
-- ${lengthInstruction}
 - ${languageInstruction}
 ${moodInstruction ? `- ${moodInstruction}` : ""}
 ${premiumNote ? `\n${premiumNote}` : ""}`;
@@ -224,7 +217,6 @@ export async function chat(
   settings: {
     style: Style;
     emoji: boolean;
-    length: "long" | "short";
     language?: string;
   },
   isPremium: boolean,
@@ -250,7 +242,6 @@ export async function chat(
   const systemPrompt = buildSystemPrompt(
     settings.style,
     settings.emoji,
-    settings.length,
     isPremium,
     mood,
     settings.language
@@ -292,7 +283,7 @@ export async function chat(
     ...messagesPayload,
   ];
 
-  const maxTokens = settings.length === "short" ? 300 : 800;
+  const maxTokens = 800;
   const temperature = settings.style === "funny" ? 0.92 : 0.78;
 
   const apiKey = process.env.OPENROUTER_API_KEY;

@@ -47,7 +47,7 @@ import {
   wyrOptionsReplyKeyboard,
   settingsReplyKeyboard,
   aiStyleReplyKeyboard,
-  replyLengthReplyKeyboard,
+
   langMenuReplyKeyboard,
   moodReplyKeyboard,
   creditsReplyKeyboard,
@@ -212,14 +212,13 @@ const REPLY_KEYBOARD_TEXTS = new Set([
   // WYR options (only active when wyr_answer pending)
   "🅰️ Option A", "🅱️ Option B",
   // Settings submenu
-  "👤 My Profile", "📊 My Stats", "🎭 AI Style", "📏 Reply Length",
+  "👤 My Profile", "📊 My Stats", "🎭 AI Style",
   "🌐 Language", "😶 Set Mood", "😊 Emojis: ON", "😑 Emojis: OFF",
   "🤖 AI Model", "💎 Premium Plans", "✅ GitHub", "🔑 GitHub",
   "🚀 Deployments", "🔒 Privacy", "🏅 Achievements",
   // AI Style
   "🤝 Friendly", "😄 Funny Style", "💼 Serious", "⚖️ Balanced",
-  // Reply length
-  "📌 Short Replies", "📖 Long Replies",
+
   // Language
   "🇬🇧 English", "🇸🇦 Arabic", "🇫🇷 French", "🇪🇸 Spanish",
   "🇩🇪 German", "🇨🇳 Chinese", "🇮🇳 Hindi", "🇧🇷 Portuguese",
@@ -445,7 +444,7 @@ async function handleOwnerReplyButton(
     await bot.sendMessage(chatId, "🧪 Testing models...");
     try {
       const { chat: testChat } = await import("../services/ai.js");
-      const result = await testChat(user.userId, chatId, "Say 'Model test OK' in exactly those 3 words.", { style: "balanced", emoji: false, length: "short" }, false);
+      const result = await testChat(user.userId, chatId, "Say 'Model test OK' in exactly those 3 words.", { style: "balanced", emoji: false }, false);
       await bot.sendMessage(chatId, `✅ Chat model OK\n\nResponse: ${result.substring(0, 100)}`, { reply_markup: ownerMainReplyKeyboard(getMaintenance()) });
     } catch (err: any) {
       await bot.sendMessage(chatId, `❌ Chat model failed: ${err?.message ?? "Unknown"}`, { reply_markup: ownerMainReplyKeyboard(getMaintenance()) });
@@ -601,7 +600,7 @@ export async function handlePrivateMessage(
     }
     if (text === "⬅️ Settings") {
       await bot.sendMessage(chatId,
-        `⚙️ Settings\n\nStyle: ${user.settings.style} | Lang: ${user.settings.language || "en"} | Emojis: ${user.settings.emoji ? "On" : "Off"} | Length: ${user.settings.length}`,
+        `⚙️ Settings\n\nStyle: ${user.settings.style} | Lang: ${user.settings.language || "en"} | Emojis: ${user.settings.emoji ? "On" : "Off"}`,
         { reply_markup: settingsReplyKeyboard(user) }
       );
       return;
@@ -626,7 +625,7 @@ export async function handlePrivateMessage(
     }
     if (text === "⚙️ Settings") {
       await bot.sendMessage(chatId,
-        `⚙️ Settings\n\nStyle: ${user.settings.style} | Lang: ${user.settings.language || "en"} | Emojis: ${user.settings.emoji ? "On" : "Off"} | Length: ${user.settings.length}\nMood: ${user.mood || "Not set"}`,
+        `⚙️ Settings\n\nStyle: ${user.settings.style} | Lang: ${user.settings.language || "en"} | Emojis: ${user.settings.emoji ? "On" : "Off"}\nMood: ${user.mood || "Not set"}`,
         { reply_markup: settingsReplyKeyboard(user) }
       );
       return;
@@ -824,7 +823,7 @@ export async function handlePrivateMessage(
       const stopTyping = startTypingLoop(bot, chatId);
       try {
         const histPrompt = "Give a detailed summary of our conversation history. List topics, questions, and key things shared. If there's no history yet, say so briefly.";
-        const histReply = await chat(user.userId, chatId, histPrompt, { style: "serious", emoji: false, length: "long" }, user.premium.active);
+        const histReply = await chat(user.userId, chatId, histPrompt, { style: "serious", emoji: false }, user.premium.active);
         stopTyping();
         await bot.sendMessage(chatId, `📜 Conversation History\n\n${histReply}`, { reply_markup: chatMenuReplyKeyboard() });
       } catch {
@@ -996,7 +995,7 @@ export async function handlePrivateMessage(
     if (text === "😂 Joke") {
       const stopTyping = startTypingLoop(bot, chatId);
       try {
-        const joke = await chat(user.userId, chatId, "Tell me a hilarious, original joke. Make it funny and punchy.", { style: "funny", emoji: e, length: "short" }, user.premium.active);
+        const joke = await chat(user.userId, chatId, "Tell me a hilarious, original joke. Make it funny and punchy.", { style: "funny", emoji: e }, user.premium.active);
         stopTyping();
         await bot.sendMessage(chatId, joke, { reply_markup: funSubMenuReplyKeyboard() });
       } catch { stopTyping(); await bot.sendMessage(chatId, "Couldn't think of one. Try again!", { reply_markup: funSubMenuReplyKeyboard() }); }
@@ -1021,7 +1020,7 @@ export async function handlePrivateMessage(
       const stopTyping = startTypingLoop(bot, chatId);
       try {
         const iqPrompt = `Give ${name} a fun, creative "IQ Test" result. Make it entertaining. Give a score between 85-145, a funny title, and a one-paragraph personality description. Be playful.`;
-        const iqRes = await chat(user.userId, chatId, iqPrompt, { style: "funny", emoji: e, length: "long" }, user.premium.active);
+        const iqRes = await chat(user.userId, chatId, iqPrompt, { style: "funny", emoji: e }, user.premium.active);
         stopTyping();
         await bot.sendMessage(chatId, iqRes, { reply_markup: funSubMenuReplyKeyboard() });
       } catch { stopTyping(); await bot.sendMessage(chatId, "Brain too big to test. Try again!", { reply_markup: funSubMenuReplyKeyboard() }); }
@@ -1030,7 +1029,7 @@ export async function handlePrivateMessage(
     if (text === "🌟 Compliment") {
       const stopTyping = startTypingLoop(bot, chatId);
       try {
-        const compRes = await chat(user.userId, chatId, `Give ${name} a genuine, specific, and heartfelt compliment. Make it feel personal and real.`, { style: "friendly", emoji: e, length: "short" }, user.premium.active);
+        const compRes = await chat(user.userId, chatId, `Give ${name} a genuine, specific, and heartfelt compliment. Make it feel personal and real.`, { style: "friendly", emoji: e }, user.premium.active);
         stopTyping();
         await bot.sendMessage(chatId, compRes, { reply_markup: funSubMenuReplyKeyboard() });
       } catch { stopTyping(); await bot.sendMessage(chatId, "You're amazing — try again for more!", { reply_markup: funSubMenuReplyKeyboard() }); }
@@ -1039,7 +1038,7 @@ export async function handlePrivateMessage(
     if (text === "🔮 Fortune") {
       const stopTyping = startTypingLoop(bot, chatId);
       try {
-        const fortRes = await chat(user.userId, chatId, `Tell ${name} their fortune for today. Be creative, mystical, and fun. Mix real advice with a bit of mystery.`, { style: "friendly", emoji: e, length: "short" }, user.premium.active);
+        const fortRes = await chat(user.userId, chatId, `Tell ${name} their fortune for today. Be creative, mystical, and fun. Mix real advice with a bit of mystery.`, { style: "friendly", emoji: e }, user.premium.active);
         stopTyping();
         await bot.sendMessage(chatId, fortRes, { reply_markup: funSubMenuReplyKeyboard() });
       } catch { stopTyping(); await bot.sendMessage(chatId, "The stars are unclear. Try again!", { reply_markup: funSubMenuReplyKeyboard() }); }
@@ -1048,7 +1047,7 @@ export async function handlePrivateMessage(
     if (text === "😈 Daily Dare") {
       const stopTyping = startTypingLoop(bot, chatId);
       try {
-        const dareRes = await chat(user.userId, chatId, "Give me a fun, creative daily dare challenge. It should be something slightly out of comfort zone but safe and doable.", { style: "funny", emoji: e, length: "short" }, user.premium.active);
+        const dareRes = await chat(user.userId, chatId, "Give me a fun, creative daily dare challenge. It should be something slightly out of comfort zone but safe and doable.", { style: "funny", emoji: e }, user.premium.active);
         stopTyping();
         await bot.sendMessage(chatId, dareRes, { reply_markup: funSubMenuReplyKeyboard() });
       } catch { stopTyping(); await bot.sendMessage(chatId, "Dare me again!", { reply_markup: funSubMenuReplyKeyboard() }); }
@@ -1057,7 +1056,7 @@ export async function handlePrivateMessage(
     if (text === "✨ Vibe Check") {
       const stopTyping = startTypingLoop(bot, chatId);
       try {
-        const vibeRes = await chat(user.userId, chatId, `Based on our conversation, give ${name} a vibe check. Be real, be fun, be specific. Rate their vibe out of 10.`, { style: "funny", emoji: e, length: "short" }, user.premium.active);
+        const vibeRes = await chat(user.userId, chatId, `Based on our conversation, give ${name} a vibe check. Be real, be fun, be specific. Rate their vibe out of 10.`, { style: "funny", emoji: e }, user.premium.active);
         stopTyping();
         await bot.sendMessage(chatId, vibeRes, { reply_markup: funSubMenuReplyKeyboard() });
       } catch { stopTyping(); await bot.sendMessage(chatId, "Vibes immeasurable. Try again!", { reply_markup: funSubMenuReplyKeyboard() }); }
@@ -1066,7 +1065,7 @@ export async function handlePrivateMessage(
     if (text === "💭 Truth Question") {
       const stopTyping = startTypingLoop(bot, chatId);
       try {
-        const truthQ = await chat(user.userId, chatId, "Ask me a deep, thought-provoking truth question. Something that makes a person really think about themselves.", { style: "serious", emoji: e, length: "short" }, user.premium.active);
+        const truthQ = await chat(user.userId, chatId, "Ask me a deep, thought-provoking truth question. Something that makes a person really think about themselves.", { style: "serious", emoji: e }, user.premium.active);
         stopTyping();
         setPending(user.userId, "fun_truth_reply");
         await bot.sendMessage(chatId, truthQ, { reply_markup: funSubMenuReplyKeyboard() });
@@ -1100,7 +1099,7 @@ export async function handlePrivateMessage(
     if (text === "📖 Word of the Day") {
       const stopTyping = startTypingLoop(bot, chatId);
       try {
-        const wordRes = await chat(user.userId, chatId, "Give me today's word of the day. Include: the word, pronunciation, part of speech, definition, and an example sentence. Make it interesting.", { style: "serious", emoji: e, length: "short" }, user.premium.active);
+        const wordRes = await chat(user.userId, chatId, "Give me today's word of the day. Include: the word, pronunciation, part of speech, definition, and an example sentence. Make it interesting.", { style: "serious", emoji: e }, user.premium.active);
         stopTyping();
         await bot.sendMessage(chatId, wordRes, { reply_markup: gamesSubMenuReplyKeyboard() });
       } catch { stopTyping(); await bot.sendMessage(chatId, "Couldn't fetch a word today. Try again!", { reply_markup: gamesSubMenuReplyKeyboard() }); }
@@ -1109,7 +1108,7 @@ export async function handlePrivateMessage(
     if (text === "🎲 Random Fact") {
       const stopTyping = startTypingLoop(bot, chatId);
       try {
-        const factRes = await chat(user.userId, chatId, "Share a mind-blowing, truly fascinating random fact. Make it something most people don't know.", { style: "friendly", emoji: e, length: "short" }, user.premium.active);
+        const factRes = await chat(user.userId, chatId, "Share a mind-blowing, truly fascinating random fact. Make it something most people don't know.", { style: "friendly", emoji: e }, user.premium.active);
         stopTyping();
         await bot.sendMessage(chatId, factRes, { reply_markup: gamesSubMenuReplyKeyboard() });
       } catch { stopTyping(); await bot.sendMessage(chatId, "Fact machine broken. Try again!", { reply_markup: gamesSubMenuReplyKeyboard() }); }
@@ -1121,13 +1120,6 @@ export async function handlePrivateMessage(
       await bot.sendMessage(chatId,
         `🎭 AI Style\n\nCurrent: ${user.settings.style}\n\nHow do you want Nova to talk to you?`,
         { reply_markup: aiStyleReplyKeyboard(user.settings.style) }
-      );
-      return;
-    }
-    if (text === "📏 Reply Length") {
-      await bot.sendMessage(chatId,
-        `📏 Reply Length\n\nCurrent: ${user.settings.length}\n\nHow long should replies be?`,
-        { reply_markup: replyLengthReplyKeyboard(user.settings.length) }
       );
       return;
     }
@@ -1214,20 +1206,6 @@ export async function handlePrivateMessage(
         await bot.sendMessage(chatId, `✅ Style set to: ${styleMap[ntext]}`, { reply_markup: aiStyleReplyKeyboard(styleMap[ntext]) });
         return;
       }
-    }
-
-    // ── Reply length picker ──────────────────────────────────────────────────
-    if (ntext === "📌 Short Replies") {
-      user.settings.length = "short";
-      await user.save();
-      await bot.sendMessage(chatId, "📌 Short replies set!", { reply_markup: replyLengthReplyKeyboard("short") });
-      return;
-    }
-    if (ntext === "📖 Long Replies") {
-      user.settings.length = "long";
-      await user.save();
-      await bot.sendMessage(chatId, "📖 Long replies set!", { reply_markup: replyLengthReplyKeyboard("long") });
-      return;
     }
 
     // ── Language picker ──────────────────────────────────────────────────────
@@ -1599,14 +1577,18 @@ export async function handlePrivateMessage(
       `Style: ${user.settings.style}\n` +
       `Language: ${user.settings.language || "en"}\n` +
       `Mood: ${user.mood || "Not set"}\n` +
-      `Emojis: ${user.settings.emoji ? "On" : "Off"}\n` +
-      `Reply length: ${user.settings.length}\n\n` +
+      `Emojis: ${user.settings.emoji ? "On" : "Off"}\n\n` +
       `── Usage ──\n` +
       `Messages today: ${user.usage.messages}\n` +
       `Images today: ${user.usage.images}/${await getImageLimit(user.premium.active)}\n` +
       `Total builds: ${builds}\n` +
       `Groups: ${user.groups.length}\n` +
-      `Warnings: ${user.warnings}`,
+      `Warnings: ${user.warnings}` +
+      (() => {
+        const g = (user as any).dailyGift;
+        if (!g || g.expired || g.remaining <= 0 || g.expiresAt <= new Date()) return "";
+        return `\n\n── Daily Gift ──\n🎁 ${g.label}\n(${g.remaining} remaining — use ${g.command})`;
+      })(),
       { reply_markup: { inline_keyboard: [[{ text: "⚙️ Settings", callback_data: "settings_menu" }, { text: "📊 Stats", callback_data: "show_stats" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] } }
     );
     return;
@@ -1628,7 +1610,6 @@ export async function handlePrivateMessage(
       `Style: ${user.settings.style}\n` +
       `Language: ${user.settings.language || "en"}\n` +
       `Emojis: ${user.settings.emoji ? "On" : "Off"}\n` +
-      `Reply length: ${user.settings.length}\n` +
       `Mood: ${user.mood || "Not set"}\n\n` +
       `Use the buttons below to change anything:`,
       { reply_markup: settingsMenuKeyboard(user) }
@@ -1839,17 +1820,6 @@ export async function handlePrivateMessage(
     return;
   }
 
-  // /length
-  if (text.startsWith("/length")) {
-    const parts = text.trim().split(/\s+/);
-    const chosen = parts[1]?.toLowerCase();
-    if (chosen !== "long" && chosen !== "short") { await bot.sendMessage(chatId, "Valid options: long, short"); return; }
-    user.settings.length = chosen;
-    await user.save();
-    await bot.sendMessage(chatId, `Reply length set to: ${chosen}`);
-    return;
-  }
-
   // /emoji
   if (text.startsWith("/emoji")) {
     const parts = text.trim().split(/\s+/);
@@ -1926,7 +1896,7 @@ export async function handlePrivateMessage(
     if (!toTranslate) { await bot.sendMessage(chatId, "Usage: /translate <text>\nExample: /translate Bonjour le monde"); return; }
     const stopTyping = startTypingLoop(bot, chatId);
     const translationPrompt = `Translate the following text to English. Only respond with the translation, nothing else:\n\n"${toTranslate}"`;
-    const reply = await chat(user.userId, chatId + 9999, translationPrompt, { style: "serious", emoji: false, length: "short" }, user.premium.active);
+    const reply = await chat(user.userId, chatId + 9999, translationPrompt, { style: "serious", emoji: false }, user.premium.active);
     stopTyping();
     await bot.sendMessage(chatId, `Translation:\n${reply}`);
     return;
@@ -1936,7 +1906,7 @@ export async function handlePrivateMessage(
   if (text === "/summarize") {
     const stopTyping = startTypingLoop(bot, chatId);
     const summarizePrompt = "Please summarize our conversation so far in 3-5 bullet points. Be concise.";
-    const reply = await chat(user.userId, chatId, summarizePrompt, { style: "serious", emoji: false, length: "short" }, user.premium.active);
+    const reply = await chat(user.userId, chatId, summarizePrompt, { style: "serious", emoji: false }, user.premium.active);
     stopTyping();
     await bot.sendMessage(chatId, `Conversation Summary:\n\n${reply}`);
     return;
@@ -1945,7 +1915,7 @@ export async function handlePrivateMessage(
   // /quote
   if (text === "/quote") {
     const stopTyping = startTypingLoop(bot, chatId);
-    const reply = await chat(user.userId, chatId + 1111, "Give me one inspiring or thought-provoking quote. Format: \"Quote\" — Author. No intro, just the quote.", { style: "friendly", emoji: e, length: "short" }, user.premium.active);
+    const reply = await chat(user.userId, chatId + 1111, "Give me one inspiring or thought-provoking quote. Format: \"Quote\" — Author. No intro, just the quote.", { style: "friendly", emoji: e }, user.premium.active);
     stopTyping();
     await bot.sendMessage(chatId, `💬 Quote\n\n${reply}`, { reply_markup: repeatKeyboard("quick_quote", "fun_menu") });
     return;
@@ -1954,7 +1924,7 @@ export async function handlePrivateMessage(
   // /fact
   if (text === "/fact") {
     const stopTyping = startTypingLoop(bot, chatId);
-    const reply = await chat(user.userId, chatId + 2222, "Tell me one surprising, mind-blowing, and true fact. Keep it to 2-3 sentences. Start directly with the fact.", { style: "funny", emoji: e, length: "short" }, user.premium.active);
+    const reply = await chat(user.userId, chatId + 2222, "Tell me one surprising, mind-blowing, and true fact. Keep it to 2-3 sentences. Start directly with the fact.", { style: "funny", emoji: e }, user.premium.active);
     stopTyping();
     await bot.sendMessage(chatId, `🎲 Did You Know?\n\n${reply}`, { reply_markup: repeatKeyboard("quick_fact", "fun_menu") });
     return;
@@ -1963,7 +1933,7 @@ export async function handlePrivateMessage(
   // /tip
   if (text === "/tip") {
     const stopTyping = startTypingLoop(bot, chatId);
-    const reply = await chat(user.userId, chatId + 3333, "Give me one specific, actionable productivity, health, or life improvement tip. 2-3 sentences. No generic advice.", { style: "balanced", emoji: e, length: "short" }, user.premium.active);
+    const reply = await chat(user.userId, chatId + 3333, "Give me one specific, actionable productivity, health, or life improvement tip. 2-3 sentences. No generic advice.", { style: "balanced", emoji: e }, user.premium.active);
     stopTyping();
     await bot.sendMessage(chatId, `💡 Tip\n\n${reply}`, { reply_markup: repeatKeyboard("quick_tip", "main_menu") });
     return;
@@ -1974,7 +1944,7 @@ export async function handlePrivateMessage(
     const question = text.replace(/^\/ask\s*/i, "").trim();
     if (!question) { await bot.sendMessage(chatId, "Usage: /ask <question>"); return; }
     const stopTyping = startTypingLoop(bot, chatId);
-    const reply = await chat(user.userId, chatId + 5555, question, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
+    const reply = await chat(user.userId, chatId + 5555, question, { style: user.settings.style, emoji: e }, user.premium.active);
     stopTyping();
     await safeSend(bot, chatId, reply);
     return;
@@ -2029,7 +1999,7 @@ export async function handlePrivateMessage(
       }
       status.update("🧠 Summarizing results");
       const aiPrompt = `Based on these web search results for "${query}":\n\n${raw}\n\nSummarize the key findings in a helpful, natural response. Be concise and direct. Mention the source context.`;
-      const aiReply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
+      const aiReply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e }, user.premium.active);
       status.stop();
       await status.delete();
       await safeSend(bot, chatId, `🔍 Web Search: ${query}\n\n${aiReply}\n\n──────\n${results.slice(0, 2).map(r => r.url).filter(Boolean).join("\n")}`);
@@ -2053,7 +2023,7 @@ export async function handlePrivateMessage(
         "• Key things you've told me\n" +
         "• Any preferences or settings I've mentioned\n\n" +
         "If there's no significant history yet, say so briefly.";
-      const reply = await chat(user.userId, chatId, historyPrompt, { style: "serious", emoji: false, length: "long" }, user.premium.active);
+      const reply = await chat(user.userId, chatId, historyPrompt, { style: "serious", emoji: false }, user.premium.active);
       stopTyping();
       await safeSend(bot, chatId, `📜 Conversation History\n\n${reply}`, {
         reply_markup: { inline_keyboard: [[{ text: "🧹 Clear History", callback_data: "forget_memory" }, { text: "⬅️ Menu", callback_data: "main_menu" }]] }
@@ -2336,7 +2306,7 @@ export async function handlePrivateMessage(
       }
       searchStatus.update("🧠 Summarizing results");
       const aiPrompt = `Based on these web search results for "${searchQuery}":\n\n${raw}\n\nSummarize the key findings in a helpful, natural response. Be concise and direct. Mention relevant sources.`;
-      const aiReply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
+      const aiReply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e }, user.premium.active);
       searchStatus.stop();
       await searchStatus.delete();
       const sourceLines = results.slice(0, 3).map(r => r.url).filter(Boolean);
@@ -2364,7 +2334,7 @@ export async function handlePrivateMessage(
   if (summarizeText) {
     const status = await startLiveStatus(bot, chatId, "📝 Summarizing your text");
     try {
-      const reply = await chat(user.userId, chatId + 5556, `Summarize the following text in clear bullet points:\n\n${summarizeText}`, { style: "serious", emoji: e, length: "short" }, user.premium.active);
+      const reply = await chat(user.userId, chatId + 5556, `Summarize the following text in clear bullet points:\n\n${summarizeText}`, { style: "serious", emoji: e }, user.premium.active);
       status.stop();
       await status.delete();
       await safeSend(bot, chatId, `📝 Summary:\n\n${reply}`, { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
@@ -2381,7 +2351,7 @@ export async function handlePrivateMessage(
   if (translateMatch) {
     const status = await startLiveStatus(bot, chatId, `🌐 Translating to ${translateMatch.targetLang}`);
     try {
-      const reply = await chat(user.userId, chatId + 9999, `Translate the following to ${translateMatch.targetLang}. Only respond with the translation, no explanation:\n\n"${translateMatch.content}"`, { style: "serious", emoji: false, length: "short" }, user.premium.active);
+      const reply = await chat(user.userId, chatId + 9999, `Translate the following to ${translateMatch.targetLang}. Only respond with the translation, no explanation:\n\n"${translateMatch.content}"`, { style: "serious", emoji: false }, user.premium.active);
       status.stop();
       await status.delete();
       await safeSend(bot, chatId, `🌐 ${translateMatch.targetLang} translation:\n\n${reply}`, { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } });
@@ -2455,17 +2425,17 @@ async function handlePendingText(
   try {
     switch (actionType) {
       case "ai_ask": {
-        const reply = await chat(user.userId, chatId + 5555, input, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
+        const reply = await chat(user.userId, chatId + 5555, input, { style: user.settings.style, emoji: e }, user.premium.active);
         await safeSend(bot, chatId, reply, { reply_markup: aiMenuKeyboard() });
         break;
       }
       case "ai_summarize_input": {
-        const reply = await chat(user.userId, chatId + 5556, `Summarize the following text in 3-5 bullet points:\n\n${input}`, { style: "serious", emoji: false, length: "short" }, user.premium.active);
+        const reply = await chat(user.userId, chatId + 5556, `Summarize the following text in 3-5 bullet points:\n\n${input}`, { style: "serious", emoji: false }, user.premium.active);
         await bot.sendMessage(chatId, `Summary:\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
         break;
       }
       case "ai_translate": {
-        const reply = await chat(user.userId, chatId + 9999, `Translate the following to English. Only respond with the translation:\n\n"${input}"`, { style: "serious", emoji: false, length: "short" }, user.premium.active);
+        const reply = await chat(user.userId, chatId + 9999, `Translate the following to English. Only respond with the translation:\n\n"${input}"`, { style: "serious", emoji: false }, user.premium.active);
         await bot.sendMessage(chatId, `Translation:\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
         break;
       }
@@ -2512,7 +2482,7 @@ async function handlePendingText(
         break;
       }
       case "ai_generate": {
-        const reply = await chat(user.userId, chatId + 5557, `Write the following: ${input}`, { style: user.settings.style, emoji: e, length: "long" }, user.premium.active);
+        const reply = await chat(user.userId, chatId + 5557, `Write the following: ${input}`, { style: user.settings.style, emoji: e }, user.premium.active);
         await safeSend(bot, chatId, reply, { reply_markup: aiMenuKeyboard() });
         break;
       }
@@ -2557,7 +2527,7 @@ async function handlePendingText(
       case "fun_roast_name": {
         const roast = await chat(user.userId, chatId + 7003,
           `Give ${input} a funny, light-hearted roast in 2-3 sentences. Keep it playful, not offensive.`,
-          { style: "funny", emoji: e, length: "short" }, user.premium.active
+          { style: "funny", emoji: e }, user.premium.active
         );
         await bot.sendMessage(chatId, `🔥 Roast\n\n${roast}`, { reply_markup: funMenuKeyboard() });
         break;
@@ -2565,7 +2535,7 @@ async function handlePendingText(
       case "write_tweet": {
         const reply = await chat(user.userId, chatId + 9001,
           `Write a punchy, engaging tweet about: ${input}\n\nRules: max 260 characters, no hashtag spam (at most 2), no "here's a tweet" intro — just the tweet itself.`,
-          { style: user.settings.style, emoji: e, length: "short" }, user.premium.active
+          { style: user.settings.style, emoji: e }, user.premium.active
         );
         await safeSend(bot, chatId, `🐦 Tweet\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
         break;
@@ -2573,7 +2543,7 @@ async function handlePendingText(
       case "write_caption": {
         const reply = await chat(user.userId, chatId + 9002,
           `Write an engaging Instagram caption for: ${input}\n\nInclude 5-8 relevant hashtags at the end. No intro — just the caption and hashtags.`,
-          { style: user.settings.style, emoji: e, length: "short" }, user.premium.active
+          { style: user.settings.style, emoji: e }, user.premium.active
         );
         await safeSend(bot, chatId, `📸 Instagram Caption\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
         break;
@@ -2581,7 +2551,7 @@ async function handlePendingText(
       case "write_bio": {
         const reply = await chat(user.userId, chatId + 9003,
           `Write a compelling, memorable bio based on this: ${input}\n\nMake it feel authentic and distinctive. Keep it under 150 characters. No intro.`,
-          { style: user.settings.style, emoji: e, length: "short" }, user.premium.active
+          { style: user.settings.style, emoji: e }, user.premium.active
         );
         await safeSend(bot, chatId, `👤 Bio\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
         break;
@@ -2589,7 +2559,7 @@ async function handlePendingText(
       case "write_lyrics": {
         const reply = await chat(user.userId, chatId + 9004,
           `Write original song lyrics about: ${input}\n\nInclude one verse and one chorus. Make them flow naturally with rhythm. No intro text.`,
-          { style: user.settings.style, emoji: false, length: "long" }, user.premium.active
+          { style: user.settings.style, emoji: false }, user.premium.active
         );
         await safeSend(bot, chatId, `🎵 Song Lyrics\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
         break;
@@ -2597,7 +2567,7 @@ async function handlePendingText(
       case "write_email": {
         const reply = await chat(user.userId, chatId + 9005,
           `Write a professional, well-structured email for this situation: ${input}\n\nInclude subject line, greeting, body, and sign-off. No meta-commentary.`,
-          { style: "serious", emoji: false, length: "long" }, user.premium.active
+          { style: "serious", emoji: false }, user.premium.active
         );
         await safeSend(bot, chatId, `📧 Email\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
         break;
@@ -2605,7 +2575,7 @@ async function handlePendingText(
       case "write_poem": {
         const reply = await chat(user.userId, chatId + 9006,
           `Write a beautiful, original poem about: ${input}\n\nMake it evocative and memorable. Any style. No intro — just the poem.`,
-          { style: user.settings.style, emoji: false, length: "short" }, user.premium.active
+          { style: user.settings.style, emoji: false }, user.premium.active
         );
         await safeSend(bot, chatId, `🎭 Poem\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
         break;
@@ -2613,7 +2583,7 @@ async function handlePendingText(
       case "ai_debate": {
         const reply = await chat(user.userId, chatId + 9007,
           `Debate both sides of: "${input}"\n\nFormat:\nSide A (For):\n[3 strong arguments]\n\nSide B (Against):\n[3 strong arguments]\n\nVerdict: [1 sentence on which side has the stronger case]\n\nBe sharp, fair, and thought-provoking.`,
-          { style: "serious", emoji: e, length: "long" }, user.premium.active
+          { style: "serious", emoji: e }, user.premium.active
         );
         await safeSend(bot, chatId, `🗣️ Debate: ${input}\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
         break;
@@ -2621,7 +2591,7 @@ async function handlePendingText(
       case "ai_analyze": {
         const reply = await chat(user.userId, chatId + 9008,
           `Analyze the following text and break it down:\n\n"${input}"\n\nProvide:\n• Tone (e.g. formal, casual, aggressive)\n• Emotion (what feeling does it convey)\n• Intent (what is the writer trying to do)\n• Writing style (e.g. persuasive, descriptive, narrative)\n• Readability (who is the target audience)\n\nBe concise and insightful.`,
-          { style: "serious", emoji: false, length: "short" }, user.premium.active
+          { style: "serious", emoji: false }, user.premium.active
         );
         await safeSend(bot, chatId, `🔬 Text Analysis\n\n${reply}`, { reply_markup: aiMenuKeyboard() });
         break;
@@ -2640,7 +2610,7 @@ async function handlePendingText(
           }
           searchStatus3.update("🧠 Summarizing results");
           const aiPrompt = `Based on these web search results for "${input}":\n\n${raw}\n\nSummarize the key findings in a helpful, natural response. Be concise and direct. Mention relevant sources.`;
-          const reply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e, length: "short" }, user.premium.active);
+          const reply = await chat(user.userId, chatId + 8888, aiPrompt, { style: user.settings.style, emoji: e }, user.premium.active);
           searchStatus3.stop();
           await searchStatus3.delete();
           const sourceLines = results.slice(0, 3).map(r => r.url).filter(Boolean);
@@ -2717,7 +2687,7 @@ async function handlePendingText(
       case "fun_truth_reply": {
         const reply = await chat(user.userId, chatId + 8006,
           `The user was asked a deep truth question and replied: "${input}"\n\nRespond thoughtfully and empathetically, like a wise friend reflecting on their answer. Be genuine, not preachy. 2-3 sentences.`,
-          { style: "balanced", emoji: e, length: "short" }, user.premium.active
+          { style: "balanced", emoji: e }, user.premium.active
         );
         await bot.sendMessage(chatId, `💭 ${reply}`, { reply_markup: funMenuKeyboard() });
         break;
@@ -2849,7 +2819,7 @@ export async function handlePhotoMessage(
 
       const fullReply = await chat(
         user.userId, chatId + 7777, enrichPrompt,
-        { style: user.settings.style, emoji: user.settings.emoji, length: "short" },
+        { style: user.settings.style, emoji: user.settings.emoji },
         user.premium.active
       );
       enrichStatus.stop();
@@ -3194,7 +3164,7 @@ export async function handleDocumentMessage(
 
     const reply = await chat(
       user.userId, chatId + 6666, docPrompt,
-      { style: user.settings.style, emoji: e, length: "long" },
+      { style: user.settings.style, emoji: e },
       user.premium.active
     );
     stopTyping();
@@ -3227,18 +3197,30 @@ async function handleImageGeneration(
     return;
   }
 
-  // Credit check for image generation
+  // Credit / gift check for image generation
   if (!isPrem) {
     const imgCost = await getCreditCost("image");
-    const userCredits = (user as any).credits ?? 0;
-    if (userCredits < imgCost) {
-      await bot.sendMessage(chatId,
-        `💰 Image generation costs ${imgCost} credits.\n\nYou have ${userCredits} credits.`,
-        { reply_markup: insufficientCreditsKeyboard() }
-      );
-      return;
+    // Check if user has an active daily gift of type "image"
+    const gift = (user as any).dailyGift;
+    const now = new Date();
+    const giftActive = gift && !gift.expired && gift.remaining > 0 &&
+      gift.type === "image" && gift.expiresAt && gift.expiresAt > now;
+    if (giftActive) {
+      // Use a gift slot first (free — no credit cost)
+      gift.remaining -= 1;
+      if (gift.remaining <= 0) { gift.expired = true; }
+      await user.save();
+    } else {
+      const userCredits = (user as any).credits ?? 0;
+      if (userCredits < imgCost) {
+        await bot.sendMessage(chatId,
+          `💰 Image generation costs ${imgCost} credits.\n\nYou have ${userCredits} credits.`,
+          { reply_markup: insufficientCreditsKeyboard() }
+        );
+        return;
+      }
+      await deductCredits(user.userId, imgCost);
     }
-    await deductCredits(user.userId, imgCost);
   }
 
   const sentMsg = await bot.sendMessage(chatId, e
