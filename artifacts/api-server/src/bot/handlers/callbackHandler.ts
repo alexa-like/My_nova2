@@ -2452,7 +2452,7 @@ export async function handleCallbackQuery(
       const config = await getOrCreateBotConfig();
       const referrerBonus = config.creditRewards?.referrer ?? 50;
       const newUserBonus = config.creditRewards?.newUser ?? 20;
-      let botUsername = "nova_ai_bot";
+      let botUsername = process.env.BOT_USERNAME || "Novabyola_bot";
       try { const me = await bot.getMe(); botUsername = me.username ?? botUsername; } catch {}
       await editMsg(bot, query,
         `👥 Referral Program\n\nShare your link and earn ${referrerBonus} credits per friend!\n\nYour code: \`${refCode}\`\nFriends referred: ${referrals}\nTotal earned: ${referrals * referrerBonus} credits\n\nWhen a friend joins with your link:\n• You get: +${referrerBonus} credits + 7 days VIP\n• They get: +${newUserBonus} credits + 3 days VIP`,

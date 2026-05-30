@@ -737,6 +737,7 @@ export async function startBot(): Promise<void> {
   scheduleDailyReport(bot);
   scheduleAutoGifts(bot);
   scheduleGiftExpiryWarnings(bot);
+  schedulePremiumExpiryNotifications(bot);
 
   logger.info("Nova is listening for messages");
 }
@@ -857,6 +858,75 @@ function scheduleGiftExpiryWarnings(botInstance: TelegramBot): void {
   };
   scheduleNext();
   logger.info({ nextWarningMs: msUntilWATTime(23, 59) }, "Gift expiry warning scheduler armed (23:59 WAT)");
+}
+
+function schedulePremiumExpiryNotifications(botInstance: TelegramBot): void {
+  const CHECK_INTERVAL_MS = 60 * 60 * 1000; // every hour
+
+  const run = async () => {
+    const now = new Date();
+    const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    try {
+      // 1. Expire users whose premium has passed but is still marked active
+      const expired = await User.find({
+        "premium.active": true,
+        "premium.expiresAt": { $lt: now },
+        "premium.plan": { $ne: "owner" },
+      }).select("userId premium").lean();
+
+      for (const u of expired) {
+        try {
+          await User.updateOne({ userId: u.userId }, { $set: { "premium.active": false, "premium.plan": null } });
+          await botInstance.sendMessage(
+            u.userId,
+            `💎 Your Premium membership has expired.\n\n` +
+            `You've been moved back to the free plan — but all your data and history are safe.\n\n` +
+            `✨ <b>Enjoyed Premium?</b> Renew anytime to get back:\n` +
+            `• 🎨 Up to 20 images/day\n` +
+            `• 🧠 Priority AI responses\n` +
+            `• 💬 Higher message limits\n` +
+            `• 🚫 No credit deductions`,
+            { parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "💎 Renew Premium", callback_data: "buy_premium" }, { text: "🏠 Menu", callback_data: "main_menu" }]] } }
+          );
+        } catch { /* user may have blocked the bot */ }
+        await new Promise(r => setTimeout(r, 100));
+      }
+      if (expired.length) logger.info({ count: expired.length }, "Premium expiry notifications sent");
+
+      // 2. Warn users whose premium expires within the next 24 hours (warn once)
+      const expiringSoon = await User.find({
+        "premium.active": true,
+        "premium.expiresAt": { $gt: now, $lt: in24h },
+        "premium.plan": { $ne: "owner" },
+        "premium.warnedExpiry": { $ne: true },
+      }).select("userId premium").lean();
+
+      for (const u of expiringSoon) {
+        try {
+          const exp = (u as any).premium?.expiresAt;
+          const hoursLeft = exp ? Math.max(1, Math.round((new Date(exp).getTime() - now.getTime()) / 3600000)) : 24;
+          await botInstance.sendMessage(
+            u.userId,
+            `⏳ <b>Your Premium expires in ~${hoursLeft} hour${hoursLeft === 1 ? "" : "s"}!</b>\n\n` +
+            `Renew now to keep your unlimited images, priority AI, and all VIP perks without any interruption.`,
+            { parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "💎 Renew Now", callback_data: "buy_premium" }, { text: "🏠 Menu", callback_data: "main_menu" }]] } }
+          );
+          await User.updateOne({ userId: u.userId }, { $set: { "premium.warnedExpiry": true } });
+        } catch { /* user may have blocked the bot */ }
+        await new Promise(r => setTimeout(r, 100));
+      }
+      if (expiringSoon.length) logger.info({ count: expiringSoon.length }, "Premium expiry warnings sent");
+
+    } catch (err) {
+      logger.error({ err }, "schedulePremiumExpiryNotifications error");
+    }
+  };
+
+  // Run once on startup, then every hour
+  run().catch(() => {});
+  setInterval(run, CHECK_INTERVAL_MS);
+  logger.info("Premium expiry notification scheduler started (runs every hour)");
 }
 
 export function getBot(): TelegramBot | null {

@@ -703,7 +703,7 @@ export async function handlePrivateMessage(
       const referCfg = await getOrCreateBotConfig();
       const referrerBonus = referCfg.creditRewards?.referrer ?? 50;
       const newUserBonus = referCfg.creditRewards?.newUser ?? 20;
-      let botUsernameRef = process.env.BOT_USERNAME || "Novabyolabot";
+      let botUsernameRef = process.env.BOT_USERNAME || "Novabyola_bot";
       try { const me = await bot.getMe(); botUsernameRef = me.username ?? botUsernameRef; } catch {}
       const referLink = `https://t.me/${botUsernameRef}?start=ref_${user.referralCode}`;
       await bot.sendMessage(chatId,
@@ -1720,7 +1720,7 @@ export async function handlePrivateMessage(
     const referralCfg = await getOrCreateBotConfig();
     const referrerBonus = referralCfg.creditRewards?.referrer ?? 50;
     const newUserBonus = referralCfg.creditRewards?.newUser ?? 20;
-    let botUsername = "nova_ai_bot";
+    let botUsername = process.env.BOT_USERNAME || "Novabyola_bot";
     try { const me = await bot.getMe(); botUsername = me.username ?? botUsername; } catch {}
     const link = `https://t.me/${botUsername}?start=ref_${user.referralCode}`;
     await bot.sendMessage(chatId,
