@@ -47,3 +47,4 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+!.local/state/replit/agent/progress_tracker.md
