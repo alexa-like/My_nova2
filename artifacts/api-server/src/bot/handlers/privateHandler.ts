@@ -1814,12 +1814,21 @@ export async function handlePrivateMessage(
     if (parts.length < 2) { await bot.sendMessage(chatId, "Usage: /redeem CODE"); return; }
     const code = parts[1].toUpperCase();
     const redeemCode = await RedeemCode.findOne({ code });
-    if (!redeemCode) { await bot.sendMessage(chatId, "Invalid code. Check and try again."); return; }
-    if (redeemCode.used) { await bot.sendMessage(chatId, "This code has already been used."); return; }
-    if (redeemCode.expiresAt && new Date() > redeemCode.expiresAt) { await bot.sendMessage(chatId, "This code has expired."); return; }
-    redeemCode.used = true;
-    redeemCode.usedBy = user.userId;
-    redeemCode.usedAt = new Date();
+    if (!redeemCode) { await bot.sendMessage(chatId, "❌ Invalid code. Please check and try again."); return; }
+    if (redeemCode.expiresAt && new Date() > redeemCode.expiresAt) { await bot.sendMessage(chatId, "❌ This code has expired."); return; }
+    const isMultiUse = redeemCode.maxUses != null;
+    if (isMultiUse) {
+      if ((redeemCode.usedByList || []).includes(user.userId)) { await bot.sendMessage(chatId, "❌ You have already used this code."); return; }
+      if ((redeemCode.usedCount ?? 0) >= redeemCode.maxUses!) { await bot.sendMessage(chatId, "❌ This code has reached its maximum number of uses."); return; }
+      redeemCode.usedCount = (redeemCode.usedCount ?? 0) + 1;
+      redeemCode.usedByList = [...(redeemCode.usedByList || []), user.userId];
+      if (redeemCode.usedCount >= redeemCode.maxUses!) redeemCode.used = true;
+    } else {
+      if (redeemCode.used) { await bot.sendMessage(chatId, "❌ This code has already been used."); return; }
+      redeemCode.used = true;
+      redeemCode.usedBy = user.userId;
+      redeemCode.usedAt = new Date();
+    }
     await redeemCode.save();
     const expiresAt = redeemCode.durationDays >= 99999 ? undefined : addDays(new Date(), redeemCode.durationDays);
     user.premium.active = true;
@@ -2416,6 +2425,9 @@ export async function handlePrivateMessage(
   }
 
   user.usage.messages += 1;
+  user.scores = user.scores ?? { weekly: 0, monthly: 0 };
+  user.scores.weekly  = (user.scores.weekly  ?? 0) + 1;
+  user.scores.monthly = (user.scores.monthly ?? 0) + 1;
   await user.save();
   const stopTyping = startTypingLoop(bot, chatId);
   const reply = await chat(user.userId, chatId, text, user.settings, user.premium.active, user.mood ?? undefined);

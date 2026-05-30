@@ -76,6 +76,11 @@ export interface IUser extends Document {
   totalImages: number;
   totalBuilds: number;
   totalSearches: number;
+  lastReEngaged?: Date;
+  scores: {
+    weekly: number;
+    monthly: number;
+  };
 }
 
 const UserSchema = new Schema<IUser>(
@@ -150,6 +155,11 @@ const UserSchema = new Schema<IUser>(
     totalImages:       { type: Number, default: 0 },
     totalBuilds:       { type: Number, default: 0 },
     totalSearches:     { type: Number, default: 0 },
+    lastReEngaged:     { type: Date },
+    scores: {
+      weekly:  { type: Number, default: 0 },
+      monthly: { type: Number, default: 0 },
+    },
     dailyGift: {
       label:     { type: String },
       type:      { type: String, enum: ["images", "credits"] },

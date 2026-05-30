@@ -195,13 +195,18 @@ export async function handleOwnerMessage(
 
   if (cmd === "/redeemcd") {
     if (args.length < 2) {
-      await bot.sendMessage(chatId, "Usage: /redeemcd <CODE> <duration>\nExample: /redeemcd NOVA-VIP-01 30d");
+      await bot.sendMessage(chatId, "Usage: /redeemcd <CODE> <duration> [maxUses]\nExamples:\n/redeemcd NOVA-VIP-01 30d        ← single use\n/redeemcd NOVA-VIP-01 30d 50     ← up to 50 users");
       return;
     }
     const code = args[0].toUpperCase();
     const duration = args[1].toLowerCase();
+    const maxUses = args[2] ? parseInt(args[2]) : undefined;
     if (!/^(\d+(d|m|y)|lifetime)$/.test(duration)) {
       await bot.sendMessage(chatId, "Invalid duration. Use: 1d, 7d, 30d, 90d, 1y, lifetime");
+      return;
+    }
+    if (maxUses !== undefined && (isNaN(maxUses) || maxUses < 1)) {
+      await bot.sendMessage(chatId, "Invalid maxUses. Must be a number >= 1.");
       return;
     }
     try {
@@ -210,9 +215,10 @@ export async function handleOwnerMessage(
         return;
       }
       const durationDays = parseDuration(duration);
-      const newCode = new RedeemCode({ code, duration, durationDays, createdBy: user.userId });
+      const newCode = new RedeemCode({ code, duration, durationDays, createdBy: user.userId, maxUses, usedCount: 0, usedByList: [] });
       await newCode.save();
-      await bot.sendMessage(chatId, `✅ Code created!\n\nCode: ${code}\nDuration: ${duration} (${durationDays} days)\n\nUsers redeem with: /redeem ${code}`);
+      const usageNote = maxUses ? `Up to ${maxUses} users can use it` : "Single use only";
+      await bot.sendMessage(chatId, `✅ Code created!\n\nCode: \`${code}\`\nDuration: ${duration} (${durationDays} days)\nUsage: ${usageNote}\n\nUsers redeem with: /redeem ${code}`, { parse_mode: "Markdown" });
     } catch (err: any) {
       logger.error({ err }, "Failed to create redeem code");
       await bot.sendMessage(chatId, `Failed to create code: ${err?.message || "Unknown error"}`);
@@ -223,8 +229,15 @@ export async function handleOwnerMessage(
   if (cmd === "/listcodes") {
     const codes = await RedeemCode.find().sort({ createdAt: -1 }).limit(20);
     if (!codes.length) { await bot.sendMessage(chatId, "No codes found."); return; }
-    const lines = codes.map((c) => `${c.code} | ${c.duration} | ${c.used ? `Used by ${c.usedBy}` : "Available"}`);
-    await bot.sendMessage(chatId, `🎟 Redeem Codes:\n\n${lines.join("\n")}`);
+    const lines = codes.map((c) => {
+      const isMulti = c.maxUses != null;
+      const usedCount = c.usedCount ?? (c.used ? 1 : 0);
+      const status = isMulti
+        ? `${usedCount}/${c.maxUses} used`
+        : c.used ? `Used by ${c.usedBy}` : "Available";
+      return `\`${c.code}\` | ${c.duration} | ${status}`;
+    });
+    await bot.sendMessage(chatId, `🎟 Redeem Codes (last 20):\n\n${lines.join("\n")}`, { parse_mode: "Markdown" });
     return;
   }
 
@@ -409,9 +422,9 @@ export async function handleOwnerMessage(
   if (cmd === "/broadcast") {
     const broadcastMsg = args.join(" ");
     if (!broadcastMsg) { await bot.sendMessage(chatId, "Usage: /broadcast <message>"); return; }
-    const allUsers = await User.find({ banned: false });
+    const allUsers = await User.find({ banned: false, isOwner: false });
     let sent = 0, failed = 0;
-    await bot.sendMessage(chatId, `Broadcasting to ${allUsers.length} users...`);
+    await bot.sendMessage(chatId, `📤 Broadcasting to ${allUsers.length} users...`);
     for (const u of allUsers) {
       try { await bot.sendMessage(u.userId, broadcastMsg); sent++; } catch { failed++; }
       await new Promise((r) => setTimeout(r, 35));
@@ -420,10 +433,24 @@ export async function handleOwnerMessage(
     return;
   }
 
+  if (cmd === "/broadcastpremium") {
+    const broadcastMsg = args.join(" ");
+    if (!broadcastMsg) { await bot.sendMessage(chatId, "Usage: /broadcastpremium <message>"); return; }
+    const premUsers = await User.find({ banned: false, isOwner: false, "premium.active": true });
+    let sent = 0, failed = 0;
+    await bot.sendMessage(chatId, `💎 Broadcasting to ${premUsers.length} premium users...`);
+    for (const u of premUsers) {
+      try { await bot.sendMessage(u.userId, broadcastMsg); sent++; } catch { failed++; }
+      await new Promise((r) => setTimeout(r, 35));
+    }
+    await bot.sendMessage(chatId, `✅ Premium broadcast done!\nSent: ${sent}  |  Failed: ${failed}`);
+    return;
+  }
+
   if (cmd === "/announcement") {
     const announcementMsg = args.join(" ");
     if (!announcementMsg) { await bot.sendMessage(chatId, "Usage: /announcement <message>"); return; }
-    const allUsers = await User.find({ banned: false });
+    const allUsers = await User.find({ banned: false, isOwner: false });
     let sent = 0, failed = 0;
     for (const u of allUsers) {
       try { await bot.sendMessage(u.userId, `📢 NOVA ANNOUNCEMENT\n\n${announcementMsg}`); sent++; } catch { failed++; }
@@ -443,7 +470,7 @@ export async function handleOwnerMessage(
     const schedId = Date.now().toString();
     const timer = setTimeout(async () => {
       scheduledBroadcasts.delete(schedId);
-      const allUsers = await User.find({ banned: false });
+      const allUsers = await User.find({ banned: false, isOwner: false });
       let sent = 0, failed = 0;
       for (const u of allUsers) {
         try { await bot.sendMessage(u.userId, `📅 Scheduled message:\n\n${schedMsg}`); sent++; } catch { failed++; }
@@ -535,6 +562,97 @@ export async function handleOwnerMessage(
         { reply_markup: backToOwnerKeyboard() }
       );
     }
+    return;
+  }
+
+  if (cmd === "/growth") {
+    const lines: string[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const from = new Date(Date.now() - (i + 1) * 86400000);
+      const to   = new Date(Date.now() - i * 86400000);
+      const count = await User.countDocuments({ firstSeen: { $gte: from, $lt: to } });
+      const day = from.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+      const bar = "█".repeat(Math.min(count, 20)) || "·";
+      lines.push(`${day}: ${bar} ${count}`);
+    }
+    await bot.sendMessage(chatId, `📈 New Users — Last 7 Days\n\n${lines.join("\n")}`, { reply_markup: backToOwnerKeyboard() });
+    return;
+  }
+
+  if (cmd === "/topusers") {
+    const top = await User.find({ isOwner: false, banned: false })
+      .sort({ totalMessages: -1 }).limit(10)
+      .select("userId username firstName totalMessages totalImages").lean();
+    if (!top.length) { await bot.sendMessage(chatId, "No users yet."); return; }
+    const lines = top.map((u, i) => {
+      const name = u.username ? `@${u.username}` : (u.firstName || `User ${u.userId}`);
+      return `${i + 1}. ${name} — ${u.totalMessages ?? 0} msgs, ${u.totalImages ?? 0} imgs`;
+    });
+    await bot.sendMessage(chatId, `🏆 Top 10 Most Active Users (All-time)\n\n${lines.join("\n")}`, { reply_markup: backToOwnerKeyboard() });
+    return;
+  }
+
+  if (cmd === "/revenue") {
+    const premPlans = await User.aggregate([
+      { $match: { "premium.active": true, isOwner: false } },
+      { $group: { _id: "$premium.plan", count: { $sum: 1 } } },
+    ]);
+    const total = await User.countDocuments({ "premium.active": true, isOwner: false });
+    const lines = premPlans.map((p: any) => `• ${p._id || "unknown"}: ${p.count} users`);
+    await bot.sendMessage(chatId,
+      `💰 Revenue Overview\n\nActive premium users: ${total}\n\nBreakdown by plan:\n${lines.join("\n") || "No data"}\n\n_Check your Telegram Stars balance in @BotFather for exact earnings._`,
+      { parse_mode: "Markdown", reply_markup: backToOwnerKeyboard() }
+    );
+    return;
+  }
+
+  if (cmd === "/setmodel") {
+    const model = args.join(" ").trim();
+    if (!model) { await bot.sendMessage(chatId, "Usage: /setmodel <model-name>\nExample: /setmodel meta-llama/llama-3.3-70b-instruct"); return; }
+    const cfg = await getOrCreateBotConfig();
+    const old = cfg.activeChatModel;
+    cfg.activeChatModel = model;
+    await cfg.save();
+    invalidateBotConfigCache();
+    await bot.sendMessage(chatId, `✅ AI model updated!\n\nOld: ${old}\nNew: ${model}\n\nChange is live immediately.`, { reply_markup: backToOwnerKeyboard() });
+    return;
+  }
+
+  if (cmd === "/setlimit") {
+    if (args.length < 3) {
+      await bot.sendMessage(chatId, "Usage: /setlimit <free|premium> <images|messages|builds> <number>\nExample: /setlimit free images 5\nExample: /setlimit premium messages 200");
+      return;
+    }
+    const tier = args[0].toLowerCase();
+    const type = args[1].toLowerCase();
+    const val  = parseInt(args[2]);
+    if (!["free", "premium"].includes(tier) || !["images", "messages", "builds"].includes(type) || isNaN(val) || val < 0) {
+      await bot.sendMessage(chatId, "Invalid input. Tier: free|premium. Type: images|messages|builds. Value: number >= 0.");
+      return;
+    }
+    const cfg = await getOrCreateBotConfig();
+    const key = `${tier === "free" ? "free" : "premium"}${type.charAt(0).toUpperCase() + type.slice(1)}` as keyof typeof cfg.usageLimits;
+    (cfg.usageLimits as any)[key] = val;
+    cfg.markModified("usageLimits");
+    await cfg.save();
+    invalidateBotConfigCache();
+    await bot.sendMessage(chatId, `✅ Limit updated!\n\n${tier.charAt(0).toUpperCase() + tier.slice(1)} ${type}: ${val}/day\n\nLive immediately.`, { reply_markup: backToOwnerKeyboard() });
+    return;
+  }
+
+  if (cmd === "/resetlimits") {
+    const targetId = parseInt(args[0]);
+    if (isNaN(targetId)) { await bot.sendMessage(chatId, "Usage: /resetlimits <user_id>"); return; }
+    const u = await User.findOne({ userId: targetId });
+    if (!u) { await bot.sendMessage(chatId, "User not found."); return; }
+    u.usage.messages = 0;
+    u.usage.images   = 0;
+    u.usage.builds   = 0;
+    u.usage.edits    = 0;
+    u.usage.lastReset = new Date();
+    await u.save();
+    try { await bot.sendMessage(targetId, "🎁 Your daily limits have been reset by the owner! Enjoy your fresh start."); } catch {}
+    await bot.sendMessage(chatId, `✅ Daily limits reset for user ${targetId}.`, { reply_markup: backToOwnerKeyboard() });
     return;
   }
 

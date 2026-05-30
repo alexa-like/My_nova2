@@ -740,6 +740,7 @@ export async function startBot(): Promise<void> {
   schedulePremiumExpiryNotifications(bot);
   scheduleDailyEngagement(bot);
   scheduleReEngagement(bot);
+  scheduleLeaderboard(bot);
 
   logger.info("Nova is listening for messages");
 }
@@ -1025,6 +1026,210 @@ function scheduleReEngagement(botInstance: TelegramBot): void {
   run().catch(() => {});
   setInterval(run, CHECK_INTERVAL_MS);
   logger.info("Re-engagement scheduler started (checks every 6 hours)");
+}
+
+function maskName(name: string): string {
+  if (!name || name.length <= 2) return (name || "User") + "***";
+  const show = Math.ceil(name.length / 3);
+  return name.slice(0, show) + "*".repeat(name.length - show);
+}
+
+function msUntilNextSundayMidnightWAT(): number {
+  const now = new Date();
+  const watOffset = 60 * 60 * 1000; // WAT = UTC+1
+  const nowWAT = new Date(now.getTime() + watOffset);
+  const day = nowWAT.getUTCDay(); // 0=Sun
+  const daysUntilSunday = day === 0 ? 7 : 7 - day;
+  const nextSunday = new Date(Date.UTC(
+    nowWAT.getUTCFullYear(), nowWAT.getUTCMonth(), nowWAT.getUTCDate() + daysUntilSunday
+  ));
+  return nextSunday.getTime() - watOffset - now.getTime();
+}
+
+function msUntilNextMonthStartWAT(): number {
+  const now = new Date();
+  const watOffset = 60 * 60 * 1000;
+  const nowWAT = new Date(now.getTime() + watOffset);
+  const nextMonth = new Date(Date.UTC(nowWAT.getUTCFullYear(), nowWAT.getUTCMonth() + 1, 1));
+  return nextMonth.getTime() - watOffset - now.getTime();
+}
+
+function scheduleLeaderboard(botInstance: TelegramBot): void {
+  const addDaysLocal = (d: Date, n: number) => new Date(d.getTime() + n * 86400000);
+
+  const getDisplayName = (u: { firstName?: string; username?: string; userId: number }) => {
+    const raw = u.firstName || u.username || `User ${u.userId}`;
+    return maskName(raw);
+  };
+
+  const runWeekly = async () => {
+    try {
+      const ownerIdStr = process.env.OWNER_ID;
+      const ownerId = ownerIdStr ? parseInt(ownerIdStr) : null;
+      const filter: Record<string, unknown> = { banned: false, isOwner: false, "scores.weekly": { $gt: 0 } };
+      if (ownerId) filter.userId = { $ne: ownerId };
+
+      const top = await User.find(filter).sort({ "scores.weekly": -1 }).limit(10)
+        .select("userId username firstName scores premium").lean();
+
+      if (!top.length) {
+        await User.updateMany({}, { $set: { "scores.weekly": 0 } });
+        return;
+      }
+
+      const weeklyVIP = [30, 14, 7]; // days for rank 1,2,3
+      const weeklyCredits = 50;
+      const lines: string[] = [];
+
+      for (let i = 0; i < top.length; i++) {
+        const u = top[i];
+        const rank = i + 1;
+        const score = (u.scores as any)?.weekly ?? 0;
+        const name = getDisplayName(u as any);
+        let reward = "";
+
+        if (rank <= 3) {
+          const days = weeklyVIP[i];
+          const expiresAt = addDaysLocal(new Date(), days);
+          await User.updateOne({ userId: u.userId }, {
+            $set: {
+              "premium.active": true,
+              "premium.plan": `${days}d`,
+              "premium.expiresAt": expiresAt,
+            },
+          });
+          reward = `🏅 ${days}d VIP`;
+          const medal = ["🥇", "🥈", "🥉"][i];
+          lines.push(`${medal} ${name} — ${score} msgs → ${reward}`);
+          try {
+            await botInstance.sendMessage(u.userId,
+              `🎉 Congratulations! You're #${rank} on Nova's Weekly Leaderboard!\n\n` +
+              `Your reward: ✨ ${days} days VIP Premium — active now!\n\nKeep chatting to stay on top 🏆`
+            );
+          } catch {}
+        } else {
+          await User.updateOne({ userId: u.userId }, { $inc: { credits: weeklyCredits } });
+          reward = `+${weeklyCredits} credits`;
+          lines.push(`${rank}. ${name} — ${score} msgs → ${reward}`);
+          try {
+            await botInstance.sendMessage(u.userId,
+              `🎉 You made the Weekly Top 10 (#${rank})!\n\nYour reward: 🪙 ${weeklyCredits} credits added to your account!\n\nAim higher next week for VIP 💎`
+            );
+          } catch {}
+        }
+        await new Promise(r => setTimeout(r, 60));
+      }
+
+      await User.updateMany({}, { $set: { "scores.weekly": 0 } });
+
+      const announcement =
+        `🏆 WEEKLY LEADERBOARD WINNERS\n\n` +
+        `Congratulations to Nova's most active users this week!\n\n` +
+        `${lines.join("\n")}\n\n` +
+        `Keep chatting to win VIP & credits next week! 🚀`;
+
+      const allUsers = await User.find({ banned: false, isOwner: false }).select("userId").lean();
+      for (const u of allUsers) {
+        try { await botInstance.sendMessage(u.userId, announcement); } catch {}
+        await new Promise(r => setTimeout(r, 50));
+      }
+
+      logger.info({ count: top.length }, "Weekly leaderboard processed");
+    } catch (err) {
+      logger.error({ err }, "scheduleLeaderboard weekly error");
+    }
+  };
+
+  const runMonthly = async () => {
+    try {
+      const ownerIdStr = process.env.OWNER_ID;
+      const ownerId = ownerIdStr ? parseInt(ownerIdStr) : null;
+      const filter: Record<string, unknown> = { banned: false, isOwner: false, "scores.monthly": { $gt: 0 } };
+      if (ownerId) filter.userId = { $ne: ownerId };
+
+      const top = await User.find(filter).sort({ "scores.monthly": -1 }).limit(10)
+        .select("userId username firstName scores premium").lean();
+
+      if (!top.length) {
+        await User.updateMany({}, { $set: { "scores.monthly": 0 } });
+        return;
+      }
+
+      const monthlyVIP = [90, 30, 14];
+      const monthlyCredits = 150;
+      const lines: string[] = [];
+
+      for (let i = 0; i < top.length; i++) {
+        const u = top[i];
+        const rank = i + 1;
+        const score = (u.scores as any)?.monthly ?? 0;
+        const name = getDisplayName(u as any);
+
+        if (rank <= 3) {
+          const days = monthlyVIP[i];
+          const expiresAt = addDaysLocal(new Date(), days);
+          await User.updateOne({ userId: u.userId }, {
+            $set: {
+              "premium.active": true,
+              "premium.plan": `${days}d`,
+              "premium.expiresAt": expiresAt,
+            },
+          });
+          const medal = ["🥇", "🥈", "🥉"][i];
+          lines.push(`${medal} ${name} — ${score} msgs → 🏅 ${days}d VIP`);
+          try {
+            await botInstance.sendMessage(u.userId,
+              `🌟 MONTHLY CHAMPION! You're #${rank} on Nova's Monthly Leaderboard!\n\n` +
+              `Your reward: ✨ ${days} days VIP Premium — active now!\n\nYou're amazing — see you at the top next month 🏆`
+            );
+          } catch {}
+        } else {
+          await User.updateOne({ userId: u.userId }, { $inc: { credits: monthlyCredits } });
+          lines.push(`${rank}. ${name} — ${score} msgs → +${monthlyCredits} credits`);
+          try {
+            await botInstance.sendMessage(u.userId,
+              `🌟 Monthly Top 10 (#${rank})! You're one of Nova's most active users!\n\n` +
+              `Your reward: 🪙 ${monthlyCredits} credits added!\n\nNext month, push for Top 3 and win VIP 💎`
+            );
+          } catch {}
+        }
+        await new Promise(r => setTimeout(r, 60));
+      }
+
+      await User.updateMany({}, { $set: { "scores.monthly": 0 } });
+
+      const announcement =
+        `🌟 MONTHLY LEADERBOARD WINNERS\n\n` +
+        `These are Nova's most active users this month!\n\n` +
+        `${lines.join("\n")}\n\n` +
+        `Big rewards next month — keep chatting! 🚀`;
+
+      const allUsers = await User.find({ banned: false, isOwner: false }).select("userId").lean();
+      for (const u of allUsers) {
+        try { await botInstance.sendMessage(u.userId, announcement); } catch {}
+        await new Promise(r => setTimeout(r, 50));
+      }
+
+      logger.info({ count: top.length }, "Monthly leaderboard processed");
+    } catch (err) {
+      logger.error({ err }, "scheduleLeaderboard monthly error");
+    }
+  };
+
+  const armWeekly = () => {
+    const ms = msUntilNextSundayMidnightWAT();
+    setTimeout(() => { runWeekly().catch(() => {}); setInterval(runWeekly, 7 * 24 * 60 * 60 * 1000); }, ms);
+    logger.info({ nextWeeklyMs: ms }, "Weekly leaderboard scheduler armed");
+  };
+
+  const armMonthly = () => {
+    const ms = msUntilNextMonthStartWAT();
+    setTimeout(() => { runMonthly().catch(() => {}); setTimeout(armMonthly, 30 * 24 * 60 * 60 * 1000); }, ms);
+    logger.info({ nextMonthlyMs: ms }, "Monthly leaderboard scheduler armed");
+  };
+
+  armWeekly();
+  armMonthly();
 }
 
 export function getBot(): TelegramBot | null {

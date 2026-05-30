@@ -10,6 +10,9 @@ export interface IRedeemCode extends Document {
   createdAt: Date;
   expiresAt?: Date;
   createdBy: number;
+  maxUses?: number;
+  usedCount: number;
+  usedByList: number[];
 }
 
 function parseDuration(duration: string): number {
@@ -35,6 +38,9 @@ const RedeemCodeSchema = new Schema<IRedeemCode>(
     usedAt: { type: Date },
     expiresAt: { type: Date },
     createdBy: { type: Number, required: true },
+    maxUses: { type: Number },
+    usedCount: { type: Number, default: 0 },
+    usedByList: [{ type: Number }],
   },
   { timestamps: true }
 );
