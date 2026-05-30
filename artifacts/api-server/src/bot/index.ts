@@ -738,6 +738,8 @@ export async function startBot(): Promise<void> {
   scheduleAutoGifts(bot);
   scheduleGiftExpiryWarnings(bot);
   schedulePremiumExpiryNotifications(bot);
+  scheduleDailyEngagement(bot);
+  scheduleReEngagement(bot);
 
   logger.info("Nova is listening for messages");
 }
@@ -927,6 +929,102 @@ function schedulePremiumExpiryNotifications(botInstance: TelegramBot): void {
   run().catch(() => {});
   setInterval(run, CHECK_INTERVAL_MS);
   logger.info("Premium expiry notification scheduler started (runs every hour)");
+}
+
+function scheduleDailyEngagement(botInstance: TelegramBot): void {
+  const MORNING_HOUR_WAT = 9;
+  const tips = [
+    `☀️ Good morning! Did you know you can type *"draw me a ..."* to instantly generate an image?\n\nTry it now — no commands needed!`,
+    `🧠 Morning! Quick tip: Ask me to *summarize any topic* in simple terms — great for learning something new today.`,
+    `🎨 Rise and shine! Your daily images are refreshed and ready.\n\nType *"generate a ..."* to create something beautiful today 🌟`,
+    `💬 Good morning! I remember our conversations, so just pick up where we left off — or ask me anything new!`,
+    `🔍 Morning! Try asking me *"search the web for ..."* — I'll pull real-time results and summarize them for you.`,
+    `⚡ Good morning! You can ask me to *write, translate, summarize, or explain* anything. What's on your mind today?`,
+    `🌟 Morning! Reminder: type */status* to see your daily usage and what features are available to you right now.`,
+  ];
+
+  const scheduleNext = () => {
+    setTimeout(async () => {
+      try {
+        const now = new Date();
+        const since = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000); // active in last 3 days
+        const users = await User.find({
+          lastSeen: { $gte: since },
+          userId: { $gt: 0 },
+        }).select("userId settings").lean();
+
+        const tip = tips[Math.floor(Math.random() * tips.length)];
+        let sent = 0;
+        for (const u of users) {
+          try {
+            await botInstance.sendMessage(u.userId, tip, { parse_mode: "Markdown" });
+            sent++;
+          } catch { /* user may have blocked the bot */ }
+          await new Promise(r => setTimeout(r, 80));
+        }
+        logger.info({ sent, total: users.length }, "Daily engagement messages sent");
+      } catch (err) {
+        logger.error({ err }, "scheduleDailyEngagement error");
+      }
+      scheduleNext();
+    }, msUntilWATTime(MORNING_HOUR_WAT, 0));
+  };
+
+  scheduleNext();
+  logger.info({ nextMs: msUntilWATTime(MORNING_HOUR_WAT, 0) }, "Daily engagement scheduler armed (9am WAT)");
+}
+
+function scheduleReEngagement(botInstance: TelegramBot): void {
+  const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // check every 6 hours
+
+  const messages = [
+    `👋 Hey! It's been a while — I've been thinking about you!\n\nCome back and let's chat. Ask me *anything* — I'm here 😊`,
+    `💡 Miss me? I've got new ideas waiting for you!\n\nTry */image* to generate art, or just say hi and let's talk 🎨`,
+    `🤖 Nova here! You haven't stopped by in a bit.\n\nI can help you *write, search, build, or just chat* — what do you need today?`,
+    `⭐ Just checking in! Your conversation history is still here whenever you're ready.\n\nType anything to pick up where we left off 💬`,
+    `🎁 Hey, come back! Your daily free images are waiting for you.\n\nType */image <your idea>* to create something amazing today 🖼️`,
+  ];
+
+  const run = async () => {
+    try {
+      const now = new Date();
+      const from24h = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+      const to24h   = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+      // Users inactive for 24–48 hours who haven't been re-engaged recently
+      const users = await User.find({
+        lastSeen: { $gte: from24h, $lt: to24h },
+        $or: [
+          { lastReEngaged: { $exists: false } },
+          { lastReEngaged: { $lt: new Date(now.getTime() - 48 * 60 * 60 * 1000) } },
+        ],
+        userId: { $gt: 0 },
+      }).select("userId settings").lean();
+
+      if (!users.length) return;
+
+      const msg = messages[Math.floor(Math.random() * messages.length)];
+      let sent = 0;
+      for (const u of users) {
+        try {
+          await botInstance.sendMessage(u.userId, msg, {
+            parse_mode: "Markdown",
+            reply_markup: { inline_keyboard: [[{ text: "🏠 Open Menu", callback_data: "main_menu" }, { text: "🎨 Generate Image", callback_data: "img_menu" }]] },
+          });
+          await User.updateOne({ userId: u.userId }, { $set: { lastReEngaged: now } });
+          sent++;
+        } catch { /* user may have blocked the bot */ }
+        await new Promise(r => setTimeout(r, 80));
+      }
+      logger.info({ sent, total: users.length }, "Re-engagement messages sent");
+    } catch (err) {
+      logger.error({ err }, "scheduleReEngagement error");
+    }
+  };
+
+  run().catch(() => {});
+  setInterval(run, CHECK_INTERVAL_MS);
+  logger.info("Re-engagement scheduler started (checks every 6 hours)");
 }
 
 export function getBot(): TelegramBot | null {
