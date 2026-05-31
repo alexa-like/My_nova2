@@ -60,7 +60,11 @@ router.post("/bot/webhook", (req, res) => {
   res.sendStatus(200);
   const botInstance = getBot();
   if (botInstance) {
-    (botInstance as any).processUpdate(req.body);
+    try {
+      (botInstance as any).processUpdate(req.body);
+    } catch (err) {
+      console.error("[webhook] processUpdate error:", err);
+    }
   }
 });
 

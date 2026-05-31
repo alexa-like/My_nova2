@@ -3,9 +3,9 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
-import { getBot } from "./bot/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -55,22 +55,18 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
-// Serve admin dashboard static files
+// Serve admin dashboard static files only if the build exists
 const dashboardDist = path.resolve(__dirname, "../../admin-dashboard/dist/public");
-app.use(express.static(dashboardDist));
-
-// Telegram webhook (production mode — active when WEBHOOK_URL is set)
-app.post("/api/bot/webhook", (req, res) => {
-  const bot = getBot();
-  if (bot) {
-    (bot as any).processUpdate(req.body).catch(() => {});
-  }
-  res.sendStatus(200);
-});
-
-// Fallback: serve index.html for all non-API routes (SPA routing)
-app.get("/{*path}", (_req, res) => {
-  res.sendFile(path.join(dashboardDist, "index.html"));
-});
+const dashboardExists = fs.existsSync(dashboardDist);
+if (dashboardExists) {
+  app.use(express.static(dashboardDist));
+  app.get("/{*path}", (_req, res) => {
+    res.sendFile(path.join(dashboardDist, "index.html"));
+  });
+} else {
+  app.get("/{*path}", (_req, res) => {
+    res.status(200).json({ status: "ok", service: "Nova Bot API" });
+  });
+}
 
 export default app;

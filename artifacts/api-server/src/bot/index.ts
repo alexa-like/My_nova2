@@ -93,9 +93,17 @@ export async function startBot(): Promise<void> {
     await bot.setWebHook(webhookPath, { max_connections: 40 });
     logger.info({ webhookPath }, "Telegram webhook mode active");
   } else {
-    bot = new TelegramBot(token, {
-      polling: { interval: 1000, autoStart: true, params: { timeout: 10 } },
-    });
+    // Create bot without polling first so we can delete any stale webhook.
+    // If a webhook is registered with Telegram, getUpdates (polling) returns
+    // nothing — clearing it first prevents this silent conflict.
+    bot = new TelegramBot(token, { polling: false });
+    try {
+      await bot.deleteWebHook();
+      logger.info("Stale webhook cleared — starting in polling mode");
+    } catch (err) {
+      logger.warn({ err }, "Could not delete webhook before polling (non-fatal)");
+    }
+    bot.startPolling({ interval: 1000, autoStart: true, params: { timeout: 10 } });
     logger.info("Telegram polling mode active");
   }
 
