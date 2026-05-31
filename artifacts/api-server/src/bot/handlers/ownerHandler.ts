@@ -49,18 +49,12 @@ export async function sendOwnerPanel(
     `🧠 Chat Model: ${activeChat}\n` +
     `🖼 Image Model: ${activeImg}`;
 
-  const keyboard = ownerMainKeyboard(getMaintenance());
-
   if (messageId) {
     try {
-      await bot.editMessageText(text, {
-        chat_id: chatId,
-        message_id: messageId,
-        reply_markup: keyboard,
-      });
+      await bot.editMessageText(text, { chat_id: chatId, message_id: messageId });
     } catch {}
   } else {
-    await bot.sendMessage(chatId, text, { reply_markup: keyboard });
+    await bot.sendMessage(chatId, text);
   }
 }
 

@@ -11,7 +11,8 @@ export function mainMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
       [{ text: "🔍 Search" }, { text: "😄 Fun" }, { text: "🎮 Games" }],
       [{ text: "📊 Profile" }, { text: "💰 Balance" }, { text: "🪙 Earn" }],
       [{ text: "👥 Refer" }, { text: "🎁 Daily" }, { text: "⏰ Reminders" }],
-      [{ text: "⭐ Premium" }, { text: "⚙️ Settings" }, { text: "❓ Help" }],
+      [{ text: "🏆 Leaderboard" }, { text: "⭐ Premium" }, { text: "⚙️ Settings" }],
+      [{ text: "❓ Help" }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -634,7 +635,7 @@ export function earnCoinsPromoKeyboard(
 }
 
 export function backToOwnerKeyboard(): TelegramBot.InlineKeyboardMarkup {
-  return { inline_keyboard: [[{ text: "⬅️ Back to Dashboard", callback_data: "own_panel" }]] };
+  return { inline_keyboard: [] };
 }
 
 export function ownerUsersKeyboard(): TelegramBot.InlineKeyboardMarkup {

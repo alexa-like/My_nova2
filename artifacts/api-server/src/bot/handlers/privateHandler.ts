@@ -623,6 +623,27 @@ export async function handlePrivateMessage(
       await bot.sendMessage(chatId, "🔍 What do you want to search for? Type your query:", { reply_markup: mainMenuReplyKeyboard() });
       return;
     }
+    if (text === "🏆 Leaderboard") {
+      const ownerIdStr = process.env.OWNER_ID;
+      const ownerId = ownerIdStr ? parseInt(ownerIdStr) : null;
+      const baseFilter = { banned: false, isOwner: false, ...(ownerId ? { userId: { $ne: ownerId } } : {}) };
+      const maskName2 = (n: string) => { if (!n || n.length <= 2) return (n || "User") + "***"; const s = Math.ceil(n.length / 3); return n.slice(0, s) + "*".repeat(n.length - s); };
+      const [weekly, monthly] = await Promise.all([
+        User.find({ ...baseFilter, "scores.weekly": { $gt: 0 } }).sort({ "scores.weekly": -1 }).limit(10).select("userId username firstName scores").lean(),
+        User.find({ ...baseFilter, "scores.monthly": { $gt: 0 } }).sort({ "scores.monthly": -1 }).limit(10).select("userId username firstName scores").lean(),
+      ]);
+      const fmtBoard = (list: typeof weekly, key: "weekly" | "monthly") => {
+        if (!list.length) return "  No activity yet.";
+        const medals = ["🥇", "🥈", "🥉"];
+        return list.map((u, i) => `${i < 3 ? medals[i] : `${i + 1}.`} ${maskName2((u as any).firstName || (u as any).username || `User ${u.userId}`)} — ${(u.scores as any)?.[key] ?? 0} msgs`).join("\n");
+      };
+      await bot.sendMessage(chatId,
+        `🏆 Nova Leaderboard\n\n📅 This Week:\n${fmtBoard(weekly, "weekly")}\n\n🗓 This Month:\n${fmtBoard(monthly, "monthly")}\n\nTop 3 weekly win 🏅 VIP — Top 10 win 🪙 credits!`,
+        { reply_markup: mainMenuReplyKeyboard() }
+      );
+      return;
+    }
+
     if (text === "⚙️ Settings") {
       await bot.sendMessage(chatId,
         `⚙️ Settings\n\nStyle: ${user.settings.style} | Lang: ${user.settings.language || "en"} | Emojis: ${user.settings.emoji ? "On" : "Off"}\nMood: ${user.mood || "Not set"}`,
