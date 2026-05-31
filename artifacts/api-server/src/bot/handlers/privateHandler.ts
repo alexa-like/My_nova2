@@ -1807,8 +1807,51 @@ export async function handlePrivateMessage(
     return;
   }
 
-  // /redeem <code>  (exact command — do NOT use startsWith to avoid matching /redeemcd)
+  // /leaderboard — show current weekly & monthly standings
   const firstWord = text.trim().split(/\s+/)[0].split("@")[0];
+
+  if (firstWord === "/leaderboard") {
+    const ownerIdStr = process.env.OWNER_ID;
+    const ownerId = ownerIdStr ? parseInt(ownerIdStr) : null;
+    const baseFilter = { banned: false, isOwner: false, ...(ownerId ? { userId: { $ne: ownerId } } : {}) };
+
+    const maskName = (name: string) => {
+      if (!name || name.length <= 2) return (name || "User") + "***";
+      const show = Math.ceil(name.length / 3);
+      return name.slice(0, show) + "*".repeat(name.length - show);
+    };
+
+    const [weekly, monthly] = await Promise.all([
+      User.find({ ...baseFilter, "scores.weekly": { $gt: 0 } })
+        .sort({ "scores.weekly": -1 }).limit(10)
+        .select("userId username firstName scores").lean(),
+      User.find({ ...baseFilter, "scores.monthly": { $gt: 0 } })
+        .sort({ "scores.monthly": -1 }).limit(10)
+        .select("userId username firstName scores").lean(),
+    ]);
+
+    const fmt = (list: typeof weekly, scoreKey: "weekly" | "monthly") => {
+      if (!list.length) return "  No activity yet this period.";
+      const medals = ["🥇", "🥈", "🥉"];
+      return list.map((u, i) => {
+        const name = maskName((u as any).firstName || (u as any).username || `User ${u.userId}`);
+        const score = (u.scores as any)?.[scoreKey] ?? 0;
+        const prefix = i < 3 ? medals[i] : `${i + 1}.`;
+        return `${prefix} ${name} — ${score} msgs`;
+      }).join("\n");
+    };
+
+    await bot.sendMessage(chatId,
+      `🏆 Nova Leaderboard\n\n` +
+      `📅 This Week's Top 10:\n${fmt(weekly, "weekly")}\n\n` +
+      `🗓 This Month's Top 10:\n${fmt(monthly, "monthly")}\n\n` +
+      `Keep chatting to climb the ranks!\nTop 3 each week win 🏅 VIP. Top 10 win 🪙 credits.`,
+      { reply_markup: { inline_keyboard: [[{ text: "⬅️ Menu", callback_data: "main_menu" }]] } }
+    );
+    return;
+  }
+
+  // /redeem <code>  (exact command — do NOT use startsWith to avoid matching /redeemcd)
   if (firstWord === "/redeem") {
     const parts = text.trim().split(/\s+/);
     if (parts.length < 2) { await bot.sendMessage(chatId, "Usage: /redeem CODE"); return; }
