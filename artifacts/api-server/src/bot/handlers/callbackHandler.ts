@@ -2659,25 +2659,50 @@ export async function handleCallbackQuery(
       }
       const prevStreak = user.streak || 0;
       const newStreak = isStreakContinuedWAT(user.lastDailyReward) ? prevStreak + 1 : 1;
-      const streakBonus = Math.min(20, Math.floor(newStreak / 7) * 3);
+      // Streak bonus: up to +8 extra luck after 7-day streaks
+      const streakBonus = Math.min(8, Math.floor(newStreak / 7) * 2);
       const roll = Math.random() * 100;
+
+      // 7 gifts — rarer = lower threshold (higher value = less likely)
+      // Thresholds (base %, streak shifts top 3 up):
+      //  ①  2% — 5d VIP (legendary)
+      //  ②  7% — 3d VIP (very rare)
+      //  ③ 15% — 1d VIP (rare)
+      //  ④ 27% — 100 credits (uncommon)
+      //  ⑤ 45% — 50 credits (common)
+      //  ⑥ 67% — 5 bonus images (common)
+      //  ⑦ 100% — 20 credits (most common)
       let rewardMsg = "";
-      if (roll < 3 + streakBonus) {
+      if (roll < 2 + streakBonus) {
         const expiry = user.premium.expiresAt && user.premium.expiresAt > now ? user.premium.expiresAt : now;
-        user.premium.active = true; user.premium.expiresAt = addDays(expiry, 7);
+        user.premium.active = true;
+        user.premium.expiresAt = addDays(expiry, 5);
         user.premium.plan = user.premium.plan || "daily";
-        rewardMsg = `🎉 You won: 7 days of Premium!\n🌟 LEGENDARY reward!\n\nEnjoy all premium perks for a full week!`;
+        rewardMsg = `🎉 LEGENDARY! You won 5 days of VIP Premium!\n\n✨ Unlimited images, priority AI, and all perks — active now!`;
+      } else if (roll < 7 + streakBonus) {
+        const expiry = user.premium.expiresAt && user.premium.expiresAt > now ? user.premium.expiresAt : now;
+        user.premium.active = true;
+        user.premium.expiresAt = addDays(expiry, 3);
+        user.premium.plan = user.premium.plan || "daily";
+        rewardMsg = `🎉 RARE! You won 3 days of VIP Premium!\n\n💎 Unlimited images and priority AI — enjoy!`;
       } else if (roll < 15 + streakBonus) {
         const expiry = user.premium.expiresAt && user.premium.expiresAt > now ? user.premium.expiresAt : now;
-        user.premium.active = true; user.premium.expiresAt = addDays(expiry, 3);
+        user.premium.active = true;
+        user.premium.expiresAt = addDays(expiry, 1);
         user.premium.plan = user.premium.plan || "daily";
-        rewardMsg = `🎉 You won: 3 days of Premium!\n💎 RARE reward!\n\nEnjoy unlimited images and priority AI!`;
-      } else if (roll < 40 + Math.floor(streakBonus / 2)) {
-        user.bonusImages = (user.bonusImages || 0) + 10;
-        rewardMsg = `🎉 You won: +10 bonus image slots!\n✨ Generate more images than usual today!`;
+        rewardMsg = `🎉 NICE! You won 1 day of VIP Premium!\n\n⭐ Make the most of it — generate images & chat without limits!`;
+      } else if (roll < 27) {
+        user.credits = (user.credits ?? 0) + 100;
+        rewardMsg = `🎉 You won 100 credits!\n\n🪙 Added to your balance — use them for images, chat, and more!`;
+      } else if (roll < 45) {
+        user.credits = (user.credits ?? 0) + 50;
+        rewardMsg = `🎉 You won 50 credits!\n\n🪙 Spend them on image generation or premium features!`;
+      } else if (roll < 67) {
+        user.bonusImages = (user.bonusImages || 0) + 5;
+        rewardMsg = `🎉 You won 5 bonus image slots!\n\n🖼 Generate 5 extra images today — free, no credits needed!`;
       } else {
-        user.credits = (user.credits ?? 0) + 5;
-        rewardMsg = `🎉 You won: +5 credits!\n💰 Credits added to your account. Use /image or other features to spend them!`;
+        user.credits = (user.credits ?? 0) + 20;
+        rewardMsg = `🎉 You won 20 credits!\n\n🪙 Keep spinning daily for a shot at VIP! Longer streaks = better odds.`;
       }
       user.streak = newStreak;
       user.lastDailyReward = now;

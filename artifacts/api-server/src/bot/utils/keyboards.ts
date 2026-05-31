@@ -535,6 +535,23 @@ export function triviaKeyboard(
 
 // ── Owner Panel Keyboards ─────────────────────────────────────────────────────
 
+export function ownerReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: "📊 /stats" },    { text: "📈 /growth" },       { text: "🏆 /topusers" }],
+      [{ text: "💰 /revenue" },  { text: "👥 /userlist" },     { text: "🔍 /lookup" }],
+      [{ text: "📢 /broadcast" },{ text: "💎 /broadcastpremium" }],
+      [{ text: "👑 /grantpremium" }, { text: "🚫 /banuser" },  { text: "✅ /unbanuser" }],
+      [{ text: "🎟 /redeemcd" }, { text: "📋 /listcodes" },    { text: "🔄 /resetcode" }],
+      [{ text: "🏅 /setrewards" },{ text: "🤖 /setmodel" },   { text: "⚙️ /setlimit" }],
+      [{ text: "💬 /dm" },       { text: "🔄 /resetlimits" }, { text: "❌ /deleteuser" }],
+      [{ text: "📊 /owner" },    { text: "🔴 /maintenance" },  { text: "🤖 /botinfo" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
 export function ownerMainKeyboard(maintenanceOn: boolean): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [

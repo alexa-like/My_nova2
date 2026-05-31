@@ -9,7 +9,7 @@ import { addDays, formatDate } from "../utils/helpers.js";
 import { parseDuration } from "../models/RedeemCode.js";
 import { setPending } from "../utils/pendingActions.js";
 import { logger } from "../../lib/logger.js";
-import { ownerMainKeyboard, backToOwnerKeyboard } from "../utils/keyboards.js";
+import { ownerMainKeyboard, backToOwnerKeyboard, ownerReplyKeyboard } from "../utils/keyboards.js";
 import { getDailySummary, getTopCommands, getActiveUsers } from "../services/analytics.js";
 import { addCredits, setCredits, resetCredits } from "../services/credits.js";
 import { addPromoGroup, broadcastNewPromo } from "../services/groupGate.js";
@@ -79,6 +79,9 @@ export async function handleOwnerMessage(
   const cmd = text.trim().split(/\s+/)[0].split("@")[0];
 
   if (cmd === "/owner" || cmd === "/dashboard") {
+    await bot.sendMessage(chatId, "🎛 Owner keyboard active — all commands at your fingertips!", {
+      reply_markup: ownerReplyKeyboard(),
+    });
     await sendOwnerPanel(bot, chatId, getMaintenance);
     return;
   }
@@ -637,6 +640,66 @@ export async function handleOwnerMessage(
     await cfg.save();
     invalidateBotConfigCache();
     await bot.sendMessage(chatId, `✅ Limit updated!\n\n${tier.charAt(0).toUpperCase() + tier.slice(1)} ${type}: ${val}/day\n\nLive immediately.`, { reply_markup: backToOwnerKeyboard() });
+    return;
+  }
+
+  if (cmd === "/setrewards") {
+    const sub = args[0]?.toLowerCase();
+    const period = args[1]?.toLowerCase();
+
+    if (!sub || (sub !== "weekly" && sub !== "monthly")) {
+      const cfg = await getOrCreateBotConfig();
+      const r = cfg.leaderboardRewards ?? {};
+      const wVIP     = (r as any).weeklyVIP     ?? [30, 14, 7];
+      const wCreds   = (r as any).weeklyCredits ?? 50;
+      const mVIP     = (r as any).monthlyVIP    ?? [90, 30, 14];
+      const mCreds   = (r as any).monthlyCredits ?? 150;
+      await bot.sendMessage(chatId,
+        `🏅 Leaderboard Rewards\n\n` +
+        `📅 Weekly:\n• 🥇 #1 → ${wVIP[0] ?? 30}d VIP\n• 🥈 #2 → ${wVIP[1] ?? 14}d VIP\n• 🥉 #3 → ${wVIP[2] ?? 7}d VIP\n• #4–10 → ${wCreds} credits\n\n` +
+        `🗓 Monthly:\n• 🥇 #1 → ${mVIP[0] ?? 90}d VIP\n• 🥈 #2 → ${mVIP[1] ?? 30}d VIP\n• 🥉 #3 → ${mVIP[2] ?? 14}d VIP\n• #4–10 → ${mCreds} credits\n\n` +
+        `To change:\n` +
+        `/setrewards weekly vip 30 14 7\n` +
+        `/setrewards weekly credits 50\n` +
+        `/setrewards monthly vip 90 30 14\n` +
+        `/setrewards monthly credits 150`,
+        { reply_markup: backToOwnerKeyboard() }
+      );
+      return;
+    }
+
+    const cfg = await getOrCreateBotConfig();
+    const r = cfg.leaderboardRewards as any ?? {};
+
+    if (period === "vip") {
+      const d1 = parseInt(args[2]), d2 = parseInt(args[3]), d3 = parseInt(args[4]);
+      if (isNaN(d1) || isNaN(d2) || isNaN(d3) || d1 <= 0 || d2 <= 0 || d3 <= 0) {
+        await bot.sendMessage(chatId, `Usage: /setrewards ${sub} vip <days1> <days2> <days3>\nExample: /setrewards ${sub} vip 30 14 7`);
+        return;
+      }
+      r[sub === "weekly" ? "weeklyVIP" : "monthlyVIP"] = [d1, d2, d3];
+      cfg.markModified("leaderboardRewards");
+      await cfg.save();
+      invalidateBotConfigCache();
+      await bot.sendMessage(chatId, `✅ ${sub.charAt(0).toUpperCase() + sub.slice(1)} VIP rewards updated!\n🥇 #1 → ${d1}d\n🥈 #2 → ${d2}d\n🥉 #3 → ${d3}d`, { reply_markup: backToOwnerKeyboard() });
+      return;
+    }
+
+    if (period === "credits") {
+      const val = parseInt(args[2]);
+      if (isNaN(val) || val < 0) {
+        await bot.sendMessage(chatId, `Usage: /setrewards ${sub} credits <amount>\nExample: /setrewards ${sub} credits 75`);
+        return;
+      }
+      r[sub === "weekly" ? "weeklyCredits" : "monthlyCredits"] = val;
+      cfg.markModified("leaderboardRewards");
+      await cfg.save();
+      invalidateBotConfigCache();
+      await bot.sendMessage(chatId, `✅ ${sub.charAt(0).toUpperCase() + sub.slice(1)} credits (#4–10) updated to ${val} credits.`, { reply_markup: backToOwnerKeyboard() });
+      return;
+    }
+
+    await bot.sendMessage(chatId, `Usage:\n/setrewards weekly vip 30 14 7\n/setrewards weekly credits 50\n/setrewards monthly vip 90 30 14\n/setrewards monthly credits 150`);
     return;
   }
 

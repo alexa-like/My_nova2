@@ -54,10 +54,17 @@ export interface IFlashOffer {
 }
 
 export interface IMandatoryGroup {
-  name: string;     // display name shown in inline button
-  link: string;     // Telegram invite link or t.me/@username
-  chatId: number;   // actual chat ID — 0 means not yet set (gate inactive for this entry)
-  strict: boolean;  // true = blocks bot use; false = notification only
+  name: string;
+  link: string;
+  chatId: number;
+  strict: boolean;
+}
+
+export interface ILeaderboardRewards {
+  weeklyVIP: number[];
+  weeklyCredits: number;
+  monthlyVIP: number[];
+  monthlyCredits: number;
 }
 
 export interface IBotConfig extends Document {
@@ -78,6 +85,7 @@ export interface IBotConfig extends Document {
   creditRewards: ICreditRewards;
   flashOffer: IFlashOffer;
   mandatoryGroups: IMandatoryGroup[];
+  leaderboardRewards: ILeaderboardRewards;
 }
 
 const ModelEntrySchema = new Schema<IModelEntry>(
@@ -177,6 +185,15 @@ const BotConfigSchema = new Schema<IBotConfig>(
     creditRewards:   { type: CreditRewardsSchema,    default: () => ({}) },
     flashOffer:      { type: FlashOfferSchema,       default: () => ({}) },
     mandatoryGroups: { type: [MandatoryGroupSchema], default: [] },
+    leaderboardRewards: {
+      type: new Schema({
+        weeklyVIP:      { type: [Number], default: [30, 14, 7] },
+        weeklyCredits:  { type: Number,   default: 50 },
+        monthlyVIP:     { type: [Number], default: [90, 30, 14] },
+        monthlyCredits: { type: Number,   default: 150 },
+      }, { _id: false }),
+      default: () => ({}),
+    },
   },
   { timestamps: true }
 );

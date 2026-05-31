@@ -19,6 +19,7 @@ import { seedDefaultMandatoryGroup } from "./services/groupGate.js";
 import { handleStarPayment } from "./services/payment.js";
 import { msUntilNextMidnightWAT, msUntilWATTime, nextMidnightWATDate } from "./utils/watTime.js";
 import { User } from "./models/User.js";
+import { getOrCreateBotConfig } from "./models/BotConfig.js";
 
 // ── In-memory captcha store ─────────────────────────────────────────────────
 interface CaptchaChallenge {
@@ -735,7 +736,6 @@ export async function startBot(): Promise<void> {
 
   // ── Schedulers ─────────────────────────────────────────────────────────────
   scheduleDailyReport(bot);
-  scheduleAutoGifts(bot);
   scheduleGiftExpiryWarnings(bot);
   schedulePremiumExpiryNotifications(bot);
   scheduleDailyEngagement(bot);
@@ -1077,8 +1077,10 @@ function scheduleLeaderboard(botInstance: TelegramBot): void {
         return;
       }
 
-      const weeklyVIP = [30, 14, 7]; // days for rank 1,2,3
-      const weeklyCredits = 50;
+      const cfg = await getOrCreateBotConfig();
+      const rewardCfg = (cfg.leaderboardRewards as any) ?? {};
+      const weeklyVIP: number[] = rewardCfg.weeklyVIP ?? [30, 14, 7];
+      const weeklyCredits: number = rewardCfg.weeklyCredits ?? 50;
       const lines: string[] = [];
 
       for (let i = 0; i < top.length; i++) {
@@ -1155,8 +1157,10 @@ function scheduleLeaderboard(botInstance: TelegramBot): void {
         return;
       }
 
-      const monthlyVIP = [90, 30, 14];
-      const monthlyCredits = 150;
+      const cfg = await getOrCreateBotConfig();
+      const rewardCfgM = (cfg.leaderboardRewards as any) ?? {};
+      const monthlyVIP: number[] = rewardCfgM.monthlyVIP ?? [90, 30, 14];
+      const monthlyCredits: number = rewardCfgM.monthlyCredits ?? 150;
       const lines: string[] = [];
 
       for (let i = 0; i < top.length; i++) {
