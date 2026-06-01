@@ -1062,6 +1062,18 @@ function msUntilNextMonthStartWAT(): number {
   return nextMonth.getTime() - watOffset - now.getTime();
 }
 
+/**
+ * Safe wrapper around setTimeout that handles delays larger than Node.js's
+ * 32-bit signed integer limit (~24.8 days / 2,147,483,647 ms). Delays beyond
+ * that limit are split into sequential chunks so the timer fires at the right
+ * time instead of immediately (which is the buggy behaviour caused by overflow).
+ */
+function safeTimeout(fn: () => void, delayMs: number): ReturnType<typeof setTimeout> {
+  const MAX_DELAY = 2_147_483_647;
+  if (delayMs <= MAX_DELAY) return setTimeout(fn, delayMs);
+  return setTimeout(() => safeTimeout(fn, delayMs - MAX_DELAY), MAX_DELAY);
+}
+
 function scheduleLeaderboard(botInstance: TelegramBot): void {
   const addDaysLocal = (d: Date, n: number) => new Date(d.getTime() + n * 86400000);
 
@@ -1236,7 +1248,7 @@ function scheduleLeaderboard(botInstance: TelegramBot): void {
 
   const armMonthly = () => {
     const ms = msUntilNextMonthStartWAT();
-    setTimeout(() => { runMonthly().catch(() => {}); setTimeout(armMonthly, 30 * 24 * 60 * 60 * 1000); }, ms);
+    safeTimeout(() => { runMonthly().catch(() => {}); safeTimeout(armMonthly, 30 * 24 * 60 * 60 * 1000); }, ms);
     logger.info({ nextMonthlyMs: ms }, "Monthly leaderboard scheduler armed");
   };
 
