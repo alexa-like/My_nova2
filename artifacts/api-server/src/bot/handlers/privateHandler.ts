@@ -96,10 +96,6 @@ import { formatAnnouncements, getNewCount } from "../services/announcements.js";
 import { detectImageIntent, detectStickerIntent, detectSearchIntent, detectBuildIntent, detectSummarizeIntent, detectTranslateIntent } from "../services/intentEngine.js";
 import { canClaimDailyWAT, isStreakContinuedWAT, timeUntilMidnightWATStr, getWATDateString } from "../utils/watTime.js";
 
-// ── Daily reminder tracker (in-memory, per WAT day) ───────────────────────────
-// Tracks which users have been reminded about their daily reward today.
-const dailyReminderSentOn = new Map<number, string>(); // userId → WAT date string
-
 // ── Per-user build/deploy cooldown (1 min) ────────────────────────────────────
 const BUILD_COOLDOWN_MS = 60 * 1000;
 const buildCooldownMap = new Map<number, number>();
@@ -2463,18 +2459,6 @@ export async function handlePrivateMessage(
   }
 
   // ── Plain text → AI chat ─────────────────────────────────────────────────
-
-  // Daily reward reminder — sent once per WAT day when reward is available
-  if (canClaimDailyWAT(user.lastDailyReward)) {
-    const todayWAT = getWATDateString(new Date());
-    if (dailyReminderSentOn.get(user.userId) !== todayWAT) {
-      dailyReminderSentOn.set(user.userId, todayWAT);
-      await bot.sendMessage(chatId,
-        `🎁 Your daily reward is ready to claim!\n\nSpin the slot machine and see what you win 🎰`,
-        { reply_markup: { inline_keyboard: [[{ text: "🎰 Claim Daily Reward", callback_data: "daily_claim" }]] } }
-      );
-    }
-  }
 
   // Per-day message limit check
   const msgLimCfg = await getOrCreateBotConfig();
