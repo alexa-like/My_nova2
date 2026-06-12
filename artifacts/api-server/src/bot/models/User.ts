@@ -14,7 +14,7 @@ export interface IUser extends Document {
   };
   dailyGift?: {
     label: string;
-    type: "images" | "credits";
+    type: "images" | "image" | "credits";
     amount: number;
     remaining: number;
     command: string;
@@ -162,7 +162,7 @@ const UserSchema = new Schema<IUser>(
     },
     dailyGift: {
       label:     { type: String },
-      type:      { type: String, enum: ["images", "credits"] },
+      type:      { type: String, enum: ["images", "image", "credits"] },
       amount:    { type: Number },
       remaining: { type: Number },
       command:   { type: String },

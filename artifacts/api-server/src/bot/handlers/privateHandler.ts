@@ -3296,7 +3296,7 @@ async function handleImageGeneration(
     const gift = (user as any).dailyGift;
     const now = new Date();
     const giftActive = gift && !gift.expired && gift.remaining > 0 &&
-      gift.type === "image" && gift.expiresAt && gift.expiresAt > now;
+      (gift.type === "image" || gift.type === "images") && gift.expiresAt && gift.expiresAt > now;
     if (giftActive) {
       // Use a gift slot first (free — no credit cost)
       gift.remaining -= 1;
