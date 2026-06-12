@@ -7,21 +7,30 @@ import { logger } from "../../lib/logger.js";
 
 export function extractUsernameFromLink(link: string): string | null {
   const clean = link.trim();
-  // https://t.me/username  or  t.me/username
+  // https://t.me/username  or  t.me/username (public groups only — not invite links)
   const match = clean.match(/(?:https?:\/\/)?t\.me\/([A-Za-z][A-Za-z0-9_]{3,})$/);
   return match ? `@${match[1]}` : null;
 }
+
+export type MembershipStatus = "member" | "not_member" | "unverifiable";
 
 export async function checkMembership(
   bot: TelegramBot,
   identifier: string | number,
   userId: number
-): Promise<boolean> {
+): Promise<MembershipStatus> {
   try {
     const member = await bot.getChatMember(identifier as any, userId);
-    return ["member", "administrator", "creator"].includes(member.status);
-  } catch {
-    return false;
+    const active = ["member", "administrator", "creator"].includes(member.status);
+    return active ? "member" : "not_member";
+  } catch (err: any) {
+    // Bot is not in the group, group not found, or private invite link used —
+    // we can't verify, so give benefit of the doubt.
+    logger.warn(
+      { err: err?.message, identifier, userId },
+      "checkMembership: cannot verify (bot not in group or invalid identifier) — treating as unverifiable"
+    );
+    return "unverifiable";
   }
 }
 
@@ -97,9 +106,14 @@ export async function claimPromoReward(
 
     if (promo.verifiedUsers.includes(userId)) return { status: "already_claimed" };
 
+    // Use username for public groups; fall back to full link for private/invite links
     const identifier: string | number = promo.username ?? promo.link;
-    const inGroup = await checkMembership(bot, identifier, userId);
-    if (!inGroup) return { status: "not_member" };
+    const membershipStatus = await checkMembership(bot, identifier, userId);
+
+    // Only block if we can confirm the user is NOT in the group.
+    // "unverifiable" means the bot isn't in the group or the link is private —
+    // give benefit of the doubt and award the coins.
+    if (membershipStatus === "not_member") return { status: "not_member" };
 
     await PromoGroup.updateOne(
       { _id: promoId },
