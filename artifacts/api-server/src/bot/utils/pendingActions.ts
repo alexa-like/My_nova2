@@ -88,7 +88,8 @@ export const PHOTO_ACTIONS = new Set<PendingActionType>([
   "img_enhance",
   "img_stylize",
   "img_restore",
-  "describe_photo",
+  // NOTE: "describe_photo" is intentionally excluded — when pending type is
+  // describe_photo, the photo handler's auto-analysis block handles it correctly.
 ]);
 
 export const OWNER_PENDING_ACTIONS = new Set<PendingActionType>([

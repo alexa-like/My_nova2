@@ -1245,7 +1245,8 @@ export async function handleCallbackQuery(
       return;
     }
 
-    if (data === "settings_premium") {
+    // "buy_premium" is used on upsell keyboards — same screen as "settings_premium"
+    if (data === "settings_premium" || data === "buy_premium") {
       const limit = await getImageLimit(user.premium.active);
       if (user.premium.active) {
         await editMsg(bot, query,
