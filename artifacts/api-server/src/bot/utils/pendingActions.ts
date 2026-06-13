@@ -34,7 +34,8 @@ export type PendingTextAction =
   | "deletedata_confirm"
   | "grp_set_welcome"
   | "grp_set_goodbye"
-  | "grp_set_rules";
+  | "grp_set_rules"
+  | "vid_generate_text";
 
 
 export type PendingPhotoAction =

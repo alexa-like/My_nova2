@@ -164,22 +164,62 @@ Nova is a production Telegram AI assistant with personality modes, group moderat
 
 ---
 
-## Current State (as of end of Session 7)
+### Session 8 — Migration, Video Generation, TypeScript Fixes & Bug Sweep (completed)
 
-- **Build:** ✅ Clean — `pnpm run typecheck` passes with 0 errors across all 4 packages
-- **Workflow:** `Start application` running
-- **Bot:** Starts cleanly; WAT-midnight schedulers armed on startup
-- **Secrets needed to run the bot:** `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`
+**Goal:** (1) Complete Replit environment migration. (2) Add video generation. (3) Full TypeScript fix pass + bug sweep.
+
+**Tasks completed:**
+
+- **AI models:** Updated `FALLBACK_MODELS` in `ai.ts` to `openai/gpt-oss-120b:free` and `openai/gpt-oss-20b:free` (confirmed working on OpenRouter free tier).
+
+- **Video generation:** Added `services/video.ts` — HuggingFace primary (4 models: Wan2.1-T2V-1.3B, text-to-video-ms-1.7b, ali-vilab, zeroscope_v2_576w) with Pollinations.ai fallback; 150 s timeout on HF calls. `🎬 Generate Video` reply button added to `createMenuReplyKeyboard`. Full handler in `privateHandler.ts` (`handleVideoGeneration`) and pending action `vid_generate_text`. Callback `vid_generate` in `callbackHandler.ts`.
+
+- **TypeScript errors fixed (4 total):**
+  1. `"vid_generate_text"` added to `PendingTextAction` union in `pendingActions.ts`
+  2. `"video_gen"` and `"polling_error"` added to `AnalyticsEvent` in `models/Analytics.ts`
+  3. `bot.startPolling({ interval: 1000, autoStart: true, ... })` — both `interval` and `autoStart` are not in `StartPollingOptions`; replaced with `bot.startPolling({ restart: false })` (only `restart` is a valid field)
+
+- **Inline handler bot username:** Updated `inlineHandler.ts` hint texts from `@Novabyolabot` → `@Novabyalexa_bot`.
+
+- **OWNER_CMDS gap fixed:** 18 owner commands were handled in `ownerHandler.ts` but missing from `OWNER_CMDS` set in `index.ts` — they silently routed to `privateHandler` and failed. Added: `/broadcastpremium`, `/addcredits`, `/removecredits`, `/setcredits`, `/resetcredits`, `/creditstats`, `/setmodel`, `/setlimit`, `/setrewards`, `/resetlimits`, `/setflashoffer`, `/endflashoffer`, `/growth`, `/topusers`, `/revenue`, `/listpromos`, `/testai`, `/testbuild`.
+
+- **Video button dead-code fix:** `"🎬 Generate Video"` was NOT in `REPLY_KEYBOARD_TEXTS` but the handler at line 873 of `privateHandler.ts` IS inside the `REPLY_KEYBOARD_TEXTS` block — so clicking the button never reached its handler. Added `"🎬 Generate Video"` to `REPLY_KEYBOARD_TEXTS`.
+
+- **Reminder duplicate index:** Removed `index: true` from the inline `triggerAt` field in `Reminder.ts` — the `ReminderSchema.index()` call below already registers the TTL index; having both caused a Mongoose warning on every startup.
+
+- **TypeScript:** 0 errors — `pnpm --filter @workspace/api-server run typecheck` passes clean after all fixes.
+
+**Files changed this session:**
+- `artifacts/api-server/src/bot/services/video.ts` (new file)
+- `artifacts/api-server/src/bot/services/ai.ts`
+- `artifacts/api-server/src/bot/utils/pendingActions.ts`
+- `artifacts/api-server/src/bot/models/Analytics.ts`
+- `artifacts/api-server/src/bot/models/Reminder.ts`
+- `artifacts/api-server/src/bot/handlers/privateHandler.ts`
+- `artifacts/api-server/src/bot/handlers/callbackHandler.ts`
+- `artifacts/api-server/src/bot/handlers/inlineHandler.ts`
+- `artifacts/api-server/src/bot/index.ts`
+- `artifacts/api-server/src/bot/utils/keyboards.ts`
+
+---
+
+## Current State (as of end of Session 8)
+
+- **Build:** ✅ Clean — `pnpm --filter @workspace/api-server run typecheck` passes with 0 errors; `pnpm --filter @workspace/api-server run build` succeeds
+- **Workflow:** `Start application` running — bot polls cleanly, no warnings except deprecation notices
+- **Bot username:** @Novabyalexa_bot (confirmed in startup logs)
+- **Video generation:** HuggingFace primary → Pollinations.ai fallback; no paid key needed
+- **Inline mode:** Handler exists and is correct, but requires enabling via @BotFather (`/setinline` on the bot) — currently disabled at Telegram's side
+- **Secrets needed:** `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`
 
 ---
 
 ## Next Tasks (suggested, not yet started)
 
+- [ ] Enable inline mode via @BotFather: `/setinline` → @Novabyalexa_bot → set a placeholder (e.g. "Ask Nova anything...")
 - [ ] Test the reply keyboard flow end-to-end with real Telegram account (ensure all ~100 button texts route correctly)
-- [ ] Verify owner keyboard guard: `handleOwnerReplyButton` is only reachable inside the `isOwner` guard in `privateHandler.ts` — spot-check that non-owners can never see or trigger owner keyboard buttons
-- [ ] Some callbacks still send inline keyboards for non-navigation flows (fun_joke, fun_iq, fun_compliment, etc.) — consider converting those result messages to use reply keyboards too
-- [ ] Captcha store is in-memory — if server restarts mid-captcha, users get stuck muted; consider persisting captcha state to MongoDB
-- [ ] Admin dashboard chunk size is 647 KB (warn threshold 500 KB) — consider lazy-loading heavy routes
+- [ ] Verify owner keyboard guard: non-owners can never trigger owner reply buttons
+- [ ] Captcha store is in-memory — server restart mid-captcha leaves users stuck muted; persist to MongoDB
 - [ ] Deploy to Render — set env secrets: `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `OPENROUTER_API_KEY`, `OWNER_ID`, `WEBHOOK_URL`
 
 ---

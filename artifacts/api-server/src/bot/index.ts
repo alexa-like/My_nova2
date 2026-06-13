@@ -63,11 +63,16 @@ let bot: TelegramBot | null = null;
 const OWNER_CMDS = new Set([
   "/owner", "/dashboard", "/stats", "/getusage", "/redeemcd", "/listcodes",
   "/resetcode", "/lookup", "/userlist", "/grouplist", "/groupstats",
-  "/deletegroup", "/deleteuser", "/broadcast", "/announcement", "/schedule",
-  "/grantpremium", "/revokepremium", "/banuser", "/unbanuser",
-  "/clearuserdata", "/maintenance",
+  "/deletegroup", "/deleteuser", "/broadcast", "/broadcastpremium",
+  "/announcement", "/schedule", "/grantpremium", "/revokepremium",
+  "/banuser", "/unbanuser", "/clearuserdata", "/maintenance",
   "/analytics", "/dm", "/messageuser", "/botinfo",
   "/searchuser", "/listscheduled", "/cancelschedule",
+  "/addcredits", "/removecredits", "/setcredits", "/resetcredits", "/creditstats",
+  "/setmodel", "/setlimit", "/setrewards", "/resetlimits",
+  "/setflashoffer", "/endflashoffer",
+  "/growth", "/topusers", "/revenue",
+  "/listpromos", "/testai", "/testbuild",
   // Group gate management:
   "/addgroup", "/removegroup", "/listgroups", "/setgroupid", "/getgroupid",
 ]);
@@ -103,7 +108,7 @@ export async function startBot(): Promise<void> {
     } catch (err) {
       logger.warn({ err }, "Could not delete webhook before polling (non-fatal)");
     }
-    bot.startPolling({ interval: 1000, autoStart: true, params: { timeout: 10 } });
+    bot.startPolling({ restart: false });
     logger.info("Telegram polling mode active");
   }
 

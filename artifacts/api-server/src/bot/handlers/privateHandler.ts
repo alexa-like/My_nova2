@@ -189,7 +189,7 @@ const REPLY_KEYBOARD_TEXTS = new Set([
   // Write submenu
   "🐦 Tweet", "📸 IG Caption", "👤 Bio", "🎵 Song Lyrics", "📧 Email", "🎭 Poem",
   // Create submenu
-  "✨ Generate Image", "🎨 Style Presets", "🖼️ Create Sticker",
+  "✨ Generate Image", "🎬 Generate Video", "🎨 Style Presets", "🖼️ Create Sticker",
   "✏️ Edit Image", "🔆 Enhance Photo", "🎭 Stylize Photo", "🔧 Restore Photo",
   // Image style presets (normalized — also matched without ✅ prefix via normalizeReplyText)
   "🎌 Anime", "🤖 Cyberpunk", "🌌 Fantasy", "📸 Realistic",

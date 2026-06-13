@@ -25,7 +25,9 @@ export type AnalyticsEvent =
   | "tts"
   | "stt"
   | "sticker_gen"
-  | "reminder_set";
+  | "reminder_set"
+  | "video_gen"
+  | "polling_error";
 
 export interface IAnalytics extends Document {
   event: AnalyticsEvent;

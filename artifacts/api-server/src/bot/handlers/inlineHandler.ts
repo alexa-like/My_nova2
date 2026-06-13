@@ -27,7 +27,7 @@ export async function handleInlineQuery(
           title: "💬 Ask Nova anything...",
           description: "Type your question and Nova will answer it",
           input_message_content: {
-            message_text: "Please type your question after @Novabyolabot",
+            message_text: "Please type your question after @Novabyalexa_bot",
           },
         },
         {
@@ -36,7 +36,7 @@ export async function handleInlineQuery(
           title: "🎨 Generate an image...",
           description: 'Type "image a sunset over mountains" to generate',
           input_message_content: {
-            message_text: 'Type: @Novabyolabot image <your description>',
+            message_text: 'Type: @Novabyalexa_bot image <your description>',
           },
         },
       ], { cache_time: 10 });

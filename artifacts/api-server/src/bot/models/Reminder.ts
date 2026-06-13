@@ -14,7 +14,7 @@ const ReminderSchema = new Schema<IReminder>(
     userId:    { type: Number, required: true, index: true },
     chatId:    { type: Number, required: true },
     message:   { type: String, required: true },
-    triggerAt: { type: Date, required: true, index: true },
+    triggerAt: { type: Date, required: true },
     sent:      { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
