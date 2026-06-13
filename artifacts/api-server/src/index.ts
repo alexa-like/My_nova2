@@ -63,6 +63,10 @@ app.listen(port, (err?: Error) => {
   startKeepAlive();
 });
 
-startBot().catch((err) => {
-  logger.error({ err }, "Failed to start Telegram bot");
-});
+if (process.env["DISABLE_BOT"] !== "true") {
+  startBot().catch((err) => {
+    logger.error({ err }, "Failed to start Telegram bot");
+  });
+} else {
+  logger.info("Bot startup skipped (DISABLE_BOT=true)");
+}

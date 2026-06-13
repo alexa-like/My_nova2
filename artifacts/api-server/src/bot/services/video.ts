@@ -10,8 +10,10 @@ const ax = axios.create({ httpAgent, httpsAgent });
 // ── Primary: HuggingFace text-to-video (free, no key required) ────────────────
 async function generateVideoHuggingFace(prompt: string): Promise<Buffer | null> {
   const models = [
+    "Wan-AI/Wan2.1-T2V-1.3B",
     "damo-vilab/text-to-video-ms-1.7b",
     "ali-vilab/text-to-video-ms-1.7b",
+    "cerspense/zeroscope_v2_576w",
   ];
   const token = process.env.HUGGINGFACE_API_TOKEN;
   for (const model of models) {
@@ -33,6 +35,7 @@ async function generateVideoHuggingFace(prompt: string): Promise<Buffer | null> 
         logger.info({ bytes: buf.byteLength, model }, "HF video generated");
         return buf;
       }
+      logger.warn({ model, ct, bytes: buf.byteLength }, "HF video unexpected response");
     } catch (err: any) {
       logger.warn({ model, status: err?.response?.status, err: err?.message }, "HF video model failed");
     }
@@ -40,80 +43,36 @@ async function generateVideoHuggingFace(prompt: string): Promise<Buffer | null> 
   return null;
 }
 
-// ── Backup: fal.ai queue API (requires FAL_KEY) ───────────────────────────────
-async function generateVideoFal(prompt: string): Promise<Buffer | null> {
-  const key = process.env.FAL_KEY;
-  if (!key) return null;
-
-  const models = [
-    "fal-ai/fast-animatediff/text-to-video",
-    "fal-ai/minimax-video/text-to-video",
-  ];
-
-  for (const model of models) {
-    try {
-      logger.info({ model }, "Attempting fal.ai video generation");
-      const submitResp = await ax.post(
-        `https://queue.fal.run/${model}`,
-        { prompt, num_frames: 16, fps: 8 },
-        {
-          headers: {
-            Authorization: `Key ${key}`,
-            "Content-Type": "application/json",
-          },
-          timeout: 30000,
-        }
-      );
-      const requestId: string | undefined = submitResp.data?.request_id;
-      if (!requestId) continue;
-
-      // Poll for completion (max ~90s)
-      for (let i = 0; i < 30; i++) {
-        await new Promise((r) => setTimeout(r, 3000));
-        try {
-          const statusResp = await ax.get(
-            `https://queue.fal.run/${model}/requests/${requestId}`,
-            { headers: { Authorization: `Key ${key}` }, timeout: 10000 }
-          );
-          const status: string = statusResp.data?.status;
-          if (status === "COMPLETED") {
-            const videoUrl: string | undefined =
-              statusResp.data?.result?.video?.url ||
-              statusResp.data?.output?.video?.url ||
-              statusResp.data?.result?.video_url;
-            if (videoUrl) {
-              const vidResp = await ax.get(videoUrl, {
-                responseType: "arraybuffer",
-                timeout: 60000,
-              });
-              const buf = Buffer.from(vidResp.data);
-              if (buf.byteLength > 5000) {
-                logger.info({ bytes: buf.byteLength, model }, "fal.ai video generated");
-                return buf;
-              }
-            }
-            break;
-          }
-          if (status === "FAILED") {
-            logger.warn({ model, requestId }, "fal.ai job failed");
-            break;
-          }
-        } catch (pollErr: any) {
-          logger.warn({ model, err: pollErr?.message }, "fal.ai poll error");
-        }
-      }
-    } catch (err: any) {
-      logger.warn({ model, err: err?.message }, "fal.ai video submission failed");
+// ── Backup: Pollinations.ai video (free, no key) ──────────────────────────────
+async function generateVideoPollinations(prompt: string): Promise<Buffer | null> {
+  try {
+    const encoded = encodeURIComponent(prompt);
+    const url = `https://video.pollinations.ai/prompt/${encoded}`;
+    logger.info({ prompt: prompt.slice(0, 60) }, "Attempting Pollinations video");
+    const resp = await ax.get(url, {
+      responseType: "arraybuffer",
+      timeout: 120000,
+      headers: { "User-Agent": "Nova-Bot/1.0" },
+    });
+    const buf = Buffer.from(resp.data);
+    const ct = (resp.headers["content-type"] as string) || "";
+    if ((ct.includes("video") || ct.includes("mp4") || ct.includes("octet-stream")) && buf.byteLength > 5000) {
+      logger.info({ bytes: buf.byteLength }, "Pollinations video generated");
+      return buf;
     }
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Pollinations video failed");
   }
   return null;
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export async function generateVideo(prompt: string): Promise<Buffer | null> {
+  // Try HuggingFace first (free models, no key needed for public models)
   const hfResult = await generateVideoHuggingFace(prompt);
   if (hfResult) return hfResult;
 
-  logger.warn("HF video failed — trying fal.ai backup");
-  return generateVideoFal(prompt);
+  // Fallback: Pollinations video
+  logger.warn("HF video failed — trying Pollinations fallback");
+  return generateVideoPollinations(prompt);
 }

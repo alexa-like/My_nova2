@@ -7,13 +7,12 @@ const MAX_HISTORY = 20;
 
 // ── Single sequential fallback chain — used for all users ─────────────────────
 const FALLBACK_MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",
+  "openai/gpt-oss-120b:free",
+  "openai/gpt-oss-20b:free",
   "google/gemma-4-31b-it:free",
-  "deepseek/deepseek-v4-flash:free",
-  "microsoft/phi-4:free",
-  "mistralai/mistral-7b-instruct:free",
-  "meta-llama/llama-3.1-8b-instruct:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
   "meta-llama/llama-3.2-3b-instruct:free",
+  "nousresearch/hermes-3-llama-3.1-405b:free",
 ];
 
 // ── Auto-detect queries that need real-time web context ───────────────────────
