@@ -719,6 +719,15 @@ export async function handleCallbackQuery(
       return;
     }
 
+    if (data === "vid_generate") {
+      setPending(userId, "vid_generate_text");
+      await editMsg(bot, query,
+        `🎬 Generate Video\n\nDescribe the video you want to create:\nExample: a wave crashing on a beach at sunset, a timelapse of clouds moving\n\n⏳ Video generation takes 30-90 seconds.`,
+        backToImgKeyboard()
+      );
+      return;
+    }
+
     if (data === "img_styles") {
       await editMsg(bot, query,
         `🎨 Style Presets\n\nPick a visual style — then I'll ask what to draw in it:`,

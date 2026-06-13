@@ -3,6 +3,7 @@ import { IUser, User } from "../models/User.js";
 import { RedeemCode } from "../models/RedeemCode.js";
 import { chat, clearMemory } from "../services/ai.js";
 import { generateImage, getImageLimit, editImage, downloadTelegramPhoto } from "../services/image.js";
+import { generateVideo } from "../services/video.js";
 import { analyzeImage } from "../services/imageAnalysis.js";
 import { isRateLimited } from "../utils/rateLimiter.js";
 import { formatDate, addDays, getUserName, safeSend, startTypingLoop, startLiveStatus } from "../utils/helpers.js";
@@ -867,6 +868,11 @@ export async function handlePrivateMessage(
     if (text === "✨ Generate Image") {
       setPending(user.userId, "img_generate_text");
       await bot.sendMessage(chatId, "✨ Image Generation — describe what you want to create:", { reply_markup: createMenuReplyKeyboard() });
+      return;
+    }
+    if (text === "🎬 Generate Video") {
+      setPending(user.userId, "vid_generate_text");
+      await bot.sendMessage(chatId, "🎬 Video Generation — describe the video you want:\nExample: a wave crashing at sunset, timelapse of clouds\n\n⏳ Takes 30–90 seconds.", { reply_markup: createMenuReplyKeyboard() });
       return;
     }
     if (text === "🎨 Style Presets") {
@@ -2579,6 +2585,10 @@ async function handlePendingText(
         await handleImageGeneration(bot, chatId, user, styledPrompt, e);
         break;
       }
+      case "vid_generate_text": {
+        await handleVideoGeneration(bot, chatId, user, input);
+        break;
+      }
       case "fun_8ball": {
         const pool = [
           "It is certain.", "Without a doubt.", "Yes, definitely!",
@@ -3268,6 +3278,40 @@ export async function handleDocumentMessage(
     logger.error({ err }, "Document handler error");
     try { await bot.deleteMessage(chatId, statusMsg.message_id); } catch {}
     await bot.sendMessage(chatId, "Something went wrong reading the document. Please try again.");
+  }
+}
+
+async function handleVideoGeneration(
+  bot: TelegramBot,
+  chatId: number,
+  user: IUser,
+  prompt: string
+): Promise<void> {
+  const sentMsg = await bot.sendMessage(chatId,
+    "🎬 Generating your video... this may take up to 90 seconds."
+  );
+  const stopTyping = startTypingLoop(bot, chatId, "upload_video");
+
+  try {
+    const videoBuffer = await generateVideo(prompt);
+    stopTyping();
+    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+
+    if (!videoBuffer) {
+      await bot.sendMessage(chatId,
+        "❌ Video generation failed. The model may be warming up — please try again in a minute.",
+        { reply_markup: createMenuReplyKeyboard() }
+      );
+      return;
+    }
+
+    track("video_gen", user.userId, chatId).catch(() => {});
+    await bot.sendVideo(chatId, videoBuffer, { caption: `🎬 ${prompt}` });
+  } catch (err) {
+    stopTyping();
+    logger.error({ err }, "Video generation error");
+    try { await bot.deleteMessage(chatId, sentMsg.message_id); } catch {}
+    await bot.sendMessage(chatId, "❌ Video generation failed. Please try again.");
   }
 }
 

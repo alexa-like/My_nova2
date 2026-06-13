@@ -260,14 +260,17 @@ export function imageMenuKeyboard(): TelegramBot.InlineKeyboardMarkup {
     inline_keyboard: [
       [
         { text: "✨ Generate Image", callback_data: "img_generate" },
+        { text: "🎬 Generate Video", callback_data: "vid_generate" },
+      ],
+      [
         { text: "🎨 Style Presets", callback_data: "img_styles" },
-      ],
-      [
         { text: "🖼️ Create Sticker", callback_data: "sticker_btn" },
-        { text: "✏️ Edit via Prompt", callback_data: "img_edit" },
       ],
       [
+        { text: "✏️ Edit via Prompt", callback_data: "img_edit" },
         { text: "🔆 Enhance Photo", callback_data: "img_enhance" },
+      ],
+      [
         { text: "🎭 Stylize", callback_data: "img_stylize" },
       ],
       [{ text: "⬅️ Back to Menu", callback_data: "main_menu" }],
@@ -1243,10 +1246,10 @@ export function writeMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
 export function createMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
   return {
     keyboard: [
-      [{ text: "✨ Generate Image" }, { text: "🎨 Style Presets" }],
-      [{ text: "🖼️ Create Sticker" }, { text: "✏️ Edit Image" }],
-      [{ text: "🔆 Enhance Photo" }, { text: "🎭 Stylize Photo" }],
-      [{ text: "🔧 Restore Photo" }],
+      [{ text: "✨ Generate Image" }, { text: "🎬 Generate Video" }],
+      [{ text: "🎨 Style Presets" }, { text: "🖼️ Create Sticker" }],
+      [{ text: "✏️ Edit Image" }, { text: "🔆 Enhance Photo" }],
+      [{ text: "🎭 Stylize Photo" }, { text: "🔧 Restore Photo" }],
       [{ text: "⬅️ Main Menu" }],
     ],
     resize_keyboard: true,
