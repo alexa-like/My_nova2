@@ -15,7 +15,7 @@ export function startKeepAlive(): void {
 
   if (!base) {
     logger.warn(
-      "SERVER_URL / RENDER_EXTERNAL_URL not set — self-ping keep-alive disabled"
+      "SERVER_URL not set — self-ping keep-alive disabled"
     );
     return;
   }

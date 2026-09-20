@@ -5,6 +5,17 @@ let initialized: Promise<void> | undefined;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  const providedSecret = req.headers["x-telegram-bot-api-secret-token"];
+  if (expectedSecret && providedSecret !== expectedSecret) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  if (!req.body || typeof req.body !== "object") {
+    return res.status(400).json({ error: "Invalid Telegram update" });
+  }
+
   if (!initialized) initialized = startBot();
   try {
     await initialized;
