@@ -13,9 +13,7 @@ process.on("unhandledRejection", (reason) => {
 
 // ── Required environment variable validation ──────────────────────────────────
 const REQUIRED_ENV: Record<string, string> = {
-  PORT:               "Server port number",
   TELEGRAM_BOT_TOKEN: "Telegram bot token from @BotFather",
-  MONGODB_URI:        "MongoDB connection string",
 };
 
 const OPTIONAL_WARN_ENV: Record<string, string> = {
@@ -37,7 +35,7 @@ for (const [key, desc] of Object.entries(REQUIRED_ENV)) {
   }
 }
 if (!envValid) {
-  logger.error("Aborting startup: required environment variables are missing. Set them in your Render dashboard.");
+  logger.error("Aborting startup: required environment variables are missing. Configure them in the Vercel project settings.");
   process.exit(1);
 }
 
@@ -47,26 +45,28 @@ for (const [key, desc] of Object.entries(OPTIONAL_WARN_ENV)) {
   }
 }
 
-const rawPort = process.env["PORT"];
-const port = Number(rawPort);
+if (process.env["VERCEL"] !== "1") {
+  const rawPort = process.env["PORT"] ?? "3000";
+  const port = Number(rawPort);
 
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
-
-app.listen(port, (err?: Error) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
+  if (Number.isNaN(port) || port <= 0) {
+    throw new Error(`Invalid PORT value: "${rawPort}"`);
   }
-  logger.info({ port }, "Server listening");
-  startKeepAlive();
-});
 
-if (process.env["DISABLE_BOT"] !== "true") {
-  startBot().catch((err) => {
-    logger.error({ err }, "Failed to start Telegram bot");
+  app.listen(port, (err?: Error) => {
+    if (err) {
+      logger.error({ err }, "Error listening on port");
+      process.exit(1);
+    }
+    logger.info({ port }, "Server listening");
+    startKeepAlive();
   });
-} else {
-  logger.info("Bot startup skipped (DISABLE_BOT=true)");
+
+  if (process.env["DISABLE_BOT"] !== "true") {
+    startBot().catch((err) => {
+      logger.error({ err }, "Failed to start Telegram bot");
+    });
+  } else {
+    logger.info("Bot startup skipped (DISABLE_BOT=true)");
+  }
 }

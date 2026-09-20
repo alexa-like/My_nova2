@@ -1,20 +1,21 @@
-const getApiKey = (): string | null => localStorage.getItem("nova_api_key");
+const getApiKey = (): string | null => sessionStorage.getItem("nova_api_key");
 
 export const isAuthenticated = (): boolean => !!getApiKey();
 
 export const saveCredentials = (apiKey: string): void => {
-  localStorage.setItem("nova_api_key", apiKey);
+  sessionStorage.setItem("nova_api_key", apiKey);
 };
 
 export const clearCredentials = (): void => {
-  localStorage.removeItem("nova_api_key");
+  sessionStorage.removeItem("nova_api_key");
 };
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("Not authenticated");
 
-  const res = await fetch(path, {
+  const apiOrigin = import.meta.env.VITE_API_URL ?? "";
+  const res = await fetch(`${apiOrigin}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
