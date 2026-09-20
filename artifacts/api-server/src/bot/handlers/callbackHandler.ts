@@ -916,7 +916,7 @@ export async function handleCallbackQuery(
       await bot.answerCallbackQuery(query.id);
       const blueprintUrl = getRenderBlueprintUrl(repoUrl);
       await bot.sendMessage(chatId,
-        `🟣 Deploy to Render via Blueprint\n\n📦 ${cached.project.name}\n\nYour project includes a \`render.yaml\` Blueprint file. Click the button below — Render will read it and set up your service automatically. No API key needed.\n\n${cached.vercelUrl ? `⚡ Frontend (Vercel): ${cached.vercelUrl}\n` : ""}`,
+        `🟣 Deploy to Vercel\n\n📦 ${cached.project.name}\n\nYour project includes a \`render.yaml\` Blueprint file. Click the button below — Render will read it and set up your service automatically. No API key needed.\n\n${cached.vercelUrl ? `⚡ Frontend (Vercel): ${cached.vercelUrl}\n` : ""}`,
         { reply_markup: { inline_keyboard: [
           [{ text: "🚀 Deploy on Render", url: blueprintUrl }],
           [{ text: "✅ Done", callback_data: "build_deploy_done" }, { text: "⬅️ Menu", callback_data: "main_menu" }],

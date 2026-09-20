@@ -62,11 +62,11 @@ QUALITY RULES:
 6. Maximum 8 files total
 
 RENDER BLUEPRINT RULE:
-- For "nodejs" and "fullstack" projects, you MUST include a "render.yaml" file.
-- The render.yaml must define the service so Render can deploy it via Blueprint.
+- For "nodejs" and "fullstack" projects, you MUST include a "vercel.json" file.
+- The vercel.json must define the service so Render can deploy it via Blueprint.
 - Use the project name (kebab-case) as the service name.
 - Always use: type: web, env: node, plan: free, PORT: 10000.
-- Example render.yaml:
+- Example vercel.json:
   services:
     - type: web
       name: my-project-name
@@ -83,8 +83,8 @@ RENDER BLUEPRINT RULE:
 deploymentTip examples:
 - static: "Deploy free on Netlify: drag folder to app.netlify.com/drop"
 - react: "Deploy on Vercel: import from GitHub at vercel.com/new"
-- nodejs: "Push to GitHub then click Deploy on Render — Blueprint auto-configures from render.yaml"
-- fullstack: "Push to GitHub then click Deploy on Render — Blueprint auto-configures from render.yaml"`;
+- nodejs: "Push to GitHub then import the project into Vercel using vercel.json"
+- fullstack: "Push to GitHub then import the project into Vercel using vercel.json"`;
 }
 
 function extractJson(raw: string): string {

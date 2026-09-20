@@ -6,13 +6,12 @@ let pingInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Starts the self-ping loop. Call once after the server is listening.
- * Uses the SERVER_URL env var (or RENDER_EXTERNAL_URL) to ping /api/healthz.
- * This keeps the Render free-tier service from sleeping.
+ * Uses the SERVER_URL env var to ping /api/healthz when running outside Vercel.
  */
 export function startKeepAlive(): void {
   const base =
     process.env.SERVER_URL ||
-    process.env.RENDER_EXTERNAL_URL;
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : undefined;
 
   if (!base) {
     logger.warn(
