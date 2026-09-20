@@ -916,7 +916,7 @@ export async function handleCallbackQuery(
       await bot.answerCallbackQuery(query.id);
       const blueprintUrl = getRenderBlueprintUrl(repoUrl);
       await bot.sendMessage(chatId,
-        `🟣 Deploy to Render via Blueprint\n\n📦 ${cached.project.name}\n\nYour project includes a \`render.yaml\` Blueprint file. Click the button below — Render will read it and set up your service automatically. No API key needed.\n\n${cached.vercelUrl ? `⚡ Frontend (Vercel): ${cached.vercelUrl}\n` : ""}`,
+        `🟣 Deploy to Vercel\n\n📦 ${cached.project.name}\n\nYour project is configured for Vercel deployment. Click the button below to continue.\n\n${cached.vercelUrl ? `⚡ Frontend (Vercel): ${cached.vercelUrl}\n` : ""}`,
         { reply_markup: { inline_keyboard: [
           [{ text: "🚀 Deploy on Render", url: blueprintUrl }],
           [{ text: "✅ Done", callback_data: "build_deploy_done" }, { text: "⬅️ Menu", callback_data: "main_menu" }],
@@ -2700,7 +2700,7 @@ export async function handleCallbackQuery(
         user.premium.active = true;
         user.premium.expiresAt = addDays(expiry, 1);
         user.premium.plan = user.premium.plan || "daily";
-        rewardMsg = `🎉 NICE! You won 1 day of VIP Premium!\n\n⭐ Make the most of it — generate images & chat without limits!`;
+        rewardMsg = `���� NICE! You won 1 day of VIP Premium!\n\n⭐ Make the most of it — generate images & chat without limits!`;
       } else if (roll < 27) {
         user.credits = (user.credits ?? 0) + 100;
         rewardMsg = `🎉 You won 100 credits!\n\n🪙 Added to your balance — use them for images, chat, and more!`;

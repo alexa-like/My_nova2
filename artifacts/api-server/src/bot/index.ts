@@ -87,11 +87,11 @@ export async function startBot(): Promise<void> {
   try {
     await connectDB();
   } catch (err) {
-    logger.error({ err }, "Failed to connect to MongoDB — bot cannot start without a database");
+    logger.error({ err }, "Failed to initialize Supabase — bot cannot start without a database");
     return;
   }
 
-  const webhookUrl = process.env.WEBHOOK_URL || process.env.RENDER_EXTERNAL_URL;
+  const webhookUrl = process.env.WEBHOOK_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined);
   if (webhookUrl) {
     bot = new TelegramBot(token, { webHook: false });
     const webhookPath = `${webhookUrl.replace(/\/$/, "")}/api/bot/webhook`;
@@ -477,7 +477,7 @@ export async function startBot(): Promise<void> {
     }
   });
 
-  // ── Member left / goodbye ─────────────────────────────────────────────────
+  // ── Member left / goodbye ���────────────────────────────────────────────────
   bot.on("left_chat_member", async (msg) => {
     if (!msg.left_chat_member) return;
     try {

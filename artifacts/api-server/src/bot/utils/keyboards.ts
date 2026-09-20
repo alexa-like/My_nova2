@@ -125,7 +125,7 @@ export function buildResultKeyboard(
   }
   buttons.push([
     { text: "⚡ Deploy to Vercel", callback_data: "deploy_live" },
-    { text: "🟣 Deploy to Render", callback_data: "deploy_render" },
+    { text: "🟣 Deploy to Vercel", callback_data: "deploy_render" },
   ]);
   buttons.push([
     { text: "📁 My Projects", callback_data: "my_projects" },
@@ -1214,7 +1214,7 @@ export function mainMenuWithNewsKeyboard(hasNews = false): TelegramBot.InlineKey
 
 // ═══════════════════════════════════════════════════════════════════
 // ── Reply Keyboards for All Submenus ─────────────────────────────
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════��═══════
 
 export function chatMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
   return {
@@ -1287,7 +1287,7 @@ export function buildSubMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
 export function buildResultMenuReplyKeyboard(): TelegramBot.ReplyKeyboardMarkup {
   return {
     keyboard: [
-      [{ text: "⚡ Deploy to Vercel" }, { text: "🟣 Deploy to Render" }],
+      [{ text: "⚡ Deploy to Vercel" }, { text: "🟣 Deploy to Vercel" }],
       [{ text: "📁 My Projects" }, { text: "🌐 Build Another" }],
       [{ text: "⬅️ Main Menu" }],
     ],

@@ -13,10 +13,16 @@ process.on("unhandledRejection", (reason) => {
 
 // ── Required environment variable validation ──────────────────────────────────
 const REQUIRED_ENV: Record<string, string> = {
+  SUPABASE_URL: "Supabase project URL",
+  SUPABASE_SERVICE_ROLE_KEY: "Supabase server key",
+};
+
+const TELEGRAM_ENV: Record<string, string> = {
   TELEGRAM_BOT_TOKEN: "Telegram bot token from @BotFather",
 };
 
 const OPTIONAL_WARN_ENV: Record<string, string> = {
+  ...TELEGRAM_ENV,
   OPENROUTER_API_KEY: "OpenRouter API key (AI chat will use fallback without it)",
   OWNER_ID:           "Telegram user ID of the bot owner (owner dashboard disabled without it)",
   ADMIN_API_KEY:      "Admin dashboard API key (dashboard auth disabled without it)",

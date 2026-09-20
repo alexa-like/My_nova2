@@ -718,7 +718,7 @@ export async function handleOwnerMessage(
     const ok = (v: boolean) => (v ? "✅" : "❌");
     const hasOR = !!process.env.OPENROUTER_API_KEY;
     const hasHF = !!process.env.HUGGINGFACE_API_TOKEN;
-    const hasMongo = !!process.env.MONGODB_URI;
+    const hasSupabase = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
     const hasGH = !!(process.env.GITHUB_TOKEN && process.env.GITHUB_USERNAME);
     const hasVercel = !!process.env.VERCEL_TOKEN;
     const hasTG = !!process.env.TELEGRAM_BOT_TOKEN;
@@ -728,7 +728,7 @@ export async function handleOwnerMessage(
       `${ok(hasTG)} Telegram Bot Token\n` +
       `${ok(hasOR)} OpenRouter (AI chat)\n` +
       `${ok(hasHF)} HuggingFace (images, TTS & STT)\n` +
-      `${ok(hasMongo)} MongoDB (database)\n\n` +
+      `${ok(hasSupabase)} Supabase (database)\n\n` +
       `Build & Deploy:\n` +
       `${ok(hasGH)} GitHub (repo push — /build)\n` +
       `${ok(hasVercel)} Vercel (deploy via /build → Deploy button)\n\n` +

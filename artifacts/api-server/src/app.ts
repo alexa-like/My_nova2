@@ -33,7 +33,6 @@ app.use(
 // Restrict CORS to trusted origins only
 const ALLOWED_ORIGINS = [
   process.env.APP_URL,
-  process.env.RENDER_EXTERNAL_URL,
   process.env.SERVER_URL,
   "http://localhost:5173",
   "http://localhost:3000",

@@ -1,5 +1,4 @@
 import { Router } from "express";
-import mongoose from "mongoose";
 import { User } from "../bot/models/User.js";
 import { RedeemCode } from "../bot/models/RedeemCode.js";
 import { Memory } from "../bot/models/Memory.js";
@@ -13,7 +12,7 @@ import { setPremiumEmojiEnabled } from "../bot/utils/premiumEmoji.js";
 import { logger } from "../lib/logger.js";
 
 function isValidObjectId(id: string): boolean {
-  return mongoose.Types.ObjectId.isValid(id);
+  return /^[0-9a-f-]{8,}$/i.test(id);
 }
 
 const router = Router();
@@ -151,7 +150,7 @@ router.get("/admin/stats", async (_req, res) => {
       Analytics.countDocuments({ event: "error" }),
       getActiveUsers(3600000),
     ]);
-    let botInfo = null;
+    let botInfo: any = null;
     if (bot) { try { botInfo = await bot.getMe(); } catch {} }
     res.json({
       bot: bot ? { status: "online", ...botInfo } : { status: "offline" },
@@ -369,7 +368,7 @@ router.post("/admin/codes/generate", async (req, res) => {
   if (!VALID_DURATION.test(duration.trim())) { res.status(400).json({ error: "Invalid duration. Use format: 30d, 7d, 1m, 1y, or lifetime" }); return; }
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   const rand = (len: number) => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-  const created = [];
+  const created: any[] = [];
   for (let i = 0; i < n; i++) {
     const code = `NOVA-${rand(4)}-${rand(4)}`;
     const doc = new RedeemCode({ code, duration, used: false });

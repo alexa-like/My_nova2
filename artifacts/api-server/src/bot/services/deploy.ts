@@ -103,7 +103,7 @@ export async function deployToVercel(
 
 // ── Render Blueprint deploy URL ───────────────────────────────────────────────
 // Generates the one-click Blueprint deploy URL from a GitHub repo URL.
-// Render reads the render.yaml from the repo root and sets up the service automatically.
+  // Vercel reads the project configuration from the repository when imported.
 
 export function getRenderBlueprintUrl(repoUrl: string): string {
   return `https://render.com/deploy?repo=${encodeURIComponent(repoUrl)}`;
